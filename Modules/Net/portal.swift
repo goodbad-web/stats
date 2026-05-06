@@ -104,7 +104,7 @@ public class Portal: PortalWrapper {
     }
     
     public func usageCallback(_ value: Network_Usage) {
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if let chart = self.chart {
                 chart.setBase(self.base)
                 chart.addValue(upload: Double(value.bandwidth.upload), download: Double(value.bandwidth.download))
@@ -142,6 +142,6 @@ public class Portal: PortalWrapper {
             if self.localIPField?.stringValue != privateIP {
                 self.localIPField?.stringValue = privateIP
             }
-        })
+        }
     }
 }

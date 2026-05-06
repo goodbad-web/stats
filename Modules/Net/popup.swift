@@ -410,18 +410,18 @@ internal class Popup: PopupWrapper {
     public func numberOfProcessesUpdated() {
         if self.processes?.count == self.numberOfProcesses { return }
         
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             self.processesView?.removeFromSuperview()
             self.processesView = nil
             self.processes = nil
             self.addArrangedSubview(self.initProcesses())
             self.processesInitialized = false
             self.recalculateHeight()
-        })
+        }
     }
     
     public func usageCallback(_ value: Network_Usage) {
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if (self.window?.isVisible ?? false) || !self.initialized {
                 var resized = false
                 self.uploadValue = value.bandwidth.upload
@@ -606,7 +606,7 @@ internal class Popup: PopupWrapper {
                 chart.setBase(self.base)
                 chart.addValue(upload: Double(value.bandwidth.upload), download: Double(value.bandwidth.download))
             }
-        })
+        }
     }
     
     public func connectivityCallback(_ value: Network_Connectivity?) {
@@ -620,7 +620,7 @@ internal class Popup: PopupWrapper {
         }
         self.jitter.append(value?.jitter ?? 0)
         
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if (self.window?.isVisible ?? false) || !self.connectionInitialized {
                 var text = "Unknown"
                 var latency = localizedString("Unknown")
@@ -645,11 +645,11 @@ internal class Popup: PopupWrapper {
             if let value, let chart = self.connectivityChart {
                 chart.addValue(value.status)
             }
-        })
+        }
     }
     
     public func processCallback(_ list: [Network_Process]) {
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if !(self.window?.isVisible ?? false) && self.processesInitialized {
                 return
             }
@@ -664,7 +664,7 @@ internal class Popup: PopupWrapper {
             }
             
             self.processesInitialized = true
-        })
+        }
     }
     
     public func resetConnectivityView() {
@@ -790,14 +790,14 @@ internal class Popup: PopupWrapper {
         self.publicIPState = controlState(sender)
         Store.shared.set(key: "\(self.title)_publicIP", value: self.publicIPState)
         
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if !self.publicIPState {
                 self.addressView?.removeFromSuperview()
             } else if let view = self.addressView {
                 self.insertArrangedSubview(view, at: 4)
             }
             self.recalculateHeight()
-        })
+        }
     }
     @objc private func toggleFixedScale(_ newValue: Int) {
         self.chart?.setScale(self.chartScale, Double(self.chartFixedScaleSize.toBytes(newValue)))

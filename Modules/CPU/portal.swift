@@ -140,7 +140,7 @@ public class Portal: PortalWrapper {
     }
     
     internal func callback(_ value: CPU_Load) {
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if (self.window?.isVisible ?? false) || !self.initialized {
                 self.systemField?.stringValue = "\(Int(value.systemLoad.rounded(toPlaces: 2) * 100))%"
                 self.userField?.stringValue = "\(Int(value.userLoad.rounded(toPlaces: 2) * 100))%"
@@ -178,6 +178,6 @@ public class Portal: PortalWrapper {
                 
                 self.initialized = true
             }
-        })
+        }
     }
 }

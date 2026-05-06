@@ -1,5 +1,5 @@
 //
-//  Settings.swift
+//  settings.swift
 //  CPU
 //
 //  Created by Serhiy Mytrovtsiy on 18/04/2020.
@@ -11,162 +11,112 @@
 
 import Cocoa
 import Kit
+import SwiftUI
 
-@MainActor internal class Settings: NSStackView, Settings_v {
-    private var usagePerCoreState: Bool = false
-    private var splitValueState: Bool = false
-    private var updateIntervalValue: Int = 1
-    private var updateTopIntervalValue: Int = 1
-    private var numberOfProcesses: Int = 8
-    private var clustersGroupState: Bool = false
+struct CPUSettingsView: View {
+    @AppStorage("CPU_updateInterval") private var updateInterval: Int = 1
+    @AppStorage("CPU_updateTopInterval") private var updateTopInterval: Int = 1
+    @AppStorage("CPU_processes") private var numberOfProcesses: Int = 8
+    @AppStorage("CPU_usagePerCore") private var usagePerCore: Bool = false
+    @AppStorage("CPU_clustersGroup") private var clustersGroup: Bool = false
+    @AppStorage("CPU_splitValue") private var splitValue: Bool = false
     
-    private let title: String
+    @State private var hasBarChart: Bool = false
     
-    public var callback: (() -> Void) = {}
-    public var callbackWhenUpdateNumberOfProcesses: (() -> Void) = {}
-    public var setInterval: ((_ value: Int) -> Void) = {_ in }
-    public var setTopInterval: ((_ value: Int) -> Void) = {_ in }
-    private var splitValueView: NSSwitch? = nil
-    private var usagePerCoreView: NSSwitch? = nil
-    private var groupByClustersView: NSSwitch? = nil
+    var callback: () -> Void = {}
+    var callbackWhenUpdateNumberOfProcesses: () -> Void = {}
+    var setInterval: (Int) -> Void = { _ in }
+    var setTopInterval: (Int) -> Void = { _ in }
     
-    public init(_ module: ModuleType) {
-        self.title = module.stringValue
-        self.usagePerCoreState = Store.shared.bool(key: "\(self.title)_usagePerCore", defaultValue: self.usagePerCoreState)
-        self.splitValueState = Store.shared.bool(key: "\(self.title)_splitValue", defaultValue: self.splitValueState)
-        self.updateIntervalValue = Store.shared.int(key: "\(self.title)_updateInterval", defaultValue: self.updateIntervalValue)
-        self.updateTopIntervalValue = Store.shared.int(key: "\(self.title)_updateTopInterval", defaultValue: self.updateTopIntervalValue)
-        self.numberOfProcesses = Store.shared.int(key: "\(self.title)_processes", defaultValue: self.numberOfProcesses)
-        self.clustersGroupState = Store.shared.bool(key: "\(self.title)_clustersGroup", defaultValue: self.clustersGroupState)
-        
-        super.init(frame: NSRect(x: 0, y: 0, width: 0, height: 0))
-        
-        self.orientation = .vertical
-        self.distribution = .gravityAreas
-        self.translatesAutoresizingMaskIntoConstraints = false
-        self.spacing = Constants.Settings.margin
+    var body: some View {
+        Form {
+            Section {
+                Picker(localizedString("Update interval"), selection: $updateInterval) {
+                    ForEach(ReaderUpdateIntervals, id: \.key) {
+                        Text(localizedString($0.value)).tag(Int($0.key) ?? 1)
+                    }
+                }
+                Picker(localizedString("Update interval for top processes"), selection: $updateTopInterval) {
+                    ForEach(ReaderUpdateIntervals, id: \.key) {
+                        Text(localizedString($0.value)).tag(Int($0.key) ?? 1)
+                    }
+                }
+            }
+            
+            Section {
+                Picker(localizedString("Number of top processes"), selection: $numberOfProcesses) {
+                    ForEach(NumbersOfProcesses, id: \.self) {
+                        Text("\($0)").tag($0)
+                    }
+                }
+            }
+            
+            if hasBarChart {
+                Section {
+                    Toggle(localizedString("Show usage per core"), isOn: $usagePerCore)
+                        .onChange(of: usagePerCore) { newValue in
+                            if newValue && clustersGroup {
+                                clustersGroup = false
+                            }
+                            if newValue {
+                                splitValue = false
+                            }
+                            callback()
+                        }
+                    
+                    Toggle(localizedString("Cluster grouping"), isOn: $clustersGroup)
+                        .onChange(of: clustersGroup) { newValue in
+                            if newValue && usagePerCore {
+                                usagePerCore = false
+                            }
+                            if newValue {
+                                splitValue = false
+                            }
+                            callback()
+                        }
+                    
+                    Toggle(localizedString("Split the value (System/User)"), isOn: $splitValue)
+                        .disabled(usagePerCore || clustersGroup)
+                        .onChange(of: splitValue) { _ in
+                            callback()
+                        }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .onChange(of: updateInterval) { setInterval($0) }
+        .onChange(of: updateTopInterval) { setTopInterval($0) }
+        .onChange(of: numberOfProcesses) { callbackWhenUpdateNumberOfProcesses() }
     }
     
-    required init?(coder: NSCoder) {
+    func setHasBarChart(_ value: Bool) {
+        self.hasBarChart = value
+    }
+}
+
+class Settings: NSHostingView<CPUSettingsView>, Settings_v {
+    var callback: (() -> Void) = {}
+    var callbackWhenUpdateNumberOfProcesses: (() -> Void) = {}
+    var setInterval: ((_ value: Int) -> Void) = {_ in }
+    var setTopInterval: ((_ value: Int) -> Void) = {_ in }
+    
+    public init(_ module: ModuleType) {
+        super.init(rootView: CPUSettingsView())
+        self.rootView.callback = { [weak self] in self?.callback() }
+        self.rootView.callbackWhenUpdateNumberOfProcesses = { [weak self] in self?.callbackWhenUpdateNumberOfProcesses() }
+        self.rootView.setInterval = { [weak self] in self?.setInterval($0) }
+        self.rootView.setTopInterval = { [weak self] in self?.setTopInterval($0) }
+    }
+    
+    @MainActor required dynamic init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
-    public func load(widgets: [widget_t]) {
-        self.subviews.forEach{ $0.removeFromSuperview() }
-        
-        self.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("Update interval"), component: selectView(
-                action: #selector(self.changeUpdateInterval),
-                items: ReaderUpdateIntervals,
-                selected: "\(self.updateIntervalValue)"
-            )),
-            PreferencesRow(localizedString("Update interval for top processes"), component: selectView(
-                action: #selector(self.changeUpdateTopInterval),
-                items: ReaderUpdateIntervals,
-                selected: "\(self.updateTopIntervalValue)"
-            ))
-        ]))
-        
-        self.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("Number of top processes"), component: selectView(
-                action: #selector(self.changeNumberOfProcesses),
-                items: NumbersOfProcesses.map{ KeyValue_t(key: "\($0)", value: "\($0)") },
-                selected: "\(self.numberOfProcesses)"
-            ))
-        ]))
-        
-        if !widgets.filter({ $0 == .barChart }).isEmpty {
-            self.splitValueView = switchView(
-                action: #selector(self.toggleSplitValue),
-                state: self.splitValueState
-            )
-            self.usagePerCoreView = switchView(
-                action: #selector(self.toggleUsagePerCore),
-                state: self.usagePerCoreState
-            )
-            if self.usagePerCoreState || self.clustersGroupState {
-                self.splitValueView?.isEnabled = false
-                self.splitValueView?.state = .off
-            }
-            
-            var rows: [PreferencesRow] = [
-                PreferencesRow(localizedString("Show usage per core"), component: self.usagePerCoreView!)
-            ]
-            
-            self.groupByClustersView = switchView(
-                action: #selector(self.toggleClustersGroup),
-                state: self.clustersGroupState
-            )
-            rows.append(PreferencesRow(localizedString("Cluster grouping"), component: self.groupByClustersView!))
-            
-            rows.append(PreferencesRow(localizedString("Split the value (System/User)"), component: self.splitValueView!))
-            
-            self.addArrangedSubview(PreferencesSection(rows))
-        }
+    @MainActor required init(rootView: CPUSettingsView) {
+        fatalError("init(rootView:) has not been implemented")
     }
     
-    @objc private func changeUpdateInterval(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String, let value = Int(key) else { return }
-        self.updateIntervalValue = value
-        Store.shared.set(key: "\(self.title)_updateInterval", value: value)
-        self.setInterval(value)
-    }
-    
-    @objc private func changeUpdateTopInterval(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String, let value = Int(key) else { return }
-        self.updateTopIntervalValue = value
-        Store.shared.set(key: "\(self.title)_updateTopInterval", value: value)
-        self.setTopInterval(value)
-    }
-    
-    @objc private func changeNumberOfProcesses(_ sender: NSMenuItem) {
-        if let value = Int(sender.title) {
-            self.numberOfProcesses = value
-            Store.shared.set(key: "\(self.title)_processes", value: value)
-            self.callbackWhenUpdateNumberOfProcesses()
-        }
-    }
-    
-    @objc func toggleUsagePerCore(_ sender: NSControl) {
-        self.usagePerCoreState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_usagePerCore", value: self.usagePerCoreState)
-        self.callback()
-        
-        if !self.usagePerCoreState {
-            self.splitValueState = false
-            Store.shared.set(key: "\(self.title)_splitValue", value: self.splitValueState)
-            self.splitValueView?.state = .off
-        } else {
-            self.splitValueState = false
-            Store.shared.set(key: "\(self.title)_splitValue", value: self.splitValueState)
-            self.splitValueView?.state = .off
-        }
-        
-        if self.clustersGroupState && self.usagePerCoreState {
-            self.clustersGroupState = false
-            Store.shared.set(key: "\(self.title)_clustersGroup", value: self.clustersGroupState)
-            self.groupByClustersView?.state = .off
-        }
-    }
-    @objc func toggleSplitValue(_ sender: NSControl) {
-        self.splitValueState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_splitValue", value: self.splitValueState)
-        self.callback()
-    }
-    
-    @objc func toggleClustersGroup(_ sender: NSControl) {
-        self.clustersGroupState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_clustersGroup", value: self.clustersGroupState)
-        
-        self.splitValueView?.isEnabled = !(self.usagePerCoreState || self.clustersGroupState)
-        
-        if self.clustersGroupState && self.usagePerCoreState {
-            self.usagePerCoreView?.state = .off
-            let toggle: NSSwitch = NSSwitch()
-            toggle.state = .off
-            self.toggleUsagePerCore(toggle)
-        }
-        
-        self.callback()
+    func load(widgets: [widget_t]) {
+        self.rootView.setHasBarChart(!widgets.filter({ $0 == .barChart }).isEmpty)
     }
 }

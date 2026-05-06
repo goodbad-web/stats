@@ -11,7 +11,6 @@
 
 import Cocoa
 @preconcurrency import Kit
-
 import os
 
 private struct LoadState {
@@ -61,114 +60,118 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
             let capturedNumCpuInfo = numCpuInfo
             let cpuInfoData = self.hostCPULoadInfo()
             
-            self.loadLock.withLock { state in
-                if result == KERN_SUCCESS, let cpuInfo = capturedCpuInfo.info {
-                    state.usagePerCore = []
-                    
-                    for i in 0 ..< Int32(localNumCPUs) {
-                        var inUse: Int32
-                        var total: Int32
-                        if let prevCpuInfo = state.prevCpuInfo {
-                            inUse = cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_USER)]
-                                - prevCpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_USER)]
-                                + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_SYSTEM)]
-                                - prevCpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_SYSTEM)]
-                                + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_NICE)]
-                                - prevCpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_NICE)]
-                            total = inUse + (cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_IDLE)]
-                                - prevCpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_IDLE)])
+            let showHyperthratedCores = Store.shared.bool(key: "CPU_hyperhreading", defaultValue: false)
+            
+            let updatedResponse = await Task.detached(priority: .userInitiated) {
+                return self.loadLock.withLock { state in
+                    if result == KERN_SUCCESS, let cpuInfo = capturedCpuInfo.info {
+                        state.usagePerCore = []
+                        
+                        for i in 0 ..< Int32(localNumCPUs) {
+                            var inUse: Int32
+                            var total: Int32
+                            if let prevCpuInfo = state.prevCpuInfo {
+                                inUse = cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_USER)]
+                                    - prevCpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_USER)]
+                                    + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_SYSTEM)]
+                                    - prevCpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_SYSTEM)]
+                                    + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_NICE)]
+                                    - prevCpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_NICE)]
+                                total = inUse + (cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_IDLE)]
+                                    - prevCpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_IDLE)])
+                            } else {
+                                inUse = cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_USER)]
+                                    + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_SYSTEM)]
+                                    + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_NICE)]
+                                total = inUse + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_IDLE)]
+                            }
+                            
+                            if total != 0 {
+                                state.usagePerCore.append(Double(inUse) / Double(total))
+                            }
+                        }
+                        
+                        if showHyperthratedCores || !hasHT {
+                            state.response.usagePerCore = state.usagePerCore
                         } else {
-                            inUse = cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_USER)]
-                                + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_SYSTEM)]
-                                + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_NICE)]
-                            total = inUse + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_IDLE)]
+                            var i = 0
+                            state.response.usagePerCore = []
+                            while i < Int(state.usagePerCore.count/2) {
+                                let a = i * 2
+                                if state.usagePerCore.indices.contains(a) && state.usagePerCore.indices.contains(a+1) {
+                                    state.response.usagePerCore.append((state.usagePerCore[a] + state.usagePerCore[a+1]) / 2)
+                                }
+                                i += 1
+                            }
                         }
                         
-                        if total != 0 {
-                            state.usagePerCore.append(Double(inUse) / Double(total))
-                        }
-                    }
-                    
-                    let showHyperthratedCores = Store.shared.bool(key: "CPU_hyperhreading", defaultValue: false)
-                    if showHyperthratedCores || !hasHT {
-                        state.response.usagePerCore = state.usagePerCore
-                    } else {
-                        var i = 0
-                        state.response.usagePerCore = []
-                        while i < Int(state.usagePerCore.count/2) {
-                            let a = i * 2
-                            if state.usagePerCore.indices.contains(a) && state.usagePerCore.indices.contains(a+1) {
-                                state.response.usagePerCore.append((state.usagePerCore[a] + state.usagePerCore[a+1]) / 2)
-                            }
-                            i += 1
-                        }
-                    }
-                    
-                    if let prevCpuInfo = state.prevCpuInfo {
-                        let prevCpuInfoSize: size_t = MemoryLayout<integer_t>.stride * Int(state.numPrevCpuInfo)
-                        vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prevCpuInfo), vm_size_t(prevCpuInfoSize))
-                    }
-                    
-                    state.prevCpuInfo = capturedCpuInfo.info
-                    state.numPrevCpuInfo = capturedNumCpuInfo
-                }
-                
-                if let cpuInfoData = cpuInfoData {
-                    let userDiff = Double(cpuInfoData.cpu_ticks.0 &- state.previousInfo.cpu_ticks.0)
-                    let sysDiff  = Double(cpuInfoData.cpu_ticks.1 &- state.previousInfo.cpu_ticks.1)
-                    let idleDiff = Double(cpuInfoData.cpu_ticks.2 &- state.previousInfo.cpu_ticks.2)
-                    let niceDiff = Double(cpuInfoData.cpu_ticks.3 &- state.previousInfo.cpu_ticks.3)
-                    let totalTicks = sysDiff + userDiff + niceDiff + idleDiff
-                    
-                    let system = sysDiff / totalTicks
-                    let user = userDiff / totalTicks
-                    let idle = idleDiff / totalTicks
-                    
-                    if !system.isNaN { state.response.systemLoad = system }
-                    if !user.isNaN { state.response.userLoad = user }
-                    if !idle.isNaN { state.response.idleLoad = idle }
-                    
-                    state.previousInfo = cpuInfoData
-                    state.response.totalUsage = state.response.systemLoad + state.response.userLoad
-                    
-                    if let cores = localCores {
-                        let eCoresList: [Double] = cores.filter({ $0.type == .efficiency }).enumerated().compactMap { (i, c) -> Double? in
-                            if state.response.usagePerCore.indices.contains(Int(c.id)) {
-                                return state.response.usagePerCore[Int(c.id)]
-                            }
-                            return i < state.usagePerCore.count ? state.usagePerCore[i] : 0
-                        }
-                        let pCoresList: [Double] = cores.filter({ $0.type == .performance }).enumerated().compactMap { (i, c) -> Double? in
-                            if state.response.usagePerCore.indices.contains(Int(c.id)) {
-                                return state.response.usagePerCore[Int(c.id)]
-                            }
-                            return i < state.usagePerCore.count ? state.usagePerCore[i] : 0
-                        }
-                        let sCoresList: [Double] = cores.filter({ $0.type == .super }).enumerated().compactMap { (i, c) -> Double? in
-                            if state.response.usagePerCore.indices.contains(Int(c.id)) {
-                                return state.response.usagePerCore[Int(c.id)]
-                            }
-                            return i < state.usagePerCore.count ? state.usagePerCore[i] : 0
+                        if let prevCpuInfo = state.prevCpuInfo {
+                            let prevCpuInfoSize: size_t = MemoryLayout<integer_t>.stride * Int(state.numPrevCpuInfo)
+                            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prevCpuInfo), vm_size_t(prevCpuInfoSize))
                         }
                         
-                        if !eCoresList.isEmpty {
-                            state.response.usageECores = eCoresList.reduce(0, +)/Double(eCoresList.count)
-                        }
-                        if !pCoresList.isEmpty {
-                            state.response.usagePCores = pCoresList.reduce(0, +)/Double(pCoresList.count)
-                        }
-                        if !sCoresList.isEmpty {
-                            state.response.usageSCores = sCoresList.reduce(0, +)/Double(sCoresList.count)
+                        state.prevCpuInfo = capturedCpuInfo.info
+                        state.numPrevCpuInfo = capturedNumCpuInfo
+                    }
+                    
+                    if let cpuInfoData = cpuInfoData {
+                        let userDiff = Double(cpuInfoData.cpu_ticks.0 &- state.previousInfo.cpu_ticks.0)
+                        let sysDiff  = Double(cpuInfoData.cpu_ticks.1 &- state.previousInfo.cpu_ticks.1)
+                        let idleDiff = Double(cpuInfoData.cpu_ticks.2 &- state.previousInfo.cpu_ticks.2)
+                        let niceDiff = Double(cpuInfoData.cpu_ticks.3 &- state.previousInfo.cpu_ticks.3)
+                        let totalTicks = sysDiff + userDiff + niceDiff + idleDiff
+                        
+                        let system = sysDiff / totalTicks
+                        let user = userDiff / totalTicks
+                        let idle = idleDiff / totalTicks
+                        
+                        if !system.isNaN { state.response.systemLoad = system }
+                        if !user.isNaN { state.response.userLoad = user }
+                        if !idle.isNaN { state.response.idleLoad = idle }
+                        
+                        state.previousInfo = cpuInfoData
+                        state.response.totalUsage = state.response.systemLoad + state.response.userLoad
+                        
+                        if let cores = localCores {
+                            let eCoresList: [Double] = cores.filter({ $0.type == .efficiency }).enumerated().compactMap { (i, c) -> Double? in
+                                if state.response.usagePerCore.indices.contains(Int(c.id)) {
+                                    return state.response.usagePerCore[Int(c.id)]
+                                }
+                                return i < state.usagePerCore.count ? state.usagePerCore[i] : 0
+                            }
+                            let pCoresList: [Double] = cores.filter({ $0.type == .performance }).enumerated().compactMap { (i, c) -> Double? in
+                                if state.response.usagePerCore.indices.contains(Int(c.id)) {
+                                    return state.response.usagePerCore[Int(c.id)]
+                                }
+                                return i < state.usagePerCore.count ? state.usagePerCore[i] : 0
+                            }
+                            let sCoresList: [Double] = cores.filter({ $0.type == .super }).enumerated().compactMap { (i, c) -> Double? in
+                                if state.response.usagePerCore.indices.contains(Int(c.id)) {
+                                    return state.response.usagePerCore[Int(c.id)]
+                                }
+                                return i < state.usagePerCore.count ? state.usagePerCore[i] : 0
+                            }
+                            
+                            if !eCoresList.isEmpty {
+                                state.response.usageECores = eCoresList.reduce(0, +)/Double(eCoresList.count)
+                            }
+                            if !pCoresList.isEmpty {
+                                state.response.usagePCores = pCoresList.reduce(0, +)/Double(pCoresList.count)
+                            }
+                            if !sCoresList.isEmpty {
+                                state.response.usageSCores = sCoresList.reduce(0, +)/Double(sCoresList.count)
+                            }
                         }
                     }
+                    return state.response
                 }
-                
-                self.callback(state.response)
-            }
+            }.value
+            
+            self.callback(updatedResponse)
         }
     }
     
-    private func hostCPULoadInfo() -> host_cpu_load_info? {
+    nonisolated private func hostCPULoadInfo() -> host_cpu_load_info? {
         let count = MemoryLayout<host_cpu_load_info>.stride/MemoryLayout<integer_t>.stride
         var size = mach_msg_type_number_t(count)
         var cpuLoadInfo = host_cpu_load_info()
@@ -179,7 +182,6 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
             }
         }
         if result != KERN_SUCCESS {
-            error("kern_result_t: \(result)", log: self.log)
             return nil
         }
         
@@ -206,38 +208,12 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
             }
             
             let limit = self.numberOfProcesses
-            let log = self.log
-            DispatchQueue.global(qos: .background).async {
-                let task = Process()
-                task.launchPath = "/bin/ps"
-                task.arguments = ["-Aceo pid,pcpu,comm", "-r"]
-                
-                let outputPipe = Pipe()
-                let errorPipe = Pipe()
-                
-                defer {
-                    outputPipe.fileHandleForReading.closeFile()
-                    errorPipe.fileHandleForReading.closeFile()
-                }
-                
-                task.standardOutput = outputPipe
-                task.standardError = errorPipe
-                
-                do {
-                    try task.run()
-                } catch let err {
-                    error("error read ps: \(err.localizedDescription)", log: log)
-                    return
-                }
-                
-                let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                let output = String(data: outputData, encoding: .utf8)
-                _ = String(data: errorData, encoding: .utf8)
-                guard let output, !output.isEmpty else { return }
+            let processes = await Task.detached(priority: .background) {
+                let output = syncShell("/bin/ps -Aceo pid,pcpu,comm -r")
+                guard !output.isEmpty else { return [TopProcess]() }
                 
                 var index = 0
-                var processes: [TopProcess] = []
+                var list: [TopProcess] = []
                 output.enumerateLines { (line, stop) in
                     if index != 0 {
                         let str = line.trimmingCharacters(in: .whitespaces)
@@ -255,21 +231,22 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
                             name = "Docker"
                         }
                         
-                        processes.append(TopProcess(pid: pid, name: name, usage: usage))
+                        list.append(TopProcess(pid: pid, name: name, usage: usage))
                     }
                     
                     if index == limit { stop = true }
                     index += 1
                 }
-                
-                self.callback(processes)
-            }
+                return list
+            }.value
+            
+            self.callback(processes)
         }
     }
 }
 
 public class TemperatureReader: Reader<Double>, @unchecked Sendable {
-    var list: [String] = []
+    nonisolated(unsafe) var list: [String] = []
     
     public override func setup() {
         self.popup = true
@@ -290,33 +267,36 @@ public class TemperatureReader: Reader<Double>, @unchecked Sendable {
     
     nonisolated public override func read() {
         Task { @MainActor in
-            var temperature: Double? = nil
-            
-            if let value = SMC.shared.getValue("TC0D"), value < 110 {
-                temperature = value
-            } else if let value = SMC.shared.getValue("TC0E"), value < 110 {
-                temperature = value
-            } else if let value = SMC.shared.getValue("TC0F"), value < 110 {
-                temperature = value
-            } else if let value = SMC.shared.getValue("TC0P"), value < 110 {
-                temperature = value
-            } else if let value = SMC.shared.getValue("TC0H"), value < 110 {
-                temperature = value
-            } else {
-                var total: Double = 0
-                var counter: Double = 0
-                self.list.forEach { (key: String) in
-                    if let value = SMC.shared.getValue(key) {
-                        total += value
-                        counter += 1
+            let temp = await Task.detached(priority: .background) {
+                var temperature: Double? = nil
+                
+                if let value = SMC.shared.getValue("TC0D"), value < 110 {
+                    temperature = value
+                } else if let value = SMC.shared.getValue("TC0E"), value < 110 {
+                    temperature = value
+                } else if let value = SMC.shared.getValue("TC0F"), value < 110 {
+                    temperature = value
+                } else if let value = SMC.shared.getValue("TC0P"), value < 110 {
+                    temperature = value
+                } else if let value = SMC.shared.getValue("TC0H"), value < 110 {
+                    temperature = value
+                } else {
+                    var total: Double = 0
+                    var counter: Double = 0
+                    self.list.forEach { (key: String) in
+                        if let value = SMC.shared.getValue(key) {
+                            total += value
+                            counter += 1
+                        }
+                    }
+                    if total != 0 && counter != 0 {
+                        temperature = total / counter
                     }
                 }
-                if total != 0 && counter != 0 {
-                    temperature = total / counter
-                }
-            }
+                return temperature
+            }.value
             
-            self.callback(temperature)
+            self.callback(temp)
         }
     }
 }
@@ -331,17 +311,16 @@ private struct Sample: @unchecked Sendable {
     let time: TimeInterval
 }
 
-// inspired by https://github.com/shank03/StatsBar/blob/e175aa71c914ce882ce2e90163f3eb18262a8e25/StatsBar/Service/IOReport.swift
 public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
-    private var eCoreFreqs: [Int32] = []
-    private var pCoreFreqs: [Int32] = []
-    private var sCoreFreqs: [Int32] = []
-    private var eCoreCount: Double = 0
-    private var pCoreCount: Double = 0
-    private var sCoreCount: Double = 0
+    private nonisolated(unsafe) var eCoreFreqs: [Int32] = []
+    private nonisolated(unsafe) var pCoreFreqs: [Int32] = []
+    private nonisolated(unsafe) var sCoreFreqs: [Int32] = []
+    private nonisolated(unsafe) var eCoreCount: Double = 0
+    private nonisolated(unsafe) var pCoreCount: Double = 0
+    private nonisolated(unsafe) var sCoreCount: Double = 0
     
-    private var channels: CFMutableDictionary? = nil
-    private var subscription: IOReportSubscriptionRef? = nil
+    private nonisolated(unsafe) var channels: CFMutableDictionary? = nil
+    private nonisolated(unsafe) var subscription: IOReportSubscriptionRef? = nil
     
     private let measurementCount: Int = 4
     private let freqLock = OSAllocatedUnfairLock(initialState: FrequencyState())
@@ -380,7 +359,7 @@ public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
             let minPCoreFreq = Double(self.pCoreFreqs.min() ?? 0)
             let minSCoreFreq = Double(self.sCoreFreqs.min() ?? 0)
             
-            Task {
+            Task.detached(priority: .background) {
                 var eCores: [Double] = []
                 var sCores: [Double] = []
                 var pCores: [Double] = []
@@ -437,13 +416,16 @@ public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
                 }
                 let value: Double? = activeCores > 0 ? totalFreq / activeCores : nil
                 
-                self.callback(CPU_Frequency(value: value, eCore: eFreq, pCore: pFreq, sCore: sFreq))
-                self.freqLock.withLock { $0.isReading = false }
+                let result = CPU_Frequency(value: value, eCore: eFreq, pCore: pFreq, sCore: sFreq)
+                await MainActor.run {
+                    self.callback(result)
+                    self.freqLock.withLock { $0.isReading = false }
+                }
             }
         }
     }
     
-    private func calculateFrequencies(dict: CFDictionary, freqs: [Int32]) -> Double {
+    nonisolated private func calculateFrequencies(dict: CFDictionary, freqs: [Int32]) -> Double {
         let items = self.getResidencies(dict: dict)
         guard let offset = items.firstIndex(where: { $0.0 != "IDLE" && $0.0 != "DOWN" && $0.0 != "OFF" }) else { return 0 }
         let usage = items.dropFirst(offset).reduce(0.0) { $0 + Double($1.f) }
@@ -460,47 +442,42 @@ public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
         return avgFreq
     }
     
-    func getResidencies(dict: CFDictionary) -> [(ns: String, f: Int64)] {
+    nonisolated private func getResidencies(dict: CFDictionary) -> [(ns: String, f: Int64)] {
         let count = IOReportStateGetCount(dict)
         var res: [(String, Int64)] = []
-        
         for i in 0..<count {
             let name = IOReportStateGetNameForIndex(dict, i)?.takeUnretainedValue() ?? ("" as CFString)
             let val = IOReportStateGetResidency(dict, i)
             res.append((name as String, val))
         }
-        
         return res
     }
     
-    private func getChannels() -> CFMutableDictionary? {
+    nonisolated private func getChannels() -> CFMutableDictionary? {
         let channelNames = [
             ("CPU Stats", "CPU Complex Performance States"),
             ("CPU Stats", "CPU Core Performance States")
         ]
-        
         var channels: [CFDictionary] = []
         for (gname, sname) in channelNames {
-            let channel = IOReportCopyChannelsInGroup(gname as CFString?, sname as CFString?, 0, 0, 0)
-            guard let channel = channel?.takeRetainedValue() else { continue }
-            channels.append(channel)
+            if let channel = IOReportCopyChannelsInGroup(gname as CFString?, sname as CFString?, 0, 0, 0)?.takeRetainedValue() {
+                channels.append(channel)
+            }
         }
-        
+        guard !channels.isEmpty else { return nil }
         let chan = channels[0]
         for i in 1..<channels.count {
             IOReportMergeChannels(chan, channels[i], nil)
         }
-        
         let size = CFDictionaryGetCount(chan)
-        guard let channel = CFDictionaryCreateMutableCopy(kCFAllocatorDefault, size, chan),
-              let chan = channel as? [String: Any], chan["IOReportChannels"] != nil else {
+        guard let mutableCopy = CFDictionaryCreateMutableCopy(kCFAllocatorDefault, size, chan),
+              let dict = mutableCopy as? [String: Any], dict["IOReportChannels"] != nil else {
             return nil
         }
-        
-        return channel
+        return mutableCopy
     }
     
-    private func getSamples() async -> [([IOSample], TimeInterval)] {
+    nonisolated private func getSamples() async -> [([IOSample], TimeInterval)] {
         let duration = 500
         let step = UInt64(duration / self.measurementCount)
         var samples = [([IOSample], TimeInterval)]()
@@ -509,11 +486,8 @@ public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
         var prev = self.freqLock.withLock { $0.prev } ?? initialSample
         
         for _ in 0..<self.measurementCount {
-            let milliseconds = UInt64(step) * 1_000_000
-            try? await Task.sleep(nanoseconds: milliseconds)
-            
+            try? await Task.sleep(nanoseconds: UInt64(step) * 1_000_000)
             guard let next = self.getSample() else { continue }
-            
             if let diffCF = IOReportCreateSamplesDelta(prev.samples, next.samples, nil) {
                 let diff = diffCF.takeRetainedValue()
                 let elapsed = next.time - prev.time
@@ -526,32 +500,26 @@ public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
         return samples
     }
     
-    private func getSample() -> Sample? {
+    nonisolated private func getSample() -> Sample? {
         guard let sample = IOReportCreateSamples(self.subscription, self.channels, nil)?.takeRetainedValue() else {
             return nil
         }
         return Sample(samples: sample, time: Date().timeIntervalSince1970)
     }
     
-    private func collectIOSamples(data: CFDictionary) -> [IOSample] {
-        let dict = data as! [String: Any]
-        let items = dict["IOReportChannels"] as! CFArray
-        let itemSize = CFArrayGetCount(items)
-        
+    nonisolated private func collectIOSamples(data: CFDictionary) -> [IOSample] {
+        guard let items = (data as? [String: Any])?["IOReportChannels"] else { return [] }
+        let itemSize = CFArrayGetCount((items as! CFArray))
         var samples = [IOSample]()
-        
         for index in 0..<itemSize {
-            let dict = CFArrayGetValueAtIndex(items, index)
+            let dict = CFArrayGetValueAtIndex((items as! CFArray), index)
             let item = unsafeBitCast(dict, to: CFDictionary.self)
-            
             let group = IOReportChannelGetGroup(item)?.takeUnretainedValue() ?? ("" as CFString)
             let subGroup = IOReportChannelGetSubGroup(item)?.takeUnretainedValue() ?? ("" as CFString)
             let channel = IOReportChannelGetChannelName(item)?.takeUnretainedValue() ?? ("" as CFString)
             let unit = IOReportChannelGetUnitLabel(item)?.takeUnretainedValue() ?? ("" as CFString)
-            
             samples.append(IOSample(group: group as String, subGroup: subGroup as String, channel: channel as String, unit: unit as String, delta: item))
         }
-        
         return samples
     }
 }
@@ -561,58 +529,23 @@ public class LimitReader: Reader<CPU_Limit>, @unchecked Sendable {
     
     nonisolated public override func read() {
         Task { @MainActor in
-            let log = self.log
-            Task.detached(priority: .background) {
-                let task = Process()
-                task.launchPath = "/usr/bin/pmset"
-                task.arguments = ["-g", "therm"]
-                
-                let outputPipe = Pipe()
-                defer {
-                    outputPipe.fileHandleForReading.closeFile()
-                }
-                task.standardOutput = outputPipe
-                
-                do {
-                    try task.run()
-                } catch let err {
-                    error("error read pmset: \(err.localizedDescription)", log: log)
-                    return
-                }
-                
-                let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-                guard let str = String(data: outputData, encoding: .utf8) else { return }
-                var lines = str.split(separator: "\n")
-                guard !lines.isEmpty else { return }
-                lines.removeFirst(3)
-                
-                var scheduler: Int?
-                var cpus: Int?
-                var speed: Int?
-                
-                lines.forEach { (line: Substring) in
-                    guard let value = Int(line.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) else {
-                        return
-                    }
-                    if line.contains("Scheduler") {
-                        scheduler = value
-                    } else if line.contains("CPUs") {
-                        cpus = value
-                    } else if line.contains("Speed") {
-                        speed = value
+            let limit = await Task.detached(priority: .background) {
+                var res = CPU_Limit()
+                let output = syncShell("/usr/bin/pmset -g therm")
+                var lines = output.split(separator: "\n")
+                if lines.count > 3 {
+                    lines.removeFirst(3)
+                    lines.forEach { (line: Substring) in
+                        guard let value = Int(line.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) else { return }
+                        if line.contains("Scheduler") { res.scheduler = value }
+                        else if line.contains("CPUs") { res.cpus = value }
+                        else if line.contains("Speed") { res.speed = value }
                     }
                 }
-                let finalScheduler = scheduler
-                let finalCpus = cpus
-                let finalSpeed = speed
-                
-                await MainActor.run {
-                    if let v = finalScheduler { self.limits.scheduler = v }
-                    if let v = finalCpus { self.limits.cpus = v }
-                    if let v = finalSpeed { self.limits.speed = v }
-                    self.callback(self.limits)
-                }
-            }
+                return res
+            }.value
+            self.limits = limit
+            self.callback(self.limits)
         }
     }
 }
@@ -628,46 +561,24 @@ public class AverageLoadReader: Reader<CPU_AverageLoad>, @unchecked Sendable {
     
     nonisolated public override func read() {
         Task { @MainActor in
-        let task = Process()
-        task.launchPath = "/usr/bin/uptime"
-        
-        let outputPipe = Pipe()
-        defer {
-            outputPipe.fileHandleForReading.closeFile()
-        }
-        task.standardOutput = outputPipe
-        
-        do {
-            try task.run()
-        } catch let err {
-            error("error read uptime: \(err.localizedDescription)", log: self.log)
-            return
-        }
-        
-        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        guard let raw = String(data: outputData, encoding: .utf8), let line = raw.split(separator: "\n").first else {
-            return
-        }
-        
-        let str = line.trimmingCharacters(in: .whitespaces)
-        let strFind = str.findAndCrop(pattern: "(\\d+(.|,)\\d+ *){3}$")
-        let strArr = strFind.cropped.split(separator: " ")
-        guard strArr.count == 3 else { return }
-        
-        var list: [Double] = []
-        strArr.forEach { (n: Substring) in
-            let value = Double(n.replacingOccurrences(of: ",", with: ".")) ?? 0
-            list.append(value)
-        }
-        guard list.count == 3 else { return }
-        
-        let result = list
-        self.loadLock.withLock { load in
-            load.load1 = result[0]
-            load.load5 = result[1]
-            load.load15 = result[2]
-            self.callback(load)
-        }
+            let result = await Task.detached(priority: .background) {
+                let output = syncShell("/usr/bin/uptime")
+                guard let line = output.split(separator: "\n").first else { return nil as [Double]? }
+                let str = String(line).trimmingCharacters(in: .whitespaces)
+                let strFind = str.findAndCrop(pattern: "(\\d+(.|,)\\d+ *){3}$")
+                let strArr = strFind.cropped.split(separator: " ")
+                guard strArr.count == 3 else { return nil }
+                return strArr.compactMap { Double($0.replacingOccurrences(of: ",", with: ".")) }
+            }.value
+            
+            if let list = result, list.count == 3 {
+                self.loadLock.withLock { load in
+                    load.load1 = list[0]
+                    load.load5 = list[1]
+                    load.load15 = list[2]
+                    self.callback(load)
+                }
+            }
         }
     }
 }

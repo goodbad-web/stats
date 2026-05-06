@@ -384,7 +384,7 @@ internal class Popup: PopupWrapper {
     }
     
     public func loadCallback(_ value: CPU_Load) {
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if (self.window?.isVisible ?? false) || !self.initialized {
                 self.systemField?.stringValue = "\(Int(value.systemLoad.rounded(toPlaces: 2) * 100))%"
                 self.userField?.stringValue = "\(Int(value.userLoad.rounded(toPlaces: 2) * 100))%"
@@ -424,13 +424,13 @@ internal class Popup: PopupWrapper {
                 self.initialized = true
             }
             self.lineChart?.addValue(value.totalUsage)
-        })
+        }
     }
     
     public func temperatureCallback(_ value: Double?) {
         guard let value else { return }
         
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if (self.window?.isVisible ?? false) || !self.initializedTemperature {
                 if let view = self.temperatureCircle, (view as NSView).isHidden {
                     view.isHidden = false
@@ -441,13 +441,13 @@ internal class Popup: PopupWrapper {
                 self.temperatureCircle?.setText(temperature(value))
                 self.initializedTemperature = true
             }
-        })
+        }
     }
     
     public func frequencyCallback(_ value: CPU_Frequency?) {
         guard let value else { return }
         
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if !self.initializedFrequency {
                 self.insertArrangedSubview(self.initFrequency(), at: 4)
                 self.recalculateHeight()
@@ -483,13 +483,13 @@ internal class Popup: PopupWrapper {
                 
                 self.initializedFrequency = true
             }
-        })
+        }
     }
     
     public func processCallback(_ list: [TopProcess]?) {
         guard let list else { return }
         
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if !(self.window?.isVisible ?? false) && self.initializedProcesses {
                 return
             }
@@ -502,26 +502,26 @@ internal class Popup: PopupWrapper {
             }
             
             self.initializedProcesses = true
-        })
+        }
     }
     
     public func numberOfProcessesUpdated() {
         if self.processes?.count == self.numberOfProcesses { return }
         
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             self.processesView?.removeFromSuperview()
             self.processesView = nil
             self.processes = nil
             self.addArrangedSubview(self.initProcesses())
             self.initializedProcesses = false
             self.recalculateHeight()
-        })
+        }
     }
     
     public func limitCallback(_ value: CPU_Limit?) {
         guard let value else { return }
         
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if !(self.window?.isVisible ?? false) && self.initializedLimits {
                 return
             }
@@ -530,13 +530,13 @@ internal class Popup: PopupWrapper {
             self.speedLimitField?.stringValue = "\(value.speed)%"
             
             self.initializedLimits = true
-        })
+        }
     }
     
     public func averageCallback(_ value: CPU_AverageLoad?) {
         guard let value else { return }
         
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if !(self.window?.isVisible ?? false) && self.initializedAverage {
                 return
             }
@@ -546,7 +546,7 @@ internal class Popup: PopupWrapper {
             self.average15Field?.stringValue = "\(value.load15)"
             
             self.initializedAverage = true
-        })
+        }
     }
     
     // MARK: - Settings

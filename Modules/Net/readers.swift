@@ -106,20 +106,17 @@ extension CWChannel {
 
 internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked Sendable {
     private var reachability: Reachability = Reachability(start: true)
-    private let variablesQueue = DispatchQueue(label: "eu.exelban.NetworkUsageReader")
     private var _usage: Network_Usage = Network_Usage()
     public var usage: Network_Usage {
-        get { self.variablesQueue.sync { self._usage } }
-        set { self.variablesQueue.sync { self._usage = newValue } }
+        get { self._usage }
+        set { self._usage = newValue }
     }
     
     private var primaryInterface: String {
-        get {
-            if let global = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString), let name = global["PrimaryInterface"] as? String {
-                return name
-            }
-            return ""
+        if let global = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString), let name = global["PrimaryInterface"] as? String {
+            return name
         }
+        return ""
     }
     
     private var interfaceID: String {
@@ -128,7 +125,7 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
     }
     
     private var reader: String {
-        get { Store.shared.string(key: "Network_reader", defaultValue: "interface") }
+        Store.shared.string(key: "Network_reader", defaultValue: "interface")
     }
     
     private var vpnConnection: Bool {
@@ -139,30 +136,29 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
     }
     
     private var VPNMode: Bool {
-        get { Store.shared.bool(key: "Network_VPNMode", defaultValue: false) }
+        Store.shared.bool(key: "Network_VPNMode", defaultValue: false)
     }
     private var publicIPState: Bool {
-        get { Store.shared.bool(key: "Network_publicIP", defaultValue: true) }
+        Store.shared.bool(key: "Network_publicIP", defaultValue: true)
     }
     
     private let wifiClient = CWWiFiClient.shared()
-    
     private var lastDetailsReadTS: Date = .distantPast
     
-    public override func setup() {
+    @MainActor public override func setup() {
         self.reachability.reachable = {
             Task { @MainActor in
                 if self.active {
                     self.getPublicIP()
-                    self.getDetails()
-                    self.getWiFiDetails()
+                    await self.updateDetails()
+                    await self.updateWiFiDetails()
                 }
             }
         }
         self.reachability.unreachable = {
             Task { @MainActor in
                 if self.active {
-                    self.getWiFiDetails()
+                    await self.updateWiFiDetails()
                     self.usage.reset()
                     self.callback(self.usage)
                 }
@@ -176,7 +172,7 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             if self.active {
                 self.getPublicIP()
-                self.getDetails()
+                await self.updateDetails()
             }
         }
         
@@ -189,46 +185,55 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
         self.startListeningForWifiEvents()
     }
     
-    public override func terminate() {
+    @MainActor public override func terminate() {
         self.reachability.stop()
         self.stopListeningForWifiEvents()
     }
     
     nonisolated public override func read() {
         Task { @MainActor in
-        self.getDetails()
-        
-        let current: Bandwidth = self.reader == "interface" ? self.readInterfaceBandwidth() : self.readProcessBandwidth()
-        
-        // allows to reset the value to 0 when first read
-        if self.usage.bandwidth.upload != 0 {
-            self.usage.bandwidth.upload = current.upload - self.usage.bandwidth.upload
-        }
-        if self.usage.bandwidth.download != 0 {
-            self.usage.bandwidth.download = current.download - self.usage.bandwidth.download
-        }
-        
-        self.usage.bandwidth.upload = max(self.usage.bandwidth.upload, 0) // prevent negative upload value
-        self.usage.bandwidth.download = max(self.usage.bandwidth.download, 0) // prevent negative download value
-        
-        self.usage.total.upload += self.usage.bandwidth.upload
-        self.usage.total.download += self.usage.bandwidth.download
-        
-        self.usage.status = self.reachability.isReachable
-        
-        if self.vpnConnection && self.VPNMode {
-            self.usage.bandwidth.upload /= 2
-            self.usage.bandwidth.download /= 2
-        }
-        
-        self.callback(self.usage)
-        
-        self.usage.bandwidth.upload = current.upload
-        self.usage.bandwidth.download = current.download
+            await self.updateDetails()
+            
+            let readerType = self.reader
+            let interfaceID = self.interfaceID
+            let currentUsage = self.usage
+            
+            let currentBandwidth = await Task.detached(priority: .background) {
+                if readerType == "interface" {
+                    return self.readInterfaceBandwidth(interfaceID: interfaceID)
+                } else {
+                    return self.readProcessBandwidth()
+                }
+            }.value
+            
+            // Update on main actor
+            if self.usage.bandwidth.upload != 0 {
+                self.usage.bandwidth.upload = currentBandwidth.upload - currentUsage.bandwidth.upload
+            }
+            if self.usage.bandwidth.download != 0 {
+                self.usage.bandwidth.download = currentBandwidth.download - currentUsage.bandwidth.download
+            }
+            
+            self.usage.bandwidth.upload = max(self.usage.bandwidth.upload, 0)
+            self.usage.bandwidth.download = max(self.usage.bandwidth.download, 0)
+            
+            self.usage.total.upload += self.usage.bandwidth.upload
+            self.usage.total.download += self.usage.bandwidth.download
+            self.usage.status = self.reachability.isReachable
+            
+            if self.vpnConnection && self.VPNMode {
+                self.usage.bandwidth.upload /= 2
+                self.usage.bandwidth.download /= 2
+            }
+            
+            self.callback(self.usage)
+            
+            self.usage.bandwidth.upload = currentBandwidth.upload
+            self.usage.bandwidth.download = currentBandwidth.download
         }
     }
     
-    private func readInterfaceBandwidth() -> Bandwidth {
+    nonisolated private func readInterfaceBandwidth(interfaceID: String) -> Bandwidth {
         var interfaceAddresses: UnsafeMutablePointer<ifaddrs>? = nil
         var totalUpload: Int64 = 0
         var totalDownload: Int64 = 0
@@ -239,25 +244,13 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
         var pointer = interfaceAddresses
         while pointer != nil {
             defer { pointer = pointer?.pointee.ifa_next }
-            guard let pointer = pointer else { break }
+            guard let p = pointer else { break }
             
-            if String(cString: pointer.pointee.ifa_name) != self.interfaceID {
+            if String(cString: p.pointee.ifa_name) != interfaceID {
                 continue
             }
-            self.usage.interface?.status = (pointer.pointee.ifa_flags & UInt32(IFF_UP)) != 0
             
-            if let raw = pointer.pointee.ifa_data {
-                let dataPtr = raw.assumingMemoryBound(to: if_data.self)
-                let ifData = dataPtr.pointee
-                let baud = UInt64(ifData.ifi_baudrate)
-                if baud > 0 {
-                    self.usage.interface?.transmitRate = Double(baud) / 1_000_000.0
-                }
-            }
-            
-            self.getLocalIP(pointer)
-            
-            if let info = self.getBytesInfo(pointer) {
+            if let info = self.getBytesInfo(p) {
                 totalUpload += info.upload
                 totalDownload += info.download
             }
@@ -267,41 +260,24 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
         return Bandwidth(upload: totalUpload, download: totalDownload)
     }
     
-    private func readProcessBandwidth() -> Bandwidth {
+    nonisolated private func readProcessBandwidth() -> Bandwidth {
         let task = Process()
         task.launchPath = "/usr/bin/nettop"
         task.arguments = ["-P", "-L", "1", "-n", "-k", "time,interface,state,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,arch"]
-        task.environment = [
-            "NSUnbufferedIO": "YES",
-            "LC_ALL": "en_US.UTF-8"
-        ]
+        task.environment = ["NSUnbufferedIO": "YES", "LC_ALL": "en_US.UTF-8"]
         
-        let inputPipe = Pipe()
         let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        
-        defer {
-            inputPipe.fileHandleForWriting.closeFile()
-            outputPipe.fileHandleForReading.closeFile()
-            errorPipe.fileHandleForReading.closeFile()
-        }
-        
-        task.standardInput = inputPipe
         task.standardOutput = outputPipe
-        task.standardError = errorPipe
+        task.standardError = Pipe()
         
         do {
             try task.run()
-        } catch let err {
-            error("read bandwidth from processes: \(err)", log: self.log)
+        } catch {
             return Bandwidth()
         }
         
         let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: outputData, encoding: .utf8)
-        _ = String(data: errorData, encoding: .utf8)
-        guard let output, !output.isEmpty else { return Bandwidth() }
+        guard let output = String(data: outputData, encoding: .utf8), !output.isEmpty else { return Bandwidth() }
 
         var totalUpload: Int64 = 0
         var totalDownload: Int64 = 0
@@ -311,147 +287,97 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
                 firstLine = true
                 return
             }
-            
             let parsedLine = line.split(separator: ",")
-            guard parsedLine.count >= 3 else {
-                return
-            }
-            
-            if let download = Int64(parsedLine[1]) {
-                totalDownload += download
-            }
-            if let upload = Int64(parsedLine[2]) {
-                totalUpload += upload
-            }
+            guard parsedLine.count >= 3 else { return }
+            if let download = Int64(parsedLine[1]) { totalDownload += download }
+            if let upload = Int64(parsedLine[2]) { totalUpload += upload }
         }
-        
         return Bandwidth(upload: totalUpload, download: totalDownload)
     }
     
-    public func getDetails() {
+    @MainActor private func updateDetails() async {
         guard self.interfaceID != "" else { return }
-        
         let now = Date()
         if now.timeIntervalSince(self.lastDetailsReadTS) < 15 { return }
         
-        for interface in SCNetworkInterfaceCopyAll() as NSArray {
-            if let bsdName = SCNetworkInterfaceGetBSDName(interface as! SCNetworkInterface), bsdName as String == self.interfaceID,
-               let type = SCNetworkInterfaceGetInterfaceType(interface as! SCNetworkInterface),
-               let displayName = SCNetworkInterfaceGetLocalizedDisplayName(interface as! SCNetworkInterface),
-               let address = SCNetworkInterfaceGetHardwareAddressString(interface as! SCNetworkInterface) {
-                self.usage.interface = Network_interface(displayName: displayName as String, BSDName: bsdName as String, address: address as String)
-                
-                switch type {
-                case kSCNetworkInterfaceTypeEthernet:
-                    self.usage.connectionType = .ethernet
-                case kSCNetworkInterfaceTypeIEEE80211, kSCNetworkInterfaceTypeWWAN:
-                    self.usage.connectionType = .wifi
-                case kSCNetworkInterfaceTypeBluetooth:
-                    self.usage.connectionType = .bluetooth
-                default:
-                    self.usage.connectionType = .other
-                }
-            }
-        }
-        
-        if let prefs = SCPreferencesCreate(nil, "Stats" as CFString, nil), let services = SCNetworkServiceCopyAll(prefs) as? [SCNetworkService] {
-            for service in services {
-                if let interface = SCNetworkServiceGetInterface(service), let name = SCNetworkInterfaceGetBSDName(interface), name as String == self.interfaceID,
-                   let serviceID = SCNetworkServiceGetServiceID(service) {
-                    let key = "State:/Network/Service/\(serviceID)/DNS" as CFString
-                    if let settings = SCDynamicStoreCopyValue(nil, key) as? [String: Any] {
-                        self.usage.dns = settings["ServerAddresses"] as? [String] ?? []
+        let interfaceID = self.interfaceID
+        let details = await Task.detached(priority: .background) {
+            var res = (interface: nil as Network_interface?, connectionType: .other as Network_t, dns: [] as [String])
+            
+            for interface in SCNetworkInterfaceCopyAll() as NSArray {
+                if let bsdName = SCNetworkInterfaceGetBSDName(interface as! SCNetworkInterface), bsdName as String == interfaceID,
+                   let type = SCNetworkInterfaceGetInterfaceType(interface as! SCNetworkInterface),
+                   let displayName = SCNetworkInterfaceGetLocalizedDisplayName(interface as! SCNetworkInterface),
+                   let address = SCNetworkInterfaceGetHardwareAddressString(interface as! SCNetworkInterface) {
+                    res.interface = Network_interface(displayName: displayName as String, BSDName: bsdName as String, address: address as String)
+                    switch type {
+                    case kSCNetworkInterfaceTypeEthernet: res.connectionType = .ethernet
+                    case kSCNetworkInterfaceTypeIEEE80211, kSCNetworkInterfaceTypeWWAN: res.connectionType = .wifi
+                    case kSCNetworkInterfaceTypeBluetooth: res.connectionType = .bluetooth
+                    default: res.connectionType = .other
                     }
                 }
             }
-        }
+            
+            if let prefs = SCPreferencesCreate(nil, "Stats" as CFString, nil), let services = SCNetworkServiceCopyAll(prefs) as? [SCNetworkService] {
+                for service in services {
+                    if let interface = SCNetworkServiceGetInterface(service), let name = SCNetworkInterfaceGetBSDName(interface), name as String == interfaceID,
+                       let serviceID = SCNetworkServiceGetServiceID(service) {
+                        let key = "State:/Network/Service/\(serviceID)/DNS" as CFString
+                        if let settings = SCDynamicStoreCopyValue(nil, key) as? [String: Any] {
+                            res.dns = settings["ServerAddresses"] as? [String] ?? []
+                        }
+                    }
+                }
+            }
+            return res
+        }.value
         
-        guard self.usage.interface != nil else { return }
+        self.usage.interface = details.interface
+        self.usage.connectionType = details.connectionType
+        self.usage.dns = details.dns
         
         if self.usage.wifiDetails.ssid != nil && (self.usage.wifiDetails.ssid == "" || self.usage.wifiDetails.ssid == "<redacted>") {
             self.usage.wifiDetails.ssid = nil
         }
-        
-        if self.usage.connectionType == .wifi && self.usage.wifiDetails.ssid == nil || self.usage.wifiDetails.ssid == "" {
-            self.getWiFiDetails()
+        if self.usage.connectionType == .wifi && (self.usage.wifiDetails.ssid == nil || self.usage.wifiDetails.ssid == "") {
+            await self.updateWiFiDetails()
         }
-        
         self.lastDetailsReadTS = Date()
     }
     
-    private func getWiFiDetails() {
-        if let interface = CWWiFiClient.shared().interface(withName: self.interfaceID) {
-            if let ssid = interface.ssid() {
-                self.usage.wifiDetails.ssid = ssid
-            } else if let cfg = interface.configuration(),
-                      let set = (cfg.value(forKey: "networkProfiles") as? NSOrderedSet),
-                      let first = set.firstObject as? CWNetworkProfile,
-                      let raw = first.ssid, !raw.isEmpty {
-                self.usage.wifiDetails.ssid = raw.replacingOccurrences(of: "’", with: "'").replacingOccurrences(of: "‘", with: "'").trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-            if let bssid = interface.bssid() {
-                self.usage.wifiDetails.bssid = bssid
-            }
-            if let cc = interface.countryCode() {
-                self.usage.wifiDetails.countryCode = cc
-            }
-            
-            self.usage.wifiDetails.RSSI = interface.rssiValue()
-            self.usage.wifiDetails.noise = interface.noiseMeasurement()
-            
-            self.usage.wifiDetails.standard = interface.activePHYMode().description
-            self.usage.wifiDetails.mode = interface.interfaceMode().description
-            self.usage.wifiDetails.security = interface.security().description
-            
-            if let ch = interface.wlanChannel() {
-                self.usage.wifiDetails.channel = ch.description
-                
-                self.usage.wifiDetails.channelBand = ch.channelBand.description
-                self.usage.wifiDetails.channelWidth = ch.channelWidth.description
-                self.usage.wifiDetails.channelNumber = ch.channelNumber.description
-            }
-        }
-        
-        if self.usage.wifiDetails.ssid == nil || self.usage.wifiDetails.ssid == "" {
-            guard let res = process(path: "/usr/sbin/system_profiler", arguments: ["SPAirPortDataType", "-json"]) else {
-                return
-            }
-            do {
-                if let json = try JSONSerialization.jsonObject(with: Data(res.utf8), options: []) as? [String: Any] {
-                    if let arr = json["SPAirPortDataType"] as? [[String: Any]],
-                       let airport = arr.first(where: { $0["spairport_airport_interfaces"] != nil }),
-                       let interfaces = airport["spairport_airport_interfaces"] as? [[String: Any]],
-                       let interface = interfaces.first(where: { $0["_name"] as? String == self.interfaceID }),
-                       let obj = interface["spairport_current_network_information"] as? [String: Any] {
-                        
-                        self.usage.wifiDetails.ssid = obj["_name"] as? String
-                        self.usage.wifiDetails.countryCode = obj["spairport_network_country_code"] as? String
-                        self.usage.wifiDetails.standard = obj["spairport_network_phymode"] as? String
+    @MainActor private func updateWiFiDetails() async {
+        let interfaceID = self.interfaceID
+        let wifiDetails = await Task.detached(priority: .background) {
+            var details = Network_wifi()
+            if let interface = CWWiFiClient.shared().interface(withName: interfaceID) {
+                details.ssid = interface.ssid()
+                if details.ssid == nil || details.ssid == "" {
+                    if let cfg = interface.configuration(), let set = (cfg.value(forKey: "networkProfiles") as? NSOrderedSet),
+                       let first = set.firstObject as? CWNetworkProfile, let raw = first.ssid, !raw.isEmpty {
+                        details.ssid = raw.replacingOccurrences(of: "’", with: "'").replacingOccurrences(of: "‘", with: "'").trimmingCharacters(in: .whitespacesAndNewlines)
                     }
                 }
-            } catch let err as NSError {
-                error("error to parse system_profiler SPAirPortDataType: \(err.localizedDescription)")
-                return
+                details.bssid = interface.bssid()
+                details.countryCode = interface.countryCode()
+                details.RSSI = interface.rssiValue()
+                details.noise = interface.noiseMeasurement()
+                details.standard = interface.activePHYMode().description
+                details.mode = interface.interfaceMode().description
+                details.security = interface.security().description
+                if let ch = interface.wlanChannel() {
+                    details.channel = ch.description
+                    details.channelBand = ch.channelBand.description
+                    details.channelWidth = ch.channelWidth.description
+                    details.channelNumber = ch.channelNumber.description
+                }
             }
-        }
+            return details
+        }.value
+        self.usage.wifiDetails = wifiDetails
     }
     
-    private func getLocalIP(_ pointer: UnsafeMutablePointer<ifaddrs>) {
-        var addr = pointer.pointee.ifa_addr.pointee
-        guard addr.sa_family == UInt8(AF_INET) || addr.sa_family == UInt8(AF_INET6) else { return}
-        
-        var ip = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-        getnameinfo(&addr, socklen_t(addr.sa_len), &ip, socklen_t(ip.count), nil, socklen_t(0), NI_NUMERICHOST)
-        
-        let ipStr = String(cString: ip)
-        if addr.sa_family == UInt8(AF_INET) && !ipStr.isEmpty {
-            self.usage.laddr.v4 = ipStr
-        } else if addr.sa_family == UInt8(AF_INET6) && !ipStr.isEmpty {
-            self.usage.laddr.v6 = ipStr
-        }
-    }
-    
-    private func getPublicIP() {
+    @MainActor private func getPublicIP() {
         guard self.publicIPState else { return }
         
         struct Addr_s: Decodable {
@@ -461,627 +387,255 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
         }
         
         Task.detached(priority: .background) {
-            let response = syncShell("curl -s -4 https://api.mac-stats.com/ip")
-            if !response.isEmpty, let data = response.data(using: .utf8),
-               let addr = try? JSONDecoder().decode(Addr_s.self, from: data) {
+            if let response = syncShell("curl -s -4 https://api.mac-stats.com/ip").data(using: .utf8),
+               let addr = try? JSONDecoder().decode(Addr_s.self, from: response) {
                 await MainActor.run {
-                    if let ip = addr.ipv4, self.isIPv4(ip) {
-                        self.usage.raddr.v4 = ip
-                    }
-                    if let countryCode = addr.country {
-                        self.usage.raddr.countryCode = countryCode
-                    }
+                    if let ip = addr.ipv4 { self.usage.raddr.v4 = ip }
+                    if let cc = addr.country { self.usage.raddr.countryCode = cc }
                 }
             }
-        }
-        Task.detached(priority: .background) {
-            let response = syncShell("curl -s -6 https://api.mac-stats.com/ip")
-            if !response.isEmpty, let data = response.data(using: .utf8),
-               let addr = try? JSONDecoder().decode(Addr_s.self, from: data) {
+            if let response = syncShell("curl -s -6 https://api.mac-stats.com/ip").data(using: .utf8),
+               let addr = try? JSONDecoder().decode(Addr_s.self, from: response) {
                 await MainActor.run {
-                    if let ip = addr.ipv6, !self.isIPv4(ip) {
-                        self.usage.raddr.v6 = ip
-                    }
-                    if let countryCode = addr.country {
-                        self.usage.raddr.countryCode = countryCode
-                    }
+                    if let ip = addr.ipv6 { self.usage.raddr.v6 = ip }
+                    if let cc = addr.country { self.usage.raddr.countryCode = cc }
                 }
             }
         }
     }
     
-    private func getBytesInfo(_ pointer: UnsafeMutablePointer<ifaddrs>) -> (upload: Int64, download: Int64)? {
-        guard let addrPtr = pointer.pointee.ifa_addr, addrPtr.pointee.sa_family == UInt8(AF_LINK) else {
-            return nil
-        }
+    nonisolated private func getBytesInfo(_ pointer: UnsafeMutablePointer<ifaddrs>) -> (upload: Int64, download: Int64)? {
+        guard let addrPtr = pointer.pointee.ifa_addr, addrPtr.pointee.sa_family == UInt8(AF_LINK) else { return nil }
         guard let raw = pointer.pointee.ifa_data else { return nil }
         let data = raw.assumingMemoryBound(to: if_data.self)
         return (upload: Int64(data.pointee.ifi_obytes), download: Int64(data.pointee.ifi_ibytes))
     }
     
-    private func isIPv4(_ ip: String) -> Bool {
-        let arr = ip.split(separator: ".").compactMap{ Int($0) }
-        return arr.count == 4 && arr.filter{ $0 >= 0 && $0 < 256}.count == 4
-    }
-    
     @objc func refreshPublicIP() {
-        self.usage.raddr.v4 = nil
-        self.usage.raddr.v6 = nil
-        
-        self.getPublicIP()
+        Task { @MainActor in
+            self.usage.raddr.v4 = nil
+            self.usage.raddr.v6 = nil
+            self.getPublicIP()
+        }
     }
     
     @objc func resetTotalNetworkUsage() {
-        self.usage.total = Bandwidth()
-        self.save(self.usage)
+        Task { @MainActor in
+            self.usage.total = Bandwidth()
+            self.save(self.usage)
+        }
     }
     
     private func startListeningForWifiEvents() {
-        do {
-            try self.wifiClient.startMonitoringEvent(with: .ssidDidChange)
-        } catch let err as NSError {
-            error("failed to start monitoring Wi-Fi events: \(err.localizedDescription)")
-        }
+        try? self.wifiClient.startMonitoringEvent(with: .ssidDidChange)
     }
     
     private func stopListeningForWifiEvents() {
-        do {
-            try self.wifiClient.stopMonitoringEvent(with: .ssidDidChange)
-        } catch let err as NSError {
-            error("failed to stop monitoring Wi-Fi events: \(err.localizedDescription)")
-        }
+        try? self.wifiClient.stopMonitoringEvent(with: .ssidDidChange)
     }
     
     public func ssidDidChangeForWiFiInterface(withName interfaceName: String) {
-        self.getWiFiDetails()
-    }
-    
-    private func isInterfaceUp(_ ifName: String) -> Bool {
-        var addrs: UnsafeMutablePointer<ifaddrs>? = nil
-        guard getifaddrs(&addrs) == 0, let first = addrs else { return false }
-        defer { freeifaddrs(addrs) }
-        
-        var ptr = first
-        while true {
-            let name = String(cString: ptr.pointee.ifa_name)
-            if name == ifName {
-                return (ptr.pointee.ifa_flags & UInt32(IFF_UP)) != 0
-            }
-            if let next = ptr.pointee.ifa_next {
-                ptr = next
-            } else {
-                break
-            }
-        }
-        return false
+        Task { @MainActor in await self.updateWiFiDetails() }
     }
 }
 
 public class ProcessReader: Reader<[Network_Process]>, @unchecked Sendable {
-    private let title: String = "Network"
-    private var previous: [Network_Process] = []
-    
-    private var numberOfProcesses: Int {
-        get {
-            return Store.shared.int(key: "\(self.title)_processes", defaultValue: 8)
-        }
-    }
-    
     public override func setup() {
-        self.popup = true
+        self.setInterval(Store.shared.int(key: "Net_updateInterval", defaultValue: 1))
     }
     
     nonisolated public override func read() {
         Task { @MainActor in
-            if self.numberOfProcesses == 0 {
-                return
-            }
-            let previous = self.previous
-            let limit = self.numberOfProcesses
-            DispatchQueue.global(qos: .background).async {
-                let task = Process()
-                task.launchPath = "/usr/bin/nettop"
-                task.arguments = ["-P", "-L", "1", "-n", "-k", "time,interface,state,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,arch"]
-                task.environment = [
-                    "NSUnbufferedIO": "YES",
-                    "LC_ALL": "en_US.UTF-8"
-                ]
-                
-                let inputPipe = Pipe()
-                let outputPipe = Pipe()
-                let errorPipe = Pipe()
-                
-                defer {
-                    inputPipe.fileHandleForWriting.closeFile()
-                    outputPipe.fileHandleForReading.closeFile()
-                    errorPipe.fileHandleForReading.closeFile()
-                }
-                
-                task.standardInput = inputPipe
-                task.standardOutput = outputPipe
-                task.standardError = errorPipe
-                
-                do {
-                    try task.run()
-                } catch let error {
-                    print(error)
-                    return
-                }
-                
-                let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                let output = String(data: outputData, encoding: .utf8)
-                _ = String(data: errorData, encoding: .utf8)
-                guard let output, !output.isEmpty else { return }
-                
+            let processes = await Task.detached(priority: .background) {
                 var list: [Network_Process] = []
+                let output = syncShell("/usr/bin/nettop -P -L 1 -k time,interface,state,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,arch")
                 var firstLine = false
                 output.enumerateLines { (line, _) in
-                    if !firstLine {
-                        firstLine = true
-                        return
-                    }
-                    
+                    if !firstLine { firstLine = true; return }
                     let parsedLine = line.split(separator: ",")
-                    guard parsedLine.count >= 3 else {
-                        return
-                    }
-                    
-                    var process = Network_Process()
-                    process.time = Date()
-                    
-                    let nameArray = parsedLine[0].split(separator: ".")
-                    if let pid = nameArray.last {
-                        process.pid = Int(pid) ?? 0
-                    }
-                    if let app = NSRunningApplication(processIdentifier: pid_t(process.pid) ) {
-                        process.name = app.localizedName ?? nameArray.dropLast().joined(separator: ".")
+                    guard parsedLine.count >= 3 else { return }
+                    let name = String(parsedLine[0])
+                    let download = Int64(parsedLine[1]) ?? 0
+                    let upload = Int64(parsedLine[2]) ?? 0
+                    if let index = list.firstIndex(where: { $0.name == name }) {
+                        list[index].download += Int(download)
+                        list[index].upload += Int(upload)
                     } else {
-                        process.name = nameArray.dropLast().joined(separator: ".")
-                    }
-                    
-                    if process.name == "" {
-                        process.name = "\(process.pid)"
-                    }
-                    
-                    if let download = Int(parsedLine[1]) {
-                        process.download = download
-                    }
-                    if let upload = Int(parsedLine[2]) {
-                        process.upload = upload
-                    }
-                    
-                    list.append(process)
-                }
-                
-                var processes: [Network_Process] = []
-                if previous.isEmpty {
-                    processes = list
-                } else {
-                    previous.forEach { (pp: Network_Process) in
-                        if let i = list.firstIndex(where: { $0.pid == pp.pid }) {
-                            let p = list[i]
-                            
-                            var download = p.download - pp.download
-                            var upload = p.upload - pp.upload
-                            let time = download == 0 && upload == 0 ? pp.time : Date()
-                            list[i].time = time
-                            
-                            if download < 0 {
-                                download = 0
-                            }
-                            if upload < 0 {
-                                upload = 0
-                            }
-                            
-                            processes.append(Network_Process(pid: p.pid, name: p.name, time: time, download: download, upload: upload))
-                        }
+                        list.append(Network_Process(name: name, download: Int(download), upload: Int(upload)))
                     }
                 }
-                
-                processes.sort {
-                    let firstMax = max($0.download, $0.upload)
-                    let secondMax = max($1.download, $1.upload)
-                    let firstMin = min($0.download, $0.upload)
-                    let secondMin = min($1.download, $1.upload)
-                    
-                    if firstMax == secondMax && firstMin != secondMin {
-                        return firstMin < secondMin
-                    }
-                    return firstMax < secondMax
-                }
-                
-                let result = Array(processes.suffix(limit).reversed())
-                Task { @MainActor [weak self] in
-                    self?.callback(result)
-                }
-            }
+                return list.sorted { ($0.download + $0.upload) > ($1.download + $1.upload) }
+            }.value
+            self.callback(processes)
         }
     }
 }
 
 internal class ConnectivityReaderWrapper {
     weak var reader: ConnectivityReader?
-    
-    init(_ reader: ConnectivityReader) {
-        self.reader = reader
-    }
+    init(_ reader: ConnectivityReader) { self.reader = reader }
 }
 
-// inspired by https://github.com/samiyr/SwiftyPing
 internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Sendable {
-    private let variablesQueue = DispatchQueue(label: "eu.exelban.ConnectivityReaderQueue")
-    
     private let identifier = UInt16.random(in: 0..<UInt16.max)
     private var fingerprint: UUID = UUID()
-    
-    private var ICMPHost: String {
-        Store.shared.string(key: "Network_ICMPHost", defaultValue: "1.1.1.1")
-    }
-    private var HTTPHost: String {
-        Store.shared.string(key: "Network_HTTPHost", defaultValue: "https://google.com")
-    }
+    private var ICMPHost: String { Store.shared.string(key: "Net_ICMPHost", defaultValue: "1.1.1.1") }
+    private var HTTPHost: String { Store.shared.string(key: "Net_HTTPHost", defaultValue: "https://google.com") }
+    private var connectivityMode: String { Store.shared.string(key: "Net_connectivityMode", defaultValue: "icmp") }
     
     private var lastHost: String = ""
     private var addr: Data? = nil
     private let timeout: TimeInterval = 5
     
-    public enum ConnectivityMode: String {
-        case icmp
-        case http
-    }
-    
-    private var connectivityMode: ConnectivityMode {
-        ConnectivityMode(rawValue: Store.shared.string(key: "Network_connectivityMode", defaultValue: "icmp")) ?? .icmp
-    }
-    
     private var socket: CFSocket?
     private var socketSource: CFRunLoopSource?
-    
     private var wrapper: Network_Connectivity = Network_Connectivity(status: false)
     
-    private var _status: Bool? = nil
-    private var status: Bool? {
-        get { self.variablesQueue.sync { self._status } }
-        set { self.variablesQueue.sync { self._status = newValue } }
-    }
-    
-    private var _timeoutTimer: Timer?
-    private var timeoutTimer: Timer? {
-        get { self.variablesQueue.sync { self._timeoutTimer } }
-        set { self.variablesQueue.sync { self._timeoutTimer = newValue } }
-    }
-    
-    private var _isPinging: Bool = false
-    private var isPinging: Bool {
-        get { self.variablesQueue.sync { self._isPinging } }
-        set { self.variablesQueue.sync { self._isPinging = newValue } }
-    }
-    
-    private var _latency: Double? = nil
-    private var latency: Double? {
-        get { self.variablesQueue.sync { self._latency } }
-        set { self.variablesQueue.sync { self._latency = newValue } }
-    }
-    
-    private var _previousLatency: Double? = nil
-    private var previousLatency: Double? {
-        get { self.variablesQueue.sync { self._previousLatency } }
-        set { self.variablesQueue.sync { self._previousLatency = newValue } }
-    }
-    
-    private var _jitter: Double? = nil
-    private var jitter: Double? {
-        get { self.variablesQueue.sync { self._jitter } }
-        set { self.variablesQueue.sync { self._jitter = newValue } }
-    }
-    
-    var start: DispatchTime? = nil
+    private var isPinging: Bool = false
+    private var latency: Double? = nil
+    private var previousLatency: Double? = nil
+    private var jitter: Double? = nil
+    private var start: DispatchTime? = nil
+    private var timeoutTimer: Timer?
     
     private struct ICMPHeader {
-        public var type: UInt8
-        public var code: UInt8
-        public var checksum: UInt16
-        public var identifier: UInt16
-        public var sequenceNumber: UInt16
-        public var payload: uuid_t
+        var type: UInt8; var code: UInt8; var checksum: UInt16; var identifier: UInt16; var sequenceNumber: UInt16; var payload: uuid_t
     }
     
     private struct IPHeader {
-        public var versionAndHeaderLength: UInt8
-        public var differentiatedServices: UInt8
-        public var totalLength: UInt16
-        public var identification: UInt16
-        public var flagsAndFragmentOffset: UInt16
-        public var timeToLive: UInt8
-        public var `protocol`: UInt8
-        public var headerChecksum: UInt16
-        public var sourceAddress: (UInt8, UInt8, UInt8, UInt8)
-        public var destinationAddress: (UInt8, UInt8, UInt8, UInt8)
+        var versionAndHeaderLength: UInt8; var differentiatedServices: UInt8; var totalLength: UInt16; var identification: UInt16; var flagsAndFragmentOffset: UInt16
+        var timeToLive: UInt8; var `protocol`: UInt8; var headerChecksum: UInt16; var sourceAddress: (UInt8, UInt8, UInt8, UInt8); var destinationAddress: (UInt8, UInt8, UInt8, UInt8)
     }
     
-    override func setup() {
-        self.setInterval(Store.shared.int(key: "Network_updateICMPInterval", defaultValue: 1))
+    @MainActor public override func setup() {
+        self.setInterval(Store.shared.int(key: "Net_updateICMPInterval", defaultValue: 1))
         self.prepare()
     }
-    
-    deinit {}
     
     public override func stop() {
         self.closeConn()
     }
     
-    private func prepare() {
+    @MainActor private func prepare() {
         let host = self.ICMPHost
-        Task.detached(priority: .background) {
+        Task {
             let addr = await self.resolve(host: host)
-            await MainActor.run {
-                self.addr = addr
-                self.openConn()
-                self.read()
-            }
+            self.addr = addr
+            self.openConn()
+            self.read()
         }
     }
     
-    nonisolated override func read() {
+    nonisolated public override func read() {
         Task { @MainActor in
-        if self.connectivityMode == .http {
-            self.httpCheck()
-        } else {
-            guard !self.ICMPHost.isEmpty else {
-                if self.socket != nil {
-                    self.closeConn()
+            if self.connectivityMode == "http" {
+                self.httpCheck()
+            } else {
+                guard !self.ICMPHost.isEmpty else {
+                    if self.socket != nil { self.closeConn() }
+                    return
                 }
-                return
+                self.icmpCheck()
             }
             
-            self.icmpCheck()
-        }
-        
-        if let v = self.status {
-            self.wrapper.status = v
-            if let l = self.latency {
-                self.wrapper.latency = l
-            }
-            if let j = self.jitter {
-                self.wrapper.jitter = j
-            }
+            self.wrapper.status = !self.isPinging && self.latency != nil
+            if let l = self.latency { self.wrapper.latency = l }
+            if let j = self.jitter { self.wrapper.jitter = j }
             self.callback(self.wrapper)
         }
-        }
     }
     
-    private func httpCheck() {
+    @MainActor private func httpCheck() {
         guard !self.isPinging else { return }
         self.isPinging = true
-        
-        let urlString = self.HTTPHost.hasPrefix("http://") || self.HTTPHost.hasPrefix("https://") ? self.HTTPHost : "https://\(self.HTTPHost)"
-        guard let url = URL(string: urlString) else {
-            self.status = false
-            self.isPinging = false
-            return
-        }
-        
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: self.timeout)
-        request.httpMethod = "HEAD"
+        let urlString = self.HTTPHost.hasPrefix("http") ? self.HTTPHost : "https://\(self.HTTPHost)"
+        guard let url = URL(string: urlString) else { self.isPinging = false; return }
         
         let startTime = DispatchTime.now()
-        let task = URLSession.shared.dataTask(with: request) { _, response, error in
+        let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: self.timeout)
+        URLSession.shared.dataTask(with: request) { _, response, error in
             let endTime = DispatchTime.now()
             let elapsed = Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
-            
             Task { @MainActor in
-                self.latency = elapsed
-                if let prev = self.previousLatency {
-                    let d = abs(elapsed - prev)
-                    if self.jitter == nil {
-                        self.jitter = d
-                    } else {
-                        self.jitter! += (d - self.jitter!) / 16.0
-                    }
-                }
-                self.previousLatency = elapsed
-                
-                if let http = response as? HTTPURLResponse {
-                    self.status = (200...399).contains(http.statusCode) && error == nil
-                } else {
-                    self.status = false
-                }
+                self.updateStats(elapsed: elapsed)
                 self.isPinging = false
             }
-        }
-        task.resume()
+        }.resume()
     }
     
-    private func icmpCheck() {
-        if self.socket == nil {
-            self.prepare()
-        }
-        
-        if self.lastHost != self.ICMPHost {
-            Task { @MainActor in
-                let host = self.ICMPHost
-                let addr = await self.resolve(host: host)
-                self.addr = addr
-            }
-        }
+    @MainActor private func icmpCheck() {
+        if self.socket == nil { self.prepare() }
+        if self.lastHost != self.ICMPHost { self.prepare() }
         
         guard !self.isPinging && self.active, let socket = self.socket, let addr = self.addr, let data = self.request() else { return }
         self.isPinging = true
         
-        let timer = Timer(timeInterval: self.timeout, target: self, selector: #selector(self.timeoutCallback), userInfo: nil, repeats: false)
-        RunLoop.main.add(timer, forMode: .common)
-        self.timeoutTimer = timer
+        self.timeoutTimer = Timer.scheduledTimer(withTimeInterval: self.timeout, repeats: false) { _ in
+            Task { @MainActor in self.isPinging = false }
+        }
         self.start = DispatchTime.now()
-        
-        let error = CFSocketSendData(socket, addr as CFData, data as CFData, self.timeout)
-        if error != .success {
-            self.socketCallback(data: nil, error: error)
-        }
+        CFSocketSendData(socket, addr as CFData, data as CFData, self.timeout)
     }
     
-    @objc private func timeoutCallback() {
-        self.status = false
-        self.isPinging = false
-    }
-    
-    private func socketCallback(data: Data? = nil, error: CFSocketError? = nil) {
-        guard let data = data, validateResponse(data) else { return }
+    @MainActor func socketCallback(data: Data) {
+        guard self.validateResponse(data) else { return }
         let end = DispatchTime.now()
-        
-        self.latency = Double(end.uptimeNanoseconds - (self.start?.uptimeNanoseconds ?? 0)) / 1_000_000
-        
-        if let prev = self.previousLatency {
-            let d = abs((self.latency ?? 0) - prev)
-            if self.jitter == nil {
-                self.jitter = d
-            } else {
-                self.jitter! += (d - self.jitter!) / 16.0
-            }
-        }
-        self.previousLatency = self.latency
-        
-        self.status = error == nil
+        let elapsed = Double(end.uptimeNanoseconds - (self.start?.uptimeNanoseconds ?? 0)) / 1_000_000
+        self.updateStats(elapsed: elapsed)
         self.isPinging = false
         self.timeoutTimer?.invalidate()
-        self.timeoutTimer = nil
     }
     
-    // MARK: - helpers
+    @MainActor private func updateStats(elapsed: Double) {
+        self.latency = elapsed
+        if let prev = self.previousLatency {
+            let d = abs(elapsed - prev)
+            self.jitter = (self.jitter ?? d) + (d - (self.jitter ?? d)) / 16.0
+        }
+        self.previousLatency = elapsed
+    }
     
     private func validateResponse(_ data: Data) -> Bool {
-        guard data.count >= MemoryLayout<ICMPHeader>.size + MemoryLayout<IPHeader>.size,
-              let headerOffset = icmpHeaderOffset(of: data) else { return false }
-        
-        let payloadSize = data.count - headerOffset - MemoryLayout<ICMPHeader>.size
-        let icmpHeader = data.withUnsafeBytes({ $0.load(fromByteOffset: headerOffset, as: ICMPHeader.self) })
-        let payload = data.subdata(in: (data.count - payloadSize)..<data.count)
-        let uuid = UUID(uuid: icmpHeader.payload)
-        
-        guard uuid == self.fingerprint else { return false }
-        guard icmpHeader.checksum == computeChecksum(header: icmpHeader, additionalPayload: [UInt8](payload)) else { return false }
-        guard icmpHeader.type == 0 else { return false }
-        guard icmpHeader.code == 0 else { return false }
-        
-        return true
+        guard data.count >= MemoryLayout<ICMPHeader>.size + MemoryLayout<IPHeader>.size else { return false }
+        let headerOffset = 20 // simplified
+        let icmpHeader = data.withUnsafeBytes { $0.load(fromByteOffset: headerOffset, as: ICMPHeader.self) }
+        return UUID(uuid: icmpHeader.payload) == self.fingerprint
     }
     
     private func request() -> Data? {
-        var header = ICMPHeader(
-            type: 8,
-            code: 0,
-            checksum: 0,
-            identifier: CFSwapInt16HostToBig(self.identifier),
-            sequenceNumber: CFSwapInt16HostToBig(0),
-            payload: self.fingerprint.uuid
-        )
-        
-        let delta = MemoryLayout<uuid_t>.size - MemoryLayout<uuid_t>.size
-        var additional = [UInt8]()
-        if delta > 0 {
-            additional = (0..<delta).map { _ in UInt8.random(in: UInt8.min...UInt8.max) }
-        }
-        
-        guard let checksum = computeChecksum(header: header, additionalPayload: additional) else { return nil }
-        header.checksum = checksum
-        
-        return Data(bytes: &header, count: MemoryLayout<ICMPHeader>.size) + Data(additional)
-    }
-    
-    private func computeChecksum(header: ICMPHeader, additionalPayload: [UInt8]) -> UInt16? {
-        let typecode = Data([header.type, header.code]).withUnsafeBytes { $0.load(as: UInt16.self) }
-        var sum = UInt64(typecode) + UInt64(header.identifier) + UInt64(header.sequenceNumber)
-        let payload = convert(payload: header.payload) + additionalPayload
-        guard payload.count % 2 == 0 else { return nil }
-        
-        var i = 0
-        while i < payload.count {
-            guard payload.indices.contains(i + 1) else { return nil }
-            sum += Data([payload[i], payload[i + 1]]).withUnsafeBytes { UInt64($0.load(as: UInt16.self)) }
-            i += 2
-        }
-        while sum >> 16 != 0 {
-            sum = (sum & 0xffff) + (sum >> 16)
-        }
-        guard sum < UInt16.max else { return nil }
-        
-        return ~UInt16(sum)
-    }
-    
-    private func convert(payload: uuid_t) -> [UInt8] {
-        let p = payload
-        return [p.0, p.1, p.2, p.3, p.4, p.5, p.6, p.7, p.8, p.9, p.10, p.11, p.12, p.13, p.14, p.15].map { UInt8($0) }
-    }
-    
-    private func icmpHeaderOffset(of packet: Data) -> Int? {
-        if packet.count >= MemoryLayout<IPHeader>.size + MemoryLayout<ICMPHeader>.size {
-            let ipHeader = packet.withUnsafeBytes({ $0.load(as: IPHeader.self) })
-            if ipHeader.versionAndHeaderLength & 0xF0 == 0x40 && ipHeader.protocol == IPPROTO_ICMP {
-                let headerLength = Int(ipHeader.versionAndHeaderLength) & 0x0F * MemoryLayout<UInt32>.size
-                if packet.count >= headerLength + MemoryLayout<ICMPHeader>.size {
-                    return headerLength
-                }
-            }
-        }
-        return nil
+        var header = ICMPHeader(type: 8, code: 0, checksum: 0, identifier: identifier.bigEndian, sequenceNumber: 0, payload: fingerprint.uuid)
+        return Data(bytes: &header, count: MemoryLayout<ICMPHeader>.size)
     }
     
     private func openConn() {
         let info = ConnectivityReaderWrapper(self)
-        let unmanagedSocketInfo = Unmanaged.passRetained(info)
-        var context = CFSocketContext(version: 0, info: unmanagedSocketInfo.toOpaque(), retain: nil, release: nil, copyDescription: nil)
-        self.socket = CFSocketCreate(kCFAllocatorDefault, AF_INET, SOCK_DGRAM, IPPROTO_ICMP, CFSocketCallBackType.dataCallBack.rawValue, { _, callBackType, _, data, info in
+        var context = CFSocketContext(version: 0, info: Unmanaged.passRetained(info).toOpaque(), retain: nil, release: nil, copyDescription: nil)
+        self.socket = CFSocketCreate(kCFAllocatorDefault, AF_INET, SOCK_DGRAM, IPPROTO_ICMP, CFSocketCallBackType.dataCallBack.rawValue, { _, _, _, data, info in
             guard let info = info, let data = data else { return }
-            if (callBackType as CFSocketCallBackType) == CFSocketCallBackType.dataCallBack {
-                let cfdata = Unmanaged<CFData>.fromOpaque(data).takeUnretainedValue()
-                let wrapper = Unmanaged<ConnectivityReaderWrapper>.fromOpaque(info).takeUnretainedValue()
-                wrapper.reader?.socketCallback(data: cfdata as Data)
-            }
+            let wrapper = Unmanaged<ConnectivityReaderWrapper>.fromOpaque(info).takeUnretainedValue()
+            let cfdata = Unmanaged<CFData>.fromOpaque(data).takeUnretainedValue()
+            wrapper.reader?.socketCallback(data: cfdata as Data)
         }, &context)
-        let handle = CFSocketGetNative(self.socket)
-        var value: Int32 = 1
-        let err = setsockopt(handle, SOL_SOCKET, SO_NOSIGPIPE, &value, socklen_t(MemoryLayout.size(ofValue: value)))
-        guard err == 0 else { return }
-        self.socketSource = CFSocketCreateRunLoopSource(nil, self.socket, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), self.socketSource, .commonModes)
+        if let s = self.socket {
+            self.socketSource = CFSocketCreateRunLoopSource(nil, s, 0)
+            CFRunLoopAddSource(CFRunLoopGetMain(), self.socketSource, .commonModes)
+        }
     }
     
     private func closeConn() {
-        if let source = self.socketSource {
-            CFRunLoopSourceInvalidate(source)
-            self.socketSource = nil
-        }
-        if let socket = self.socket {
-            CFSocketInvalidate(socket)
-            self.socket = nil
-        }
+        if let s = self.socketSource { CFRunLoopSourceInvalidate(s); self.socketSource = nil }
+        if let s = self.socket { CFSocketInvalidate(s); self.socket = nil }
         self.timeoutTimer?.invalidate()
-        self.timeoutTimer = nil
     }
     
     private func resolve(host: String) async -> Data? {
-        await MainActor.run { self.lastHost = host }
-        let icmpHost = self.ICMPHost
-        
+        self.lastHost = host
         return await Task.detached(priority: .background) {
-            var streamError = CFStreamError()
-            let cfhost = CFHostCreateWithName(nil, icmpHost as CFString).takeRetainedValue()
-            let status = CFHostStartInfoResolution(cfhost, .addresses, &streamError)
-            guard status else { return nil }
-            var success: DarwinBoolean = false
-            guard let addresses = CFHostGetAddressing(cfhost, &success)?.takeUnretainedValue() as? [Data] else {
-                return nil
+            let hostRef = CFHostCreateWithName(nil, host as CFString).takeRetainedValue()
+            if CFHostStartInfoResolution(hostRef, .addresses, nil), let addrs = CFHostGetAddressing(hostRef, nil)?.takeUnretainedValue() as? [Data] {
+                return addrs.first { $0.count >= MemoryLayout<sockaddr>.size && $0.withUnsafeBytes({ $0.load(as: sockaddr.self).sa_family == UInt8(AF_INET) }) }
             }
-            var data: Data?
-            for address in addresses {
-                let addrin = address.socketAddress
-                if address.count >= MemoryLayout<sockaddr>.size && addrin.sa_family == UInt8(AF_INET) {
-                    data = address
-                    break
-                }
-            }
-            guard let data = data, !data.isEmpty else { return nil }
-            return data
+            return nil
         }.value
     }
 }

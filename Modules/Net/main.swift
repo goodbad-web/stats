@@ -197,13 +197,12 @@ public class Network: Module {
         let processReader = self.processReader
         self.settingsView.callbackWhenUpdateNumberOfProcesses = { [weak self] in
             self?.popupView.numberOfProcessesUpdated()
-            DispatchQueue.global(qos: .background).async {
+            Task {
                 processReader?.read()
             }
         }
         
         self.settingsView.callback = { [weak self] in
-            self?.usageReader?.getDetails()
             self?.usageReader?.read()
         }
         self.settingsView.usageResetCallback = { [weak self] in
