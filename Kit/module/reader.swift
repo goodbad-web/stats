@@ -11,7 +11,9 @@
 
 import Cocoa
 
-public protocol Reader_p {
+import os
+
+@MainActor public protocol Reader_p: Sendable {
     var popup: Bool { get }
     var preview: Bool { get }
     var sleep: Bool { get }
@@ -39,17 +41,33 @@ public protocol ReaderInternal_p {
     func read()
 }
 
-open class Reader<T: Codable>: NSObject, ReaderInternal_p {
+private struct ReaderState<T> {
+    var value: T?
+    var active: Bool = false
+    var locked: Bool = true
+}
+
+@MainActor open class Reader<T: Codable & Sendable>: NSObject, ReaderInternal_p, @unchecked Sendable {
     public var log: NextLog {
         NextLog.shared.copy(category: "\(String(describing: self))")
     }
-    private let valueQueue = DispatchQueue(label: "eu.exelban.readerActiveQueue")
-    private var _value: T?
-    public var value: T? {
-        get { self.valueQueue.sync { self._value } }
-        set { self.valueQueue.sync { self._value = newValue } }
+    
+    private let state = OSAllocatedUnfairLock(initialState: ReaderState<T>())
+    
+    nonisolated public var value: T? {
+        get { self.state.withLock { $0.value } }
+        set { self.state.withLock { $0.value = newValue } }
     }
-    public var name: String {
+    nonisolated public var active: Bool {
+        get { self.state.withLock { $0.active } }
+        set { self.state.withLock { $0.active = newValue } }
+    }
+    nonisolated private var locked: Bool {
+        get { self.state.withLock { $0.locked } }
+        set { self.state.withLock { $0.locked = newValue } }
+    }
+    
+    nonisolated public var name: String {
         String(NSStringFromClass(type(of: self)).split(separator: ".").last ?? "unknown")
     }
     
@@ -65,18 +83,10 @@ open class Reader<T: Codable>: NSObject, ReaderInternal_p {
     
     public var callbackHandler: (T?) -> Void
     
-    private let module: ModuleType
+    nonisolated private let module: ModuleType
     private var history: Bool
     private var repeatTask: Repeater?
-    private var locked: Bool = true
     private var initlizalized: Bool = false
-    
-    private let activeQueue = DispatchQueue(label: "eu.exelban.readerActiveQueue")
-    private var _active: Bool = false
-    public var active: Bool {
-        get { self.activeQueue.sync { self._active } }
-        set { self.activeQueue.sync { self._active = newValue } }
-    }
     
     private var lastDBWrite: Date? = nil
     
@@ -94,7 +104,9 @@ open class Reader<T: Codable>: NSObject, ReaderInternal_p {
         DB.shared.setup(T.self, "\(module.stringValue)@\(self.name)")
         if let lastValue = DB.shared.findOne(T.self, key: "\(module.stringValue)@\(self.name)") {
             self.value = lastValue
-            callback(lastValue)
+            Task { @MainActor in
+                callback(lastValue)
+            }
         }
         self.setup()
         
@@ -102,7 +114,8 @@ open class Reader<T: Codable>: NSObject, ReaderInternal_p {
     }
     
     deinit {
-        DB.shared.insert(key: "\(self.module.stringValue)@\(self.name)", value: self.value, ts: self.history)
+        let v = self.value
+        DB.shared.insert(key: "\(self.module.stringValue)@\(self.name)", value: v, ts: self.history)
     }
     
     public func initStoreValues(title: String) {
@@ -111,23 +124,28 @@ open class Reader<T: Codable>: NSObject, ReaderInternal_p {
         self.interval = Double(updateInterval)
     }
     
-    public func callback(_ value: T?) {
+    nonisolated public func callback(_ value: T?) {
         let moduleKey = "\(self.module.stringValue)@\(self.name)"
         self.value = value
         if let value {
-            self.callbackHandler(value)
+            Task { @MainActor in
+                self.callbackHandler(value)
+            }
             Remote.shared.send(key: moduleKey, value: value)
-            if let ts = self.lastDBWrite, let interval = self.interval, Date().timeIntervalSince(ts) > interval * 10 {
-                DB.shared.insert(key: moduleKey, value: value, ts: self.history)
-                self.lastDBWrite = Date()
-            } else if self.lastDBWrite == nil {
-                DB.shared.insert(key: moduleKey, value: value, ts: self.history)
-                self.lastDBWrite = Date()
+            
+            Task { @MainActor in
+                if let ts = self.lastDBWrite, let interval = self.interval, Date().timeIntervalSince(ts) > interval * 10 {
+                    DB.shared.insert(key: moduleKey, value: value, ts: self.history)
+                    self.lastDBWrite = Date()
+                } else if self.lastDBWrite == nil {
+                    DB.shared.insert(key: moduleKey, value: value, ts: self.history)
+                    self.lastDBWrite = Date()
+                }
             }
         }
     }
     
-    open func read() {}
+    nonisolated open func read() {}
     open func setup() {}
     open func terminate() {}
     

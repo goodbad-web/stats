@@ -22,6 +22,7 @@ import Bluetooth
 import Clock
 
 let updater = Updater(github: "exelban/stats", url: "https://api.mac-stats.com/release/latest")
+@MainActor
 var modules: [Module] = [
     CPU(),
     GPU(),
@@ -35,7 +36,8 @@ var modules: [Module] = [
 ]
 
 @main
-class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+@MainActor
+class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotificationCenterDelegate {
     internal let settingsWindow: SettingsWindow = SettingsWindow()
     internal let updateWindow: UpdateWindow = UpdateWindow()
     internal let setupWindow: SetupWindow = SetupWindow()

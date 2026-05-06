@@ -78,15 +78,17 @@ public class Battery: Module {
             }
         }
         
-        self.settingsView.callback = { [weak self] in
+        let usageReader = self.usageReader
+        self.settingsView.callback = {
             DispatchQueue.global(qos: .background).async {
-                self?.usageReader?.read()
+                usageReader?.read()
             }
         }
+        let processReader = self.processReader
         self.settingsView.callbackWhenUpdateNumberOfProcesses = { [weak self] in
             self?.popupView.numberOfProcessesUpdated()
             DispatchQueue.global(qos: .background).async {
-                self?.processReader?.read()
+                processReader?.read()
             }
         }
         

@@ -33,7 +33,7 @@ let kIOCFPlugInInterfaceID = CFUUIDGetConstantUUIDWithBytes(nil,
                                                             0xE4, 0xC6, 0x42, 0x6F
 )
 
-internal class CapacityReader: Reader<Disks> {
+internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
     internal var list: Disks = Disks()
     
     private var SMART: Bool {
@@ -41,7 +41,8 @@ internal class CapacityReader: Reader<Disks> {
     }
     private var purgableSpace: [URL: (Date, Int64)] = [:]
     
-    public override func read() {
+    nonisolated public override func read() {
+        Task { @MainActor in
         let keys: [URLResourceKey] = [.volumeNameKey]
         let removableState = Store.shared.bool(key: "Disk_removable", defaultValue: false)
         let paths = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes])!
@@ -95,6 +96,7 @@ internal class CapacityReader: Reader<Disks> {
         }
         
         self.callback(self.list)
+        }
     }
     
     public func resetPurgableSpace(for uuid: String) {
@@ -248,14 +250,15 @@ internal class CapacityReader: Reader<Disks> {
     }
 }
 
-internal class ActivityReader: Reader<Disks> {
+internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
     internal var list: Disks = Disks()
     
     override func setup() {
         self.setInterval(1)
     }
     
-    public override func read() {
+    nonisolated public override func read() {
+        Task { @MainActor in
         let keys: [URLResourceKey] = [.volumeNameKey]
         let removableState = Store.shared.bool(key: "Disk_removable", defaultValue: false)
         let paths = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys)!
@@ -299,6 +302,7 @@ internal class ActivityReader: Reader<Disks> {
         }
         
         self.callback(self.list)
+        }
     }
     
     private func driveStats(_ idx: Int, _ d: drive) {
@@ -424,7 +428,7 @@ struct io {
     var write: Int
 }
 
-public class ProcessReader: Reader<[Disk_process]> {
+public class ProcessReader: Reader<[Disk_process]>, @unchecked Sendable {
     private let queue = DispatchQueue(label: "eu.exelban.Disk.processReader")
     
     private var _list: [Int32: io] = [:]
@@ -446,58 +450,71 @@ public class ProcessReader: Reader<[Disk_process]> {
         self.setInterval(1)
     }
     
-    public override func read() {
-        guard self.numberOfProcesses != 0, let output = runProcess(path: "/bin/ps", args: ["-Aceo pid,args", "-r"]) else { return }
-        
-        var snapshot = self.list
-        var processes: [Disk_process] = []
-        output.enumerateLines { (line, _) in
-            let str = line.trimmingCharacters(in: .whitespaces)
-            let pidFind = str.findAndCrop(pattern: "^\\d+")
-            guard let pid = Int32(pidFind.cropped) else { return }
-            let name = pidFind.remain.findAndCrop(pattern: "^[^ ]+").cropped
+    nonisolated public override func read() {
+        Task { @MainActor in
+            let limit = self.numberOfProcesses
+            if limit == 0 {
+                return
+            }
             
-            var usage = rusage_info_current()
-            let result = withUnsafeMutablePointer(to: &usage) {
-                $0.withMemoryRebound(to: (rusage_info_t?.self), capacity: 1) {
-                    proc_pid_rusage(pid, RUSAGE_INFO_CURRENT, $0)
+            let currentList = self.list
+            DispatchQueue.global(qos: .background).async {
+                guard let output = runProcess(path: "/bin/ps", args: ["-Aceo pid,args", "-r"]) else { return }
+                
+                var snapshot = currentList
+                var processes: [Disk_process] = []
+                output.enumerateLines { (line, _) in
+                    let str = line.trimmingCharacters(in: .whitespaces)
+                    let pidFind = str.findAndCrop(pattern: "^\\d+")
+                    guard let pid = Int32(pidFind.cropped) else { return }
+                    let name = pidFind.remain.findAndCrop(pattern: "^[^ ]+").cropped
+                    
+                    var usage = rusage_info_current()
+                    let result = withUnsafeMutablePointer(to: &usage) {
+                        $0.withMemoryRebound(to: (rusage_info_t?.self), capacity: 1) {
+                            proc_pid_rusage(pid, RUSAGE_INFO_CURRENT, $0)
+                        }
+                    }
+                    guard result != -1 else { return }
+                    
+                    let bytesRead = Int(clamping: usage.ri_diskio_bytesread)
+                    let bytesWritten = Int(clamping: usage.ri_diskio_byteswritten)
+                    
+                    if snapshot[pid] == nil {
+                        snapshot[pid] = io(read: bytesRead, write: bytesWritten)
+                    }
+                    
+                    if let v = snapshot[pid] {
+                        let read = bytesRead - v.read
+                        let write = bytesWritten - v.write
+                        if read != 0 || write != 0 {
+                            processes.append(Disk_process(pid: Int(pid), name: name, read: read, write: write))
+                        }
+                    }
+                    
+                    snapshot[pid]?.read = bytesRead
+                    snapshot[pid]?.write = bytesWritten
+                }
+                
+                processes.sort {
+                    let firstMax = max($0.read, $0.write)
+                    let secondMax = max($1.read, $1.write)
+                    let firstMin = min($0.read, $0.write)
+                    let secondMin = min($1.read, $1.write)
+                    
+                    if firstMax == secondMax && firstMin != secondMin { // max values are the same, min not. Sort by min values
+                        return firstMin < secondMin
+                    }
+                    return firstMax < secondMax // max values are not the same, sort by max value
+                }
+                
+                let result = processes.suffix(limit).reversed()
+                Task { @MainActor in
+                    self.list = snapshot
+                    self.callback(Array(result))
                 }
             }
-            guard result != -1 else { return }
-            
-            let bytesRead = Int(clamping: usage.ri_diskio_bytesread)
-            let bytesWritten = Int(clamping: usage.ri_diskio_byteswritten)
-            
-            if snapshot[pid] == nil {
-                snapshot[pid] = io(read: bytesRead, write: bytesWritten)
-            }
-            
-            if let v = snapshot[pid] {
-                let read = bytesRead - v.read
-                let write = bytesWritten - v.write
-                if read != 0 || write != 0 {
-                    processes.append(Disk_process(pid: Int(pid), name: name, read: read, write: write))
-                }
-            }
-            
-            snapshot[pid]?.read = bytesRead
-            snapshot[pid]?.write = bytesWritten
         }
-        self.list = snapshot
-        
-        processes.sort {
-            let firstMax = max($0.read, $0.write)
-            let secondMax = max($1.read, $1.write)
-            let firstMin = min($0.read, $0.write)
-            let secondMin = min($1.read, $1.write)
-            
-            if firstMax == secondMax && firstMin != secondMin { // max values are the same, min not. Sort by min values
-                return firstMin < secondMin
-            }
-            return firstMax < secondMax // max values are not the same, sort by max value
-        }
-        
-        self.callback(processes.suffix(self.numberOfProcesses).reversed())
     }
 }
 

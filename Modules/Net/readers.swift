@@ -104,7 +104,7 @@ extension CWChannel {
     }
 }
 
-internal class UsageReader: Reader<Network_Usage>, CWEventDelegate {
+internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked Sendable {
     private var reachability: Reachability = Reachability(start: true)
     private let variablesQueue = DispatchQueue(label: "eu.exelban.NetworkUsageReader")
     private var _usage: Network_Usage = Network_Usage()
@@ -151,24 +151,29 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate {
     
     public override func setup() {
         self.reachability.reachable = {
-            if self.active {
-                self.getPublicIP()
-                self.getDetails()
-                self.getWiFiDetails()
+            Task { @MainActor in
+                if self.active {
+                    self.getPublicIP()
+                    self.getDetails()
+                    self.getWiFiDetails()
+                }
             }
         }
         self.reachability.unreachable = {
-            if self.active {
-                self.getWiFiDetails()
-                self.usage.reset()
-                self.callback(self.usage)
+            Task { @MainActor in
+                if self.active {
+                    self.getWiFiDetails()
+                    self.usage.reset()
+                    self.callback(self.usage)
+                }
             }
         }
         
         NotificationCenter.default.addObserver(self, selector: #selector(refreshPublicIP), name: .refreshPublicIP, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(resetTotalNetworkUsage), name: .resetTotalNetworkUsage, object: nil)
         
-        DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + 1) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
             if self.active {
                 self.getPublicIP()
                 self.getDetails()
@@ -189,7 +194,8 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate {
         self.stopListeningForWifiEvents()
     }
     
-    public override func read() {
+    nonisolated public override func read() {
+        Task { @MainActor in
         self.getDetails()
         
         let current: Bandwidth = self.reader == "interface" ? self.readInterfaceBandwidth() : self.readProcessBandwidth()
@@ -219,6 +225,7 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate {
         
         self.usage.bandwidth.upload = current.upload
         self.usage.bandwidth.download = current.download
+        }
     }
     
     private func readInterfaceBandwidth() -> Bandwidth {
@@ -453,27 +460,31 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate {
             let country: String?
         }
         
-        DispatchQueue.global(qos: .userInitiated).async {
+        Task.detached(priority: .background) {
             let response = syncShell("curl -s -4 https://api.mac-stats.com/ip")
             if !response.isEmpty, let data = response.data(using: .utf8),
                let addr = try? JSONDecoder().decode(Addr_s.self, from: data) {
-                if let ip = addr.ipv4, self.isIPv4(ip) {
-                    self.usage.raddr.v4 = ip
-                }
-                if let countryCode = addr.country {
-                    self.usage.raddr.countryCode = countryCode
+                await MainActor.run {
+                    if let ip = addr.ipv4, self.isIPv4(ip) {
+                        self.usage.raddr.v4 = ip
+                    }
+                    if let countryCode = addr.country {
+                        self.usage.raddr.countryCode = countryCode
+                    }
                 }
             }
         }
-        DispatchQueue.global(qos: .userInitiated).async {
+        Task.detached(priority: .background) {
             let response = syncShell("curl -s -6 https://api.mac-stats.com/ip")
             if !response.isEmpty, let data = response.data(using: .utf8),
                let addr = try? JSONDecoder().decode(Addr_s.self, from: data) {
-                if let ip = addr.ipv6, !self.isIPv4(ip) {
-                    self.usage.raddr.v6 = ip
-                }
-                if let countryCode = addr.country {
-                    self.usage.raddr.countryCode = countryCode
+                await MainActor.run {
+                    if let ip = addr.ipv6, !self.isIPv4(ip) {
+                        self.usage.raddr.v6 = ip
+                    }
+                    if let countryCode = addr.country {
+                        self.usage.raddr.countryCode = countryCode
+                    }
                 }
             }
         }
@@ -497,9 +508,7 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate {
         self.usage.raddr.v4 = nil
         self.usage.raddr.v6 = nil
         
-        DispatchQueue.global(qos: .background).async {
-            self.getPublicIP()
-        }
+        self.getPublicIP()
     }
     
     @objc func resetTotalNetworkUsage() {
@@ -548,7 +557,7 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate {
     }
 }
 
-public class ProcessReader: Reader<[Network_Process]> {
+public class ProcessReader: Reader<[Network_Process]>, @unchecked Sendable {
     private let title: String = "Network"
     private var previous: [Network_Process] = []
     
@@ -562,128 +571,132 @@ public class ProcessReader: Reader<[Network_Process]> {
         self.popup = true
     }
     
-    public override func read() {
-        if self.numberOfProcesses == 0 {
-            return
-        }
-        
-        let task = Process()
-        task.launchPath = "/usr/bin/nettop"
-        task.arguments = ["-P", "-L", "1", "-n", "-k", "time,interface,state,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,arch"]
-        task.environment = [
-            "NSUnbufferedIO": "YES",
-            "LC_ALL": "en_US.UTF-8"
-        ]
-        
-        let inputPipe = Pipe()
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        
-        defer {
-            inputPipe.fileHandleForWriting.closeFile()
-            outputPipe.fileHandleForReading.closeFile()
-            errorPipe.fileHandleForReading.closeFile()
-        }
-        
-        task.standardInput = inputPipe
-        task.standardOutput = outputPipe
-        task.standardError = errorPipe
-        
-        do {
-            try task.run()
-        } catch let error {
-            print(error)
-            return
-        }
-        
-        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: outputData, encoding: .utf8)
-        _ = String(data: errorData, encoding: .utf8)
-        guard let output, !output.isEmpty else { return }
-        
-        var list: [Network_Process] = []
-        var firstLine = false
-        output.enumerateLines { (line, _) in
-            if !firstLine {
-                firstLine = true
+    nonisolated public override func read() {
+        Task { @MainActor in
+            if self.numberOfProcesses == 0 {
                 return
             }
-            
-            let parsedLine = line.split(separator: ",")
-            guard parsedLine.count >= 3 else {
-                return
-            }
-            
-            var process = Network_Process()
-            process.time = Date()
-            
-            let nameArray = parsedLine[0].split(separator: ".")
-            if let pid = nameArray.last {
-                process.pid = Int(pid) ?? 0
-            }
-            if let app = NSRunningApplication(processIdentifier: pid_t(process.pid) ) {
-                process.name = app.localizedName ?? nameArray.dropLast().joined(separator: ".")
-            } else {
-                process.name = nameArray.dropLast().joined(separator: ".")
-            }
-            
-            if process.name == "" {
-                process.name = "\(process.pid)"
-            }
-            
-            if let download = Int(parsedLine[1]) {
-                process.download = download
-            }
-            if let upload = Int(parsedLine[2]) {
-                process.upload = upload
-            }
-            
-            list.append(process)
-        }
-        
-        var processes: [Network_Process] = []
-        if self.previous.isEmpty {
-            self.previous = list
-            processes = list
-        } else {
-            self.previous.forEach { (pp: Network_Process) in
-                if let i = list.firstIndex(where: { $0.pid == pp.pid }) {
-                    let p = list[i]
-                    
-                    var download = p.download - pp.download
-                    var upload = p.upload - pp.upload
-                    let time = download == 0 && upload == 0 ? pp.time : Date()
-                    list[i].time = time
-                    
-                    if download < 0 {
-                        download = 0
-                    }
-                    if upload < 0 {
-                        upload = 0
+            let previous = self.previous
+            let limit = self.numberOfProcesses
+            DispatchQueue.global(qos: .background).async {
+                let task = Process()
+                task.launchPath = "/usr/bin/nettop"
+                task.arguments = ["-P", "-L", "1", "-n", "-k", "time,interface,state,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,arch"]
+                task.environment = [
+                    "NSUnbufferedIO": "YES",
+                    "LC_ALL": "en_US.UTF-8"
+                ]
+                
+                let inputPipe = Pipe()
+                let outputPipe = Pipe()
+                let errorPipe = Pipe()
+                
+                defer {
+                    inputPipe.fileHandleForWriting.closeFile()
+                    outputPipe.fileHandleForReading.closeFile()
+                    errorPipe.fileHandleForReading.closeFile()
+                }
+                
+                task.standardInput = inputPipe
+                task.standardOutput = outputPipe
+                task.standardError = errorPipe
+                
+                do {
+                    try task.run()
+                } catch let error {
+                    print(error)
+                    return
+                }
+                
+                let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                let output = String(data: outputData, encoding: .utf8)
+                _ = String(data: errorData, encoding: .utf8)
+                guard let output, !output.isEmpty else { return }
+                
+                var list: [Network_Process] = []
+                var firstLine = false
+                output.enumerateLines { (line, _) in
+                    if !firstLine {
+                        firstLine = true
+                        return
                     }
                     
-                    processes.append(Network_Process(pid: p.pid, name: p.name, time: time, download: download, upload: upload))
+                    let parsedLine = line.split(separator: ",")
+                    guard parsedLine.count >= 3 else {
+                        return
+                    }
+                    
+                    var process = Network_Process()
+                    process.time = Date()
+                    
+                    let nameArray = parsedLine[0].split(separator: ".")
+                    if let pid = nameArray.last {
+                        process.pid = Int(pid) ?? 0
+                    }
+                    if let app = NSRunningApplication(processIdentifier: pid_t(process.pid) ) {
+                        process.name = app.localizedName ?? nameArray.dropLast().joined(separator: ".")
+                    } else {
+                        process.name = nameArray.dropLast().joined(separator: ".")
+                    }
+                    
+                    if process.name == "" {
+                        process.name = "\(process.pid)"
+                    }
+                    
+                    if let download = Int(parsedLine[1]) {
+                        process.download = download
+                    }
+                    if let upload = Int(parsedLine[2]) {
+                        process.upload = upload
+                    }
+                    
+                    list.append(process)
+                }
+                
+                var processes: [Network_Process] = []
+                if previous.isEmpty {
+                    processes = list
+                } else {
+                    previous.forEach { (pp: Network_Process) in
+                        if let i = list.firstIndex(where: { $0.pid == pp.pid }) {
+                            let p = list[i]
+                            
+                            var download = p.download - pp.download
+                            var upload = p.upload - pp.upload
+                            let time = download == 0 && upload == 0 ? pp.time : Date()
+                            list[i].time = time
+                            
+                            if download < 0 {
+                                download = 0
+                            }
+                            if upload < 0 {
+                                upload = 0
+                            }
+                            
+                            processes.append(Network_Process(pid: p.pid, name: p.name, time: time, download: download, upload: upload))
+                        }
+                    }
+                }
+                
+                processes.sort {
+                    let firstMax = max($0.download, $0.upload)
+                    let secondMax = max($1.download, $1.upload)
+                    let firstMin = min($0.download, $0.upload)
+                    let secondMin = min($1.download, $1.upload)
+                    
+                    if firstMax == secondMax && firstMin != secondMin {
+                        return firstMin < secondMin
+                    }
+                    return firstMax < secondMax
+                }
+                
+                let result = Array(processes.suffix(limit).reversed())
+                Task { @MainActor [weak self] in
+                    self?.callback(result)
                 }
             }
-            self.previous = list
         }
-        
-        processes.sort {
-            let firstMax = max($0.download, $0.upload)
-            let secondMax = max($1.download, $1.upload)
-            let firstMin = min($0.download, $0.upload)
-            let secondMin = min($1.download, $1.upload)
-            
-            if firstMax == secondMax && firstMin == secondMin { // download and upload values are the same, sort by time
-                return $0.time < $1.time
-            } else if firstMax == secondMax && firstMin != secondMin { // max values are the same, min not. Sort by min values
-                return firstMin < secondMin
-            }
-            return firstMax < secondMax // max values are not the same, sort by max value
-        }
-        
-        self.callback(processes.suffix(self.numberOfProcesses).reversed())
     }
 }
 
@@ -696,7 +709,7 @@ internal class ConnectivityReaderWrapper {
 }
 
 // inspired by https://github.com/samiyr/SwiftyPing
-internal class ConnectivityReader: Reader<Network_Connectivity> {
+internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Sendable {
     private let variablesQueue = DispatchQueue(label: "eu.exelban.ConnectivityReaderQueue")
     
     private let identifier = UInt16.random(in: 0..<UInt16.max)
@@ -792,19 +805,26 @@ internal class ConnectivityReader: Reader<Network_Connectivity> {
         self.prepare()
     }
     
-    deinit {
+    deinit {}
+    
+    public override func stop() {
         self.closeConn()
     }
     
     private func prepare() {
-        DispatchQueue.global(qos: .background).async {
-            self.addr = self.resolve()
-            self.openConn()
-            self.read()
+        let host = self.ICMPHost
+        Task.detached(priority: .background) {
+            let addr = await self.resolve(host: host)
+            await MainActor.run {
+                self.addr = addr
+                self.openConn()
+                self.read()
+            }
         }
     }
     
-    override func read() {
+    nonisolated override func read() {
+        Task { @MainActor in
         if self.connectivityMode == .http {
             self.httpCheck()
         } else {
@@ -828,6 +848,7 @@ internal class ConnectivityReader: Reader<Network_Connectivity> {
             }
             self.callback(self.wrapper)
         }
+        }
     }
     
     private func httpCheck() {
@@ -849,23 +870,25 @@ internal class ConnectivityReader: Reader<Network_Connectivity> {
             let endTime = DispatchTime.now()
             let elapsed = Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
             
-            self.latency = elapsed
-            if let prev = self.previousLatency {
-                let d = abs(elapsed - prev)
-                if self.jitter == nil {
-                    self.jitter = d
-                } else {
-                    self.jitter! += (d - self.jitter!) / 16.0
+            Task { @MainActor in
+                self.latency = elapsed
+                if let prev = self.previousLatency {
+                    let d = abs(elapsed - prev)
+                    if self.jitter == nil {
+                        self.jitter = d
+                    } else {
+                        self.jitter! += (d - self.jitter!) / 16.0
+                    }
                 }
+                self.previousLatency = elapsed
+                
+                if let http = response as? HTTPURLResponse {
+                    self.status = (200...399).contains(http.statusCode) && error == nil
+                } else {
+                    self.status = false
+                }
+                self.isPinging = false
             }
-            self.previousLatency = elapsed
-            
-            if let http = response as? HTTPURLResponse {
-                self.status = (200...399).contains(http.statusCode) && error == nil
-            } else {
-                self.status = false
-            }
-            self.isPinging = false
         }
         task.resume()
     }
@@ -876,7 +899,11 @@ internal class ConnectivityReader: Reader<Network_Connectivity> {
         }
         
         if self.lastHost != self.ICMPHost {
-            self.addr = self.resolve()
+            Task { @MainActor in
+                let host = self.ICMPHost
+                let addr = await self.resolve(host: host)
+                self.addr = addr
+            }
         }
         
         guard !self.isPinging && self.active, let socket = self.socket, let addr = self.addr, let data = self.request() else { return }
@@ -1032,25 +1059,29 @@ internal class ConnectivityReader: Reader<Network_Connectivity> {
         self.timeoutTimer = nil
     }
     
-    private func resolve() -> Data? {
-        self.lastHost = self.ICMPHost
-        var streamError = CFStreamError()
-        let cfhost = CFHostCreateWithName(nil, self.ICMPHost as CFString).takeRetainedValue()
-        let status = CFHostStartInfoResolution(cfhost, .addresses, &streamError)
-        guard status else { return nil }
-        var success: DarwinBoolean = false
-        guard let addresses = CFHostGetAddressing(cfhost, &success)?.takeUnretainedValue() as? [Data] else {
-            return nil
-        }
-        var data: Data?
-        for address in addresses {
-            let addrin = address.socketAddress
-            if address.count >= MemoryLayout<sockaddr>.size && addrin.sa_family == UInt8(AF_INET) {
-                data = address
-                break
+    private func resolve(host: String) async -> Data? {
+        await MainActor.run { self.lastHost = host }
+        let icmpHost = self.ICMPHost
+        
+        return await Task.detached(priority: .background) {
+            var streamError = CFStreamError()
+            let cfhost = CFHostCreateWithName(nil, icmpHost as CFString).takeRetainedValue()
+            let status = CFHostStartInfoResolution(cfhost, .addresses, &streamError)
+            guard status else { return nil }
+            var success: DarwinBoolean = false
+            guard let addresses = CFHostGetAddressing(cfhost, &success)?.takeUnretainedValue() as? [Data] else {
+                return nil
             }
-        }
-        guard let data = data, !data.isEmpty else { return nil }
-        return data
+            var data: Data?
+            for address in addresses {
+                let addrin = address.socketAddress
+                if address.count >= MemoryLayout<sockaddr>.size && addrin.sa_family == UInt8(AF_INET) {
+                    data = address
+                    break
+                }
+            }
+            guard let data = data, !data.isEmpty else { return nil }
+            return data
+        }.value
     }
 }

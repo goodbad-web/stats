@@ -128,8 +128,9 @@ public final class Store: @unchecked Sendable {
             }
         }
         
+        let finalDict = importedDict
         self.lock.withLock { cache in
-            cache = importedDict
+            cache = finalDict
         }
         
         self.defaults.setPersistentDomain(importedDict, forName: id)

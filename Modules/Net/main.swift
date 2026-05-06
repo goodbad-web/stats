@@ -110,7 +110,7 @@ public struct Network_Connectivity: Codable {
     var jitter: Double = 0
 }
 
-public struct Network_Process: Codable, Process_p {
+public struct Network_Process: Codable, Process_p, Sendable {
     public var pid: Int
     public var name: String
     public var time: Date
@@ -194,10 +194,11 @@ public class Network: Module {
             self?.connectivityCallback(value)
         }
         
-        self.settingsView.callbackWhenUpdateNumberOfProcesses = {
-            self.popupView.numberOfProcessesUpdated()
+        let processReader = self.processReader
+        self.settingsView.callbackWhenUpdateNumberOfProcesses = { [weak self] in
+            self?.popupView.numberOfProcessesUpdated()
             DispatchQueue.global(qos: .background).async {
-                self.processReader?.read()
+                processReader?.read()
             }
         }
         
@@ -375,10 +376,15 @@ public class Network: Module {
         
         self.ipUpdater.repeats = true
         self.ipUpdater.schedule { (completion: @escaping NSBackgroundActivityScheduler.CompletionHandler) in
-            guard self.enabled && self.isAvailable() else { return }
-            debug("going to automatically refresh IP address...")
-            NotificationCenter.default.post(name: .refreshPublicIP, object: nil, userInfo: nil)
-            completion(NSBackgroundActivityScheduler.Result.finished)
+            Task { @MainActor in
+                guard self.enabled && self.isAvailable() else {
+                    completion(.finished)
+                    return
+                }
+                debug("going to automatically refresh IP address...")
+                NotificationCenter.default.post(name: .refreshPublicIP, object: nil, userInfo: nil)
+                completion(.finished)
+            }
         }
     }
     
@@ -396,13 +402,16 @@ public class Network: Module {
         
         self.usageReseter.repeats = true
         self.usageReseter.schedule { (completion: @escaping NSBackgroundActivityScheduler.CompletionHandler) in
-            guard self.enabled && self.isAvailable() else {
-                return
+            Task { @MainActor in
+                guard self.enabled && self.isAvailable() else {
+                    completion(.finished)
+                    return
+                }
+                
+                debug("going to reset the usage...")
+                NotificationCenter.default.post(name: .resetTotalNetworkUsage, object: nil, userInfo: nil)
+                completion(.finished)
             }
-            
-            debug("going to reset the usage...")
-            NotificationCenter.default.post(name: .resetTotalNetworkUsage, object: nil, userInfo: nil)
-            completion(NSBackgroundActivityScheduler.Result.finished)
         }
     }
 }

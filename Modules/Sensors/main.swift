@@ -57,25 +57,21 @@ public class Sensors: Module {
             self?.sensorsReader?.setInterval(value)
         }
         self.settingsView.HIDcallback = { [weak self] in
-            DispatchQueue.global(qos: .background).async {
+            Task { @MainActor in
                 self?.sensorsReader?.HIDCallback()
-                DispatchQueue.main.async {
-                    self?.popupView.setup(self?.sensorsReader?.list.sensors)
-                    self?.portalView.setup(self?.sensorsReader?.list.sensors)
-                    self?.settingsView.setList(self?.sensorsReader?.list.sensors)
-                    self?.notificationsView.setup(self?.sensorsReader?.list.sensors)
-                }
+                self?.popupView.setup(self?.sensorsReader?.list.sensors)
+                self?.portalView.setup(self?.sensorsReader?.list.sensors)
+                self?.settingsView.setList(self?.sensorsReader?.list.sensors)
+                self?.notificationsView.setup(self?.sensorsReader?.list.sensors)
             }
         }
         self.settingsView.unknownCallback = { [weak self] in
-            DispatchQueue.global(qos: .background).async {
+            Task { @MainActor in
                 self?.sensorsReader?.unknownCallback()
-                DispatchQueue.main.async {
-                    self?.popupView.setup(self?.sensorsReader?.list.sensors)
-                    self?.portalView.setup(self?.sensorsReader?.list.sensors)
-                    self?.settingsView.setList(self?.sensorsReader?.list.sensors)
-                    self?.notificationsView.setup(self?.sensorsReader?.list.sensors)
-                }
+                self?.popupView.setup(self?.sensorsReader?.list.sensors)
+                self?.portalView.setup(self?.sensorsReader?.list.sensors)
+                self?.settingsView.setList(self?.sensorsReader?.list.sensors)
+                self?.notificationsView.setup(self?.sensorsReader?.list.sensors)
             }
         }
         self.selectedSensor = Store.shared.string(key: "\(ModuleType.sensors.stringValue)_sensor", defaultValue: self.selectedSensor)

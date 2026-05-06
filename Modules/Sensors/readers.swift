@@ -12,7 +12,7 @@
 import Cocoa
 import Kit
 
-internal class SensorsReader: Reader<Sensors_List> {
+internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
     static let HIDtypes: [SensorType] = [.temperature, .voltage]
     
     internal var list: Sensors_List = Sensors_List()
@@ -30,7 +30,7 @@ internal class SensorsReader: Reader<Sensors_List> {
     private var subscription: IOReportSubscriptionRef? = nil
     private var powers: (CPU: Double, GPU: Double, ANE: Double, RAM: Double, PCI: Double) = (0.0, 0.0, 0.0, 0.0, 0.0)
     
-    init(callback: @escaping (T?) -> Void = {_ in }) {
+    @MainActor init(callback: @escaping (T?) -> Void = {_ in }) {
         self.unknownSensorsState = Store.shared.bool(key: "Sensors_unknown", defaultValue: false)
         super.init(.sensors, callback: callback)
         
@@ -124,7 +124,8 @@ internal class SensorsReader: Reader<Sensors_List> {
         return results
     }
     
-    public override func read() {
+    nonisolated public override func read() {
+        Task { @MainActor in
         for i in self.list.sensors.indices {
             guard self.list.sensors[i].group != .hid && !self.list.sensors[i].isComputed else { continue }
             if !self.unknownSensorsState && self.list.sensors[i].group == .unknown { continue }
@@ -246,6 +247,7 @@ internal class SensorsReader: Reader<Sensors_List> {
         }
         
         self.callback(self.list)
+        }
     }
     
     private func initCalculatedSensors(_ sensors: [Sensor_p]) -> [Sensor_p] {

@@ -10,8 +10,8 @@
 //
 
 import Cocoa
-import Kit
-import UserNotifications
+@preconcurrency import Kit
+@preconcurrency import UserNotifications
 
 extension AppDelegate {
     internal func parseArguments() {
@@ -139,8 +139,10 @@ extension AppDelegate {
             default: return
             }
             
-            self.updateActivity.schedule { (completion: @escaping NSBackgroundActivityScheduler.CompletionHandler) in
-                self.checkForNewVersion()
+            self.updateActivity.schedule { [weak self] (completion: @escaping NSBackgroundActivityScheduler.CompletionHandler) in
+                Task { @MainActor in
+                    self?.checkForNewVersion()
+                }
                 completion(NSBackgroundActivityScheduler.Result.finished)
             }
         }
@@ -202,7 +204,7 @@ extension AppDelegate {
                     case .denied:
                         self.showUpdateWindow(version: version)
                     case .notDetermined:
-                        center.requestAuthorization(options: [.sound, .alert, .badge], completionHandler: { (_, error) in
+                        UNUserNotificationCenter.current().requestAuthorization(options: [.sound, .alert, .badge], completionHandler: { (_, error) in
                             DispatchQueue.main.async {
                                 if error == nil {
                                     NSApplication.shared.registerForRemoteNotifications()

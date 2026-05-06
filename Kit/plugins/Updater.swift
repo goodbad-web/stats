@@ -13,7 +13,7 @@ import Cocoa
 import SystemConfiguration
 import Security
 
-public struct version_s {
+public struct version_s: Sendable {
     public let current: String
     public let latest: String
     public let newest: Bool

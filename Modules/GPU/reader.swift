@@ -39,7 +39,7 @@ private func maxANEPower(for platform: Platform?) -> Double {
     }
 }
 
-internal class InfoReader: Reader<GPUs> {
+internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
     private var gpus: GPUs = GPUs()
     private var displays: [gpu_s] = []
     private var devices: [device] = []
@@ -96,7 +96,8 @@ internal class InfoReader: Reader<GPUs> {
         }
     }
     
-    public override func read() {
+    nonisolated public override func read() {
+        Task { @MainActor in
         guard let accelerators = fetchIOService(kIOAcceleratorClassName) else {
             return
         }
@@ -236,6 +237,7 @@ internal class InfoReader: Reader<GPUs> {
         
         self.gpus.list.sort{ !$0.state && $1.state }
         self.callback(self.gpus)
+        }
     }
     
     // MARK: - FPS

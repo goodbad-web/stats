@@ -12,7 +12,7 @@
 import Foundation
 import Kit
 
-internal class ClockReader: Reader<Date> {
+internal class ClockReader: Reader<Date>, @unchecked Sendable {
     private let title: String = ModuleType.clock.stringValue
     
     private let queue = DispatchQueue(label: "eu.exelban.Stats.Clock.ntp.sync", qos: .default)
@@ -38,13 +38,15 @@ internal class ClockReader: Reader<Date> {
         self.syncWithNTP()
     }
     
-    public override func read() {
-        let date = self.ntpSync ? self.now : Date()
-        
-        self.callback(date)
-        
-        if Calendar.current.component(.second, from: date) == 0 {
-            self.syncWithNTP()
+    nonisolated public override func read() {
+        Task { @MainActor in
+            let date = self.ntpSync ? self.now : Date()
+            
+            self.callback(date)
+            
+            if Calendar.current.component(.second, from: date) == 0 {
+                self.syncWithNTP()
+            }
         }
     }
     
@@ -59,12 +61,14 @@ internal class ClockReader: Reader<Date> {
             guard let self else { return }
             guard let serverDate = self.requestTime(server: server) else { return }
             let newOffset = serverDate.timeIntervalSince(Date())
-            self._offset = newOffset
-            self.alignOffset = newOffset
+            Task { @MainActor in
+                self.offset = newOffset
+                self.alignOffset = newOffset
+            }
         }
     }
     
-    private func requestTime(server: String, timeout: TimeInterval = 2.0) -> Date? {
+    nonisolated private func requestTime(server: String, timeout: TimeInterval = 2.0) -> Date? {
         let host = CFHostCreateWithName(nil, server as CFString).takeRetainedValue()
         var resolved: DarwinBoolean = false
         let started = CFHostStartInfoResolution(host, .addresses, nil)

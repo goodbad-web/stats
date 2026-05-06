@@ -73,7 +73,7 @@ public struct module_c {
     }
 }
 
-open class Module {
+@MainActor open class Module {
     public var config: module_c
     
     public var available: Bool = false

@@ -10,9 +10,10 @@
 //
 
 import Cocoa
-import Kit
+@preconcurrency import Kit
+import IOKit.ps
 
-internal class UsageReader: Reader<Battery_Usage> {
+internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
     private var service: io_connect_t = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
     
     private var source: CFRunLoopSource?
@@ -50,66 +51,68 @@ internal class UsageReader: Reader<Battery_Usage> {
         CFRunLoopRemoveSource(runLoop, source, .defaultMode)
     }
     
-    public override func read() {
-        let psInfo = IOPSCopyPowerSourcesInfo().takeRetainedValue()
-        let psList = IOPSCopyPowerSourcesList(psInfo).takeRetainedValue() as [CFTypeRef]
-        
-        if psList.isEmpty {
-            return
-        }
-        
-        for ps in psList {
-            if let list = IOPSGetPowerSourceDescription(psInfo, ps).takeUnretainedValue() as? [String: Any] {
-                self.usage.powerSource = list[kIOPSPowerSourceStateKey] as? String ?? "AC Power"
-                self.usage.isBatteryPowered = self.usage.powerSource == "Battery Power"
-                self.usage.isCharged = list[kIOPSIsChargedKey] as? Bool ?? false
-                self.usage.isCharging = self.getBoolValue("IsCharging" as CFString) ?? false
-                self.usage.optimizedChargingEngaged = list["Optimized Battery Charging Engaged"] as? Int == 1
-                self.usage.level = Double(list[kIOPSCurrentCapacityKey] as? Int ?? 0) / 100
-                
-                if let time = list[kIOPSTimeToEmptyKey] as? Int {
-                    self.usage.timeToEmpty = Int(time)
-                }
-                if let time = list[kIOPSTimeToFullChargeKey] as? Int {
-                    self.usage.timeToCharge = Int(time)
-                }
-                
-                if self.usage.powerSource == "AC Power" {
-                    self.usage.timeOnACPower = Date()
-                }
-                
-                self.usage.cycles = self.getIntValue("CycleCount" as CFString) ?? 0
-                
-                self.usage.currentCapacity = self.getIntValue("AppleRawCurrentCapacity" as CFString) ?? 0
-                self.usage.designedCapacity = self.getIntValue("DesignCapacity" as CFString) ?? 1
-                if self.usage.designedCapacity == 0 {
-                    self.usage.designedCapacity = 1
-                }
-                self.usage.maxCapacity = self.getIntValue("AppleRawMaxCapacity" as CFString) ?? 1
-                self.usage.state = list[kIOPSBatteryHealthKey] as? String
-                self.usage.health = Int((Double(100 * self.usage.maxCapacity) / Double(self.usage.designedCapacity)).rounded(.toNearestOrEven))
-                
-                self.usage.amperage = self.getIntValue("Amperage" as CFString) ?? 0
-                self.usage.voltage = self.getVoltage() ?? 0
-                self.usage.temperature = self.getTemperature() ?? 0
-                
-                var ACwatts: Int = 0
-                if let ACDetails = IOPSCopyExternalPowerAdapterDetails() {
-                    if let ACList = ACDetails.takeRetainedValue() as? [String: Any] {
-                        guard let watts = ACList[kIOPSPowerAdapterWattsKey] else {
-                            return
-                        }
-                        ACwatts = Int(watts as! Int)
+    nonisolated public override func read() {
+        Task { @MainActor in
+            let psInfo = IOPSCopyPowerSourcesInfo().takeRetainedValue()
+            let psList = IOPSCopyPowerSourcesList(psInfo).takeRetainedValue() as [CFTypeRef]
+            
+            if psList.isEmpty {
+                return
+            }
+            
+            for ps in psList {
+                if let list = IOPSGetPowerSourceDescription(psInfo, ps).takeUnretainedValue() as? [String: Any] {
+                    self.usage.powerSource = list[kIOPSPowerSourceStateKey] as? String ?? "AC Power"
+                    self.usage.isBatteryPowered = self.usage.powerSource == "Battery Power"
+                    self.usage.isCharged = list[kIOPSIsChargedKey] as? Bool ?? false
+                    self.usage.isCharging = self.getBoolValue("IsCharging" as CFString) ?? false
+                    self.usage.optimizedChargingEngaged = list["Optimized Battery Charging Engaged"] as? Int == 1
+                    self.usage.level = Double(list[kIOPSCurrentCapacityKey] as? Int ?? 0) / 100
+                    
+                    if let time = list[kIOPSTimeToEmptyKey] as? Int {
+                        self.usage.timeToEmpty = Int(time)
                     }
+                    if let time = list[kIOPSTimeToFullChargeKey] as? Int {
+                        self.usage.timeToCharge = Int(time)
+                    }
+                    
+                    if self.usage.powerSource == "AC Power" {
+                        self.usage.timeOnACPower = Date()
+                    }
+                    
+                    self.usage.cycles = self.getIntValue("CycleCount" as CFString) ?? 0
+                    
+                    self.usage.currentCapacity = self.getIntValue("AppleRawCurrentCapacity" as CFString) ?? 0
+                    self.usage.designedCapacity = self.getIntValue("DesignCapacity" as CFString) ?? 1
+                    if self.usage.designedCapacity == 0 {
+                        self.usage.designedCapacity = 1
+                    }
+                    self.usage.maxCapacity = self.getIntValue("AppleRawMaxCapacity" as CFString) ?? 1
+                    self.usage.state = list[kIOPSBatteryHealthKey] as? String
+                    self.usage.health = Int((Double(100 * self.usage.maxCapacity) / Double(self.usage.designedCapacity)).rounded(.toNearestOrEven))
+                    
+                    self.usage.amperage = self.getIntValue("Amperage" as CFString) ?? 0
+                    self.usage.voltage = self.getVoltage() ?? 0
+                    self.usage.temperature = self.getTemperature() ?? 0
+                    
+                    var ACwatts: Int = 0
+                    if let ACDetails = IOPSCopyExternalPowerAdapterDetails() {
+                        if let ACList = ACDetails.takeRetainedValue() as? [String: Any] {
+                            guard let watts = ACList[kIOPSPowerAdapterWattsKey] else {
+                                return
+                            }
+                            ACwatts = Int(watts as! Int)
+                        }
+                    }
+                    self.usage.ACwatts = ACwatts
+                    
+                    if let chargerData = self.getChargerData() {
+                        self.usage.chargingCurrent = chargerData["ChargingCurrent"] as? Int ?? 0
+                        self.usage.chargingVoltage = chargerData["ChargingVoltage"] as? Int ?? 0
+                    }
+                    
+                    self.callback(self.usage)
                 }
-                self.usage.ACwatts = ACwatts
-                
-                if let chargerData = self.getChargerData() {
-                    self.usage.chargingCurrent = chargerData["ChargingCurrent"] as? Int ?? 0
-                    self.usage.chargingVoltage = chargerData["ChargingVoltage"] as? Int ?? 0
-                }
-                
-                self.callback(self.usage)
             }
         }
     }
@@ -157,7 +160,7 @@ internal class UsageReader: Reader<Battery_Usage> {
     }
 }
 
-public class ProcessReader: Reader<[TopProcess]> {
+public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
     private var numberOfProcesses: Int {
         get {
             return Store.shared.int(key: "Battery_processes", defaultValue: 8)
@@ -168,27 +171,31 @@ public class ProcessReader: Reader<[TopProcess]> {
         self.popup = true
     }
     
-    public override func read() {
-        if self.numberOfProcesses == 0 {
-            return
-        }
-        
-        let task = Process()
-        task.launchPath = "/usr/bin/top"
-        task.arguments = ["-o", "power", "-l", "2", "-n", "\(self.numberOfProcesses)", "-stats", "pid,command,power"]
-        
-        let outputPipe = Pipe()
-        defer {
-            outputPipe.fileHandleForReading.closeFile()
-        }
-        task.standardOutput = outputPipe
-        
-        do {
-            try task.run()
-        } catch let err {
-            error("error read ps: \(err.localizedDescription)", log: self.log)
-            return
-        }
+    nonisolated public override func read() {
+        Task { @MainActor in
+            if self.numberOfProcesses == 0 {
+                return
+            }
+            
+            let limit = self.numberOfProcesses
+            let log = self.log
+            DispatchQueue.global(qos: .background).async {
+                let task = Process()
+                task.launchPath = "/usr/bin/top"
+                task.arguments = ["-o", "power", "-l", "2", "-n", "\(limit)", "-stats", "pid,command,power"]
+                
+                let outputPipe = Pipe()
+                defer {
+                    outputPipe.fileHandleForReading.closeFile()
+                }
+                task.standardOutput = outputPipe
+                
+                do {
+                    try task.run()
+                } catch let err {
+                    error("error read ps: \(err.localizedDescription)", log: log)
+                    return
+                }
         
         let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
         if outputData.isEmpty {
@@ -219,6 +226,8 @@ public class ProcessReader: Reader<[TopProcess]> {
             }
         }
         
-        self.callback(processes.suffix(self.numberOfProcesses).sorted(by: { $0.usage > $1.usage }))
+        self.callback(processes.suffix(limit).sorted(by: { $0.usage > $1.usage }))
+            }
+        }
     }
 }

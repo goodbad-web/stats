@@ -31,7 +31,7 @@ private struct ioDevice {
     var isPaired: Bool
 }
 
-internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBPeripheralDelegate {
+internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBPeripheralDelegate, @unchecked Sendable {
     private var devices: [BLEDevice] = []
     private var devicesToRemove: [UUID] = []
     private var manager: CBCentralManager!
@@ -42,12 +42,13 @@ internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBP
     static let batteryServiceUUID = CBUUID(string: "0x180F")
     static let batteryCharacteristicsUUID = CBUUID(string: "0x2A19")
     
-    init(callback: @escaping (T?) -> Void = {_ in }) {
+    @MainActor init(callback: @escaping (T?) -> Void = {_ in }) {
         super.init(.bluetooth, callback: callback)
         self.manager = CBCentralManager(delegate: self, queue: nil)
     }
     
-    public override func read() {
+    nonisolated public override func read() {
+        Task { @MainActor in
         let hid = self.HIDDevices()
         let SPB = self.profilerDevices()
         var list = self.cacheDevices()
@@ -189,6 +190,7 @@ internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBP
         }
         
         self.callback(self.devices.filter({ $0.RSSI != nil }))
+        }
     }
     
     // MARK: - HIDDevices (connected ble peripherals to the mac: keyboard, mouse etc...)

@@ -180,7 +180,7 @@ public class Disks: Codable, RemoteType {
     }
 }
 
-public struct Disk_process: Process_p, Codable {
+public struct Disk_process: Process_p, Codable, Sendable {
     public var base: DataSizeBase {
         DataSizeBase(rawValue: Store.shared.string(key: "\(ModuleType.disk.stringValue)_base", defaultValue: "byte")) ?? .byte
     }
@@ -276,10 +276,11 @@ public class Disk: Module {
         self.settingsView.setInterval = { [weak self] value in
             self?.capacityReader?.setInterval(value)
         }
+        let processReader = self.processReader
         self.settingsView.callbackWhenUpdateNumberOfProcesses = { [weak self] in
             self?.popupView.numberOfProcessesUpdated()
             DispatchQueue.global(qos: .background).async {
-                self?.processReader?.read()
+                processReader?.read()
             }
         }
         
