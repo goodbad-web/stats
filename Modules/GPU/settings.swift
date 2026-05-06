@@ -34,7 +34,7 @@ struct GPUSettingsView: View {
                     }
                     .labelsHidden()
                     .fixedSize()
-                    .onChange(of: updateInterval) { newValue in
+                    .onChange(of: updateInterval) { _, newValue in
                         setInterval(newValue)
                     }
                 }
@@ -58,7 +58,7 @@ struct GPUSettingsView: View {
                     }
                     .labelsHidden()
                     .fixedSize()
-                    .onChange(of: selectedGPU) { newValue in
+                    .onChange(of: selectedGPU) { _, newValue in
                         selectedGPUHandler(newValue)
                     }
                 }

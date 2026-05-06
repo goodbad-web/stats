@@ -132,15 +132,15 @@ struct NetSettingsView: View {
         .onAppear {
             loadInterfaces()
         }
-        .onChange(of: numberOfProcesses) { callback() }
-        .onChange(of: readerType) { callback() }
-        .onChange(of: selectedInterface) { callback() }
-        .onChange(of: base) { callback() }
-        .onChange(of: usageReset) { usageResetCallback() }
-        .onChange(of: connectivityICMPHost) { connectivityHostCallback($0.isEmpty) }
-        .onChange(of: connectivityHTTPHost) { connectivityHostCallback($0.isEmpty) }
-        .onChange(of: updateConnectivityInterval) { setInterval($0) }
-        .onChange(of: publicIPRefreshInterval) { publicIPRefreshIntervalCallback() }
+        .onChange(of: numberOfProcesses) { _, _ in callback() }
+        .onChange(of: readerType) { _, _ in callback() }
+        .onChange(of: selectedInterface) { _, _ in callback() }
+        .onChange(of: base) { _, _ in callback() }
+        .onChange(of: usageReset) { _, _ in usageResetCallback() }
+        .onChange(of: connectivityICMPHost) { _, newValue in connectivityHostCallback(newValue.isEmpty) }
+        .onChange(of: connectivityHTTPHost) { _, newValue in connectivityHostCallback(newValue.isEmpty) }
+        .onChange(of: updateConnectivityInterval) { _, newValue in setInterval(newValue) }
+        .onChange(of: publicIPRefreshInterval) { _, _ in publicIPRefreshIntervalCallback() }
     }
     
     private func loadInterfaces() {

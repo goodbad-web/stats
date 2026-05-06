@@ -791,7 +791,7 @@ internal class FanView: NSStackView {
             if Task.isCancelled { return }
             
             let id = self.fan.id
-            await Task.detached(priority: .userInteractive) {
+            await Task.detached(priority: .userInitiated) {
                 SMCHelper.shared.setFanSpeed(id, speed: value)
             }.value
             

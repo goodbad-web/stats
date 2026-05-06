@@ -550,16 +550,16 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
         let urlString = self.HTTPHost.hasPrefix("http") ? self.HTTPHost : "https://\(self.HTTPHost)"
         guard let url = URL(string: urlString) else { self.isPinging = false; return }
         
-        let startTime = DispatchTime.now()
         let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: self.timeout)
-        URLSession.shared.dataTask(with: request) { _, response, error in
+        Task {
+            let startTime = DispatchTime.now()
+            _ = try? await URLSession.shared.data(for: request)
             let endTime = DispatchTime.now()
             let elapsed = Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
-            Task { @MainActor in
-                self.updateStats(elapsed: elapsed)
-                self.isPinging = false
-            }
-        }.resume()
+            
+            self.updateStats(elapsed: elapsed)
+            self.isPinging = false
+        }
     }
     
     @MainActor private func icmpCheck() {
@@ -569,11 +569,13 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
         guard !self.isPinging && self.active, let socket = self.socket, let addr = self.addr, let data = self.request() else { return }
         self.isPinging = true
         
-        self.timeoutTimer = Timer.scheduledTimer(withTimeInterval: self.timeout, repeats: false) { _ in
-            Task { @MainActor in self.isPinging = false }
+        Task {
+            self.start = DispatchTime.now()
+            CFSocketSendData(socket, addr as CFData, data as CFData, self.timeout)
+            
+            try? await Task.sleep(nanoseconds: UInt64(self.timeout * 1_000_000_000))
+            self.isPinging = false
         }
-        self.start = DispatchTime.now()
-        CFSocketSendData(socket, addr as CFData, data as CFData, self.timeout)
     }
     
     @MainActor func socketCallback(data: Data) {

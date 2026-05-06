@@ -73,7 +73,7 @@ struct RAMSettingsView: View {
                         }
                         .labelsHidden()
                         .fixedSize()
-                        .onChange(of: updateInterval) { newValue in
+                        .onChange(of: updateInterval) { _, newValue in
                             setInterval(newValue)
                         }
                     }
@@ -88,7 +88,7 @@ struct RAMSettingsView: View {
                         }
                         .labelsHidden()
                         .fixedSize()
-                        .onChange(of: updateTopInterval) { newValue in
+                        .onChange(of: updateTopInterval) { _, newValue in
                             setTopInterval(newValue)
                         }
                     }
@@ -101,7 +101,7 @@ struct RAMSettingsView: View {
             Section {
                 VStack(spacing: 8) {
                     Toggle(localizedString("Combined processes"), isOn: $combinedProcesses)
-                        .onChange(of: combinedProcesses) { _ in
+                        .onChange(of: combinedProcesses) { _, _ in
                             callback()
                         }
                     
@@ -115,7 +115,7 @@ struct RAMSettingsView: View {
                         }
                         .labelsHidden()
                         .fixedSize()
-                        .onChange(of: numberOfProcesses) { _ in
+                        .onChange(of: numberOfProcesses) { _, _ in
                             callbackWhenUpdateNumberOfProcesses()
                         }
                     }
@@ -128,7 +128,7 @@ struct RAMSettingsView: View {
             if widgets.contains(.barChart) {
                 Section {
                     Toggle(localizedString("Split the value (App/Wired/Compressed)"), isOn: $splitValue)
-                        .onChange(of: splitValue) { _ in
+                        .onChange(of: splitValue) { _, _ in
                             callback()
                         }
                         .padding(10)
@@ -143,9 +143,9 @@ struct RAMSettingsView: View {
                         HStack {
                             Text(localizedString("Text widget value"))
                             Spacer()
-                            Button(action: { textWidgetHelpPanel.show() }) {
+                            Button(action: { textWidgetHelpPanel.show() }, label: {
                                 Image(systemName: "questionmark.circle")
-                            }
+                            })
                             .buttonStyle(.plain)
                         }
                         

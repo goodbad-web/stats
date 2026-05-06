@@ -49,7 +49,7 @@ internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBP
     
     nonisolated public override func read() {
         Task { @MainActor in
-            let (hid, SPB, list, pmsetLevels, pairedDevices) = await Task.detached(priority: .background) {
+            let (_, SPB, list, pmsetLevels, pairedDevices) = await Task.detached(priority: .background) {
                 let hid = self.HIDDevices()
                 let SPB = self.profilerDevices()
                 var list = self.cacheDevices()
@@ -343,9 +343,9 @@ internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBP
     
     // MARK: - CBPeripheral
     
-    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices err: Error?) {
-        guard err == nil else {
-            error("didDiscoverServices: \(err!)", log: self.log)
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        guard error == nil else {
+            Kit.error("didDiscoverServices: \(error!)", log: self.log)
             return
         }
         
@@ -359,9 +359,9 @@ internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBP
     
     func peripheral(_ peripheral: CBPeripheral, didModifyServices invalidatedServices: [CBService]) {}
     
-    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, err: Error?) {
-        guard err == nil else {
-            error("didDiscoverCharacteristicsFor: \(err!)", log: self.log)
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        guard error == nil else {
+            Kit.error("didDiscoverCharacteristicsFor: \(error!)", log: self.log)
             return
         }
         
@@ -374,9 +374,9 @@ internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBP
         peripheral.readValue(for: batteryCharacteristics)
     }
     
-    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, err: Error?) {
-        guard err == nil else {
-            error("didUpdateValueFor: \(err!)", log: self.log)
+    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        guard error == nil else {
+            Kit.error("didUpdateValueFor: \(error!)", log: self.log)
             return
         }
         

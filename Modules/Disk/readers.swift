@@ -55,7 +55,7 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
             }
             
             let updatedList = await Task.detached(priority: .background) {
-                var localList = self.list
+                let localList = self.list
                 var active: [String] = []
                 for url in paths {
                     if url.pathComponents.count == 1 || (url.pathComponents.count > 1 && url.pathComponents[1] == "Volumes") {
@@ -278,7 +278,7 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
             }
             
             let updatedList = await Task.detached(priority: .background) {
-                var localList = self.list
+                let localList = self.list
                 var active: [String] = []
                 for url in paths {
                     if url.pathComponents.count == 1 || (url.pathComponents.count > 1 && url.pathComponents[1] == "Volumes") {
@@ -293,7 +293,7 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
                                         continue
                                     }
                                     
-                                    self.driveStats(&localList, idx, d)
+                                    self.driveStats(localList, idx, d)
                                     continue
                                 }
                                 
@@ -319,7 +319,7 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
         }
     }
     
-    nonisolated private func driveStats(_ list: inout Disks, _ idx: Int, _ d: drive) {
+    nonisolated private func driveStats(_ list: Disks, _ idx: Int, _ d: drive) {
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOBSDNameMatching(kIOMainPortDefault, 0, d.BSDName))
         if service == 0 { return }
         IOObjectRelease(service)

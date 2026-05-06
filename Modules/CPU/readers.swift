@@ -537,9 +537,13 @@ public class LimitReader: Reader<CPU_Limit>, @unchecked Sendable {
                     lines.removeFirst(3)
                     lines.forEach { (line: Substring) in
                         guard let value = Int(line.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) else { return }
-                        if line.contains("Scheduler") { res.scheduler = value }
-                        else if line.contains("CPUs") { res.cpus = value }
-                        else if line.contains("Speed") { res.speed = value }
+                        if line.contains("Scheduler") {
+                            res.scheduler = value
+                        } else if line.contains("CPUs") {
+                            res.cpus = value
+                        } else if line.contains("Speed") {
+                            res.speed = value
+                        }
                     }
                 }
                 return res

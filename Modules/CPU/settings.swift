@@ -54,7 +54,7 @@ struct CPUSettingsView: View {
             if hasBarChart {
                 Section {
                     Toggle(localizedString("Show usage per core"), isOn: $usagePerCore)
-                        .onChange(of: usagePerCore) { newValue in
+                        .onChange(of: usagePerCore) { _, newValue in
                             if newValue && clustersGroup {
                                 clustersGroup = false
                             }
@@ -65,7 +65,7 @@ struct CPUSettingsView: View {
                         }
                     
                     Toggle(localizedString("Cluster grouping"), isOn: $clustersGroup)
-                        .onChange(of: clustersGroup) { newValue in
+                        .onChange(of: clustersGroup) { _, newValue in
                             if newValue && usagePerCore {
                                 usagePerCore = false
                             }
@@ -77,16 +77,16 @@ struct CPUSettingsView: View {
                     
                     Toggle(localizedString("Split the value (System/User)"), isOn: $splitValue)
                         .disabled(usagePerCore || clustersGroup)
-                        .onChange(of: splitValue) { _ in
+                        .onChange(of: splitValue) { _, _ in
                             callback()
                         }
                 }
             }
         }
         .formStyle(.grouped)
-        .onChange(of: updateInterval) { setInterval($0) }
-        .onChange(of: updateTopInterval) { setTopInterval($0) }
-        .onChange(of: numberOfProcesses) { callbackWhenUpdateNumberOfProcesses() }
+        .onChange(of: updateInterval) { _, newValue in setInterval(newValue) }
+        .onChange(of: updateTopInterval) { _, newValue in setTopInterval(newValue) }
+        .onChange(of: numberOfProcesses) { _, _ in callbackWhenUpdateNumberOfProcesses() }
     }
     
     func setHasBarChart(_ value: Bool) {

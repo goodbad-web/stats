@@ -58,7 +58,7 @@ struct DiskSettingsView: View {
                         Text(localizedString(item.value)).tag(Int(item.key) ?? 10)
                     }
                 }
-                .onChange(of: updateInterval) { newValue in
+                .onChange(of: updateInterval) { _, newValue in
                     onUpdateIntervalChange(newValue)
                 }
                 
@@ -67,7 +67,7 @@ struct DiskSettingsView: View {
                         Text("\(num)").tag(num)
                     }
                 }
-                .onChange(of: numberOfProcesses) { _ in
+                .onChange(of: numberOfProcesses) { _, _ in
                     onNumberOfProcessesChange()
                 }
             }
@@ -78,12 +78,12 @@ struct DiskSettingsView: View {
                         Text(disk).tag(disk)
                     }
                 }
-                .onChange(of: selectedDisk) { newValue in
+                .onChange(of: selectedDisk) { _, newValue in
                     onSelectedDiskChange(newValue)
                 }
                 
                 Toggle(localizedString("Show removable disks"), isOn: $removableDisks)
-                    .onChange(of: removableDisks) { _ in
+                    .onChange(of: removableDisks) { _, _ in
                         onRemovableDisksChange()
                     }
             }
@@ -100,7 +100,7 @@ struct DiskSettingsView: View {
             
             Section {
                 Toggle(localizedString("SMART data"), isOn: $smartData)
-                    .onChange(of: smartData) { _ in
+                    .onChange(of: smartData) { _, _ in
                         onSMARTDataChange()
                     }
             }
