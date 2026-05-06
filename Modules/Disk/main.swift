@@ -101,7 +101,7 @@ public class Disks: Codable, RemoteType, @unchecked Sendable {
     }
     
     public var isEmpty: Bool {
-        self.count == 0
+        self._array.isEmpty
     }
     
     public func first(where predicate: (drive) -> Bool) -> drive? {
