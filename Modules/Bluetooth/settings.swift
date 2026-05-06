@@ -11,69 +11,67 @@
 
 import Cocoa
 import Kit
+import SwiftUI
 
-internal class Settings: NSStackView, Settings_v {
+struct BluetoothSettingsView: View {
+    var devices: [BLEDevice]
+    var onToggle: (String, Bool) -> Void
+    
+    var body: some View {
+        Form {
+            if devices.isEmpty {
+                Text(localizedString("No Bluetooth devices are available"))
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding()
+            } else {
+                Section {
+                    ForEach(devices, id: \.id) { device in
+                        Toggle(device.name, isOn: Binding(
+                            get: { device.state },
+                            set: { newValue in
+                                onToggle(device.uuid?.uuidString ?? device.address, newValue)
+                            }
+                        ))
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+}
+
+internal class Settings: NSHostingView<BluetoothSettingsView>, Settings_v {
     public var callback: (() -> Void) = {}
-    
-    private var list: [String: Bool] = [:]
-    
-    private let emptyView: EmptyView = EmptyView(msg: localizedString("No Bluetooth devices are available"))
-    private var section: PreferencesSection = PreferencesSection()
+    private var devices: [BLEDevice] = []
     
     public init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: 0, height: 0))
-        
-        self.orientation = .vertical
-        self.distribution = .gravityAreas
-        self.spacing = Constants.Settings.margin
-        
-        self.addArrangedSubview(self.emptyView)
-        self.addArrangedSubview(self.section)
-        self.section.isHidden = true
-        
-        self.addArrangedSubview(NSView())
+        super.init(rootView: BluetoothSettingsView(devices: [], onToggle: { _, _ in }))
     }
     
-    required init?(coder: NSCoder) {
+    @MainActor required dynamic init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+    
+    required public init(rootView: BluetoothSettingsView) {
+        super.init(rootView: rootView)
     }
     
     internal func load(widgets: [widget_t]) {}
     
     internal func setList(_ list: [BLEDevice]) {
-        if self.list.count != list.count && !self.list.isEmpty {
-            self.section.removeFromSuperview()
-            self.section = PreferencesSection()
-            self.addArrangedSubview(self.section)
-            self.list = [:]
-        }
-        
-        if list.isEmpty && self.emptyView.isHidden {
-            self.emptyView.isHidden = false
-            self.section.isHidden = true
-            return
-        } else if !list.isEmpty && !self.emptyView.isHidden {
-            self.emptyView.isHidden = true
-            self.section.isHidden = false
-        }
-        
-        list.forEach { (d: BLEDevice) in
-            if self.list[d.id] == nil {
-                let btn = switchView(
-                    action: #selector(self.handleSelection),
-                    state: d.state
-                )
-                btn.identifier = NSUserInterfaceItemIdentifier(rawValue: "\(d.uuid?.uuidString ?? d.address)")
-                section.add(PreferencesRow(d.name, component: btn))
-                self.list[d.id] = true
-            }
-        }
+        self.devices = list
+        self.updateView()
     }
     
-    @objc private func handleSelection(_ sender: NSControl) {
-        guard let id = sender.identifier else { return }
-        let value = controlState(sender)
-        Store.shared.set(key: "ble_\(id.rawValue)", value: value)
-        self.callback()
+    private func updateView() {
+        self.rootView = BluetoothSettingsView(
+            devices: self.devices,
+            onToggle: { [weak self] id, value in
+                Store.shared.set(key: "ble_\(id)", value: value)
+                self?.callback()
+            }
+        )
     }
 }

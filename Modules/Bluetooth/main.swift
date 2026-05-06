@@ -101,7 +101,7 @@ public class Bluetooth: Module {
         )
         guard self.available else { return }
         
-        self.devicesReader = DevicesReader { [weak self] value in
+        self.devicesReader = DevicesReader(.bluetooth) { [weak self] value in
             self?.batteryCallback(value)
         }
         
@@ -116,11 +116,11 @@ public class Bluetooth: Module {
         guard let value = raw, self.enabled else { return }
         
         let active = value.filter{ $0.isPaired || ($0.isConnected && !$0.batteryLevel.isEmpty) }
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             self.popupView.batteryCallback(active)
             self.settingsView.setList(active)
             self.notificationsView.callback(active)
-        })
+        }
         
         var list: [Stack_t] = []
         active.forEach { (d: BLEDevice) in
