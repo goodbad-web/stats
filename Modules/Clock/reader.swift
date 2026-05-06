@@ -15,12 +15,7 @@ import Kit
 internal class ClockReader: Reader<Date>, @unchecked Sendable {
     private let title: String = ModuleType.clock.stringValue
     
-    private let queue = DispatchQueue(label: "eu.exelban.Stats.Clock.ntp.sync", qos: .default)
-    private var _offset: TimeInterval = 0
-    private var offset: TimeInterval {
-        get { self.queue.sync { self._offset } }
-        set { self.queue.sync { self._offset = newValue } }
-    }
+    private var offset: TimeInterval = 0
     private var now: Date { Date().addingTimeInterval(self.offset) }
     
     private var ntpSync: Bool {
@@ -57,11 +52,11 @@ internal class ClockReader: Reader<Date>, @unchecked Sendable {
         }
         
         let server = self.ntpServer
-        self.queue.async { [weak self] in
+        Task.detached(priority: .background) { [weak self] in
             guard let self else { return }
             guard let serverDate = self.requestTime(server: server) else { return }
             let newOffset = serverDate.timeIntervalSince(Date())
-            Task { @MainActor in
+            await MainActor.run {
                 self.offset = newOffset
                 self.alignOffset = newOffset
             }

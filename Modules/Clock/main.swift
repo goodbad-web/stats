@@ -12,7 +12,7 @@
 import Foundation
 import Kit
 
-public struct Clock_t: Codable {
+public struct Clock_t: Codable, Equatable {
     public var id: String = UUID().uuidString
     public var enabled: Bool = true
     
@@ -93,10 +93,10 @@ public class Clock: Module {
             }
         }
         
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             self.popupView.callback(clocks)
             self.portalView.callback(clocks)
-        })
+        }
         
         self.menuBar.widgets.filter{ $0.isActive }.forEach { (w: SWidget) in
             switch w.item {

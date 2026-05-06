@@ -13,7 +13,6 @@ import Cocoa
 import Kit
 
 internal class Popup: PopupWrapper {
-    private let orderTableView: OrderTableView = OrderTableView()
     private var list: [Clock_t] = []
     
     private var calendarView: CalendarView? = nil
@@ -29,10 +28,6 @@ internal class Popup: PopupWrapper {
         self.calendarState = Store.shared.bool(key: "\(self.title)_calendar", defaultValue: self.calendarState)
         self.weekNumbersState = Store.shared.bool(key: "\(self.title)_calendarWeekNumbers", defaultValue: self.weekNumbersState)
         self.calendarView = CalendarView(self.frame.width, showWeekNumbers: self.weekNumbersState)
-        
-        self.orderTableView.reorderCallback = { [weak self] in
-            self?.rearrange()
-        }
         
         if let calendar = self.calendarView, self.calendarState {
             self.addArrangedSubview(calendar)
@@ -50,11 +45,6 @@ internal class Popup: PopupWrapper {
         
         var sorted = list.sorted(by: { $0.popupIndex < $1.popupIndex })
         var views = self.subviews.filter{ $0 is ClockView }.compactMap{ $0 as? ClockView }
-        
-        if sorted.count != self.orderTableView.list.count || self.orderTableView.window?.isVisible ?? false {
-            self.orderTableView.list = sorted
-            self.orderTableView.update()
-        }
         
         sorted = sorted.filter({ $0.popupState })
         
@@ -92,18 +82,21 @@ internal class Popup: PopupWrapper {
             ))
         ]))
         
-        view.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("Calendar"), component: switchView(
-                action: #selector(self.toggleCalendarState),
-                state: self.calendarState
-            )),
-            PreferencesRow(localizedString("Show week numbers"), component: switchView(
-                action: #selector(self.toggleWeekNumbersState),
-                state: self.weekNumbersState
-            ))
-        ]))
+        let hostingView = NSHostingView(rootView: ClockPopupPreferencesView(
+            calendarState: Binding(get: { self.calendarState }, set: { self.toggleCalendar(state: $0) }),
+            weekNumbersState: Binding(get: { self.weekNumbersState }, set: { self.toggleWeekNumbers(state: $0) }),
+            list: Binding(get: { self.list }, set: { newList in
+                self.list = newList
+                self.rearrange()
+            })
+        ))
+        hostingView.translatesAutoresizingMaskIntoConstraints = false
+        view.addArrangedSubview(hostingView)
         
-        view.addArrangedSubview(self.orderTableView)
+        NSLayoutConstraint.activate([
+            hostingView.widthAnchor.constraint(equalTo: view.widthAnchor),
+            hostingView.heightAnchor.constraint(greaterThanOrEqualToConstant: 200)
+        ])
         
         return view
     }
@@ -120,8 +113,8 @@ internal class Popup: PopupWrapper {
         self.callback(self.list)
     }
     
-    @objc private func toggleCalendarState(_ sender: NSControl) {
-        self.calendarState = controlState(sender)
+    private func toggleCalendar(state: Bool) {
+        self.calendarState = state
         Store.shared.set(key: "\(self.title)_calendar", value: self.calendarState)
         
         guard let view = self.calendarView else { return }
@@ -133,11 +126,54 @@ internal class Popup: PopupWrapper {
         self.recalculateHeight()
     }
     
-    @objc private func toggleWeekNumbersState(_ sender: NSControl) {
-        self.weekNumbersState = controlState(sender)
+    private func toggleWeekNumbers(state: Bool) {
+        self.weekNumbersState = state
         Store.shared.set(key: "\(self.title)_calendarWeekNumbers", value: self.weekNumbersState)
         self.calendarView?.setShowWeekNumbers(self.weekNumbersState)
         self.recalculateHeight()
+    }
+}
+
+import SwiftUI
+
+struct ClockPopupPreferencesView: View {
+    @Binding var calendarState: Bool
+    @Binding var weekNumbersState: Bool
+    @Binding var list: [Clock_t]
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            Form {
+                Toggle(localizedString("Calendar"), isOn: $calendarState)
+                Toggle(localizedString("Show week numbers"), isOn: $weekNumbersState)
+            }
+            .padding()
+            
+            List {
+                ForEach($list, id: \.id) { $item in
+                    HStack {
+                        Text(item.name)
+                        Spacer()
+                        Toggle("", isOn: Binding(get: {
+                            item.popupState
+                        }, set: { newValue in
+                            if let index = list.firstIndex(where: { $0.id == item.id }) {
+                                list[index].popupState = newValue
+                            }
+                        }))
+                        .labelsHidden()
+                    }
+                }
+                .onMove { indices, newOffset in
+                    list.move(fromOffsets: indices, toOffset: newOffset)
+                    for i in list.indices {
+                        list[i].popupIndex = i
+                    }
+                }
+            }
+            .listStyle(.inset(alternatesRowBackgrounds: true))
+            .frame(height: 120)
+        }
     }
 }
 
@@ -678,173 +714,5 @@ internal class ClockChart: NSView {
         DispatchQueue.main.async(execute: {
             self.display()
         })
-    }
-}
-
-private class OrderTableView: NSView, NSTableViewDelegate, NSTableViewDataSource {
-    private let scrollView = NSScrollView()
-    private let tableView = NSTableView()
-    private var dragDropType = NSPasteboard.PasteboardType(rawValue: "\(Bundle.main.bundleIdentifier!).sensors-row")
-    
-    public var reorderCallback: () -> Void = {}
-    public var list: [Clock_t] = []
-    
-    init() {
-        super.init(frame: NSRect.zero)
-        
-        self.wantsLayer = true
-        self.layer?.cornerRadius = 3
-        
-        self.scrollView.translatesAutoresizingMaskIntoConstraints = false
-        self.scrollView.documentView = self.tableView
-        self.scrollView.hasHorizontalScroller = false
-        self.scrollView.hasVerticalScroller = true
-        self.scrollView.autohidesScrollers = true
-        self.scrollView.backgroundColor = NSColor.clear
-        self.scrollView.drawsBackground = true
-        
-        self.tableView.frame = self.scrollView.bounds
-        self.tableView.delegate = self
-        self.tableView.dataSource = self
-        self.tableView.backgroundColor = NSColor.clear
-        self.tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
-        self.tableView.registerForDraggedTypes([dragDropType])
-        self.tableView.gridColor = .gridColor
-        self.tableView.gridStyleMask = [.solidVerticalGridLineMask, .solidHorizontalGridLineMask]
-        self.tableView.style = .plain
-        
-        let nameColumn = NSTableColumn(identifier: nameColumnID)
-        nameColumn.headerCell.title = localizedString("Name")
-        nameColumn.headerCell.alignment = .center
-        let statusColumn = NSTableColumn(identifier: statusColumnID)
-        statusColumn.headerCell.title = ""
-        statusColumn.width = 16
-        
-        self.tableView.addTableColumn(nameColumn)
-        self.tableView.addTableColumn(statusColumn)
-        
-        self.addSubview(self.scrollView)
-        
-        NSLayoutConstraint.activate([
-            self.scrollView.leftAnchor.constraint(equalTo: self.leftAnchor),
-            self.scrollView.rightAnchor.constraint(equalTo: self.rightAnchor),
-            self.scrollView.topAnchor.constraint(equalTo: self.topAnchor),
-            self.scrollView.bottomAnchor.constraint(equalTo: self.bottomAnchor),
-            
-            self.heightAnchor.constraint(equalToConstant: 120)
-        ])
-    }
-    
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-    
-    public func update() {
-        self.tableView.reloadData()
-    }
-    
-    func numberOfRows(in tableView: NSTableView) -> Int {
-        return self.list.count
-    }
-    
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        if !self.list.indices.contains(row) { return nil }
-        let item = self.list[row]
-        
-        let cell = NSTableCellView()
-        
-        switch tableColumn?.identifier {
-        case nameColumnID:
-            let text: NSTextField = NSTextField()
-            text.drawsBackground = false
-            text.isBordered = false
-            text.isEditable = false
-            text.isSelectable = false
-            text.translatesAutoresizingMaskIntoConstraints = false
-            text.identifier = NSUserInterfaceItemIdentifier(item.name)
-            text.stringValue = item.name
-            
-            text.sizeToFit()
-            
-            cell.addSubview(text)
-            
-            NSLayoutConstraint.activate([
-                text.widthAnchor.constraint(equalTo: cell.widthAnchor),
-                text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-            ])
-        case statusColumnID:
-            let button: NSButton = NSButton(frame: NSRect(x: 0, y: 5, width: 10, height: 10))
-            button.identifier = NSUserInterfaceItemIdentifier("\(row)")
-            button.setButtonType(.switch)
-            button.state = item.popupState ? .on : .off
-            button.action = #selector(self.toggleClock)
-            button.title = ""
-            button.isBordered = false
-            button.isTransparent = false
-            button.target = self
-            button.sizeToFit()
-            
-            cell.addSubview(button)
-        default: break
-        }
-        
-        return cell
-    }
-    
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        let item = NSPasteboardItem()
-        item.setString(String(row), forType: self.dragDropType)
-        return item
-    }
-    
-    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
-        if dropOperation == .above {
-            return .move
-        }
-        return []
-    }
-    
-    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
-        var oldIndexes = [Int]()
-        info.enumerateDraggingItems(options: [], for: tableView, classes: [NSPasteboardItem.self], searchOptions: [:]) { dragItem, _, _ in
-            if let str = (dragItem.item as! NSPasteboardItem).string(forType: self.dragDropType), let index = Int(str) {
-                oldIndexes.append(index)
-            }
-        }
-        
-        var oldIndexOffset = 0
-        var newIndexOffset = 0
-        
-        tableView.beginUpdates()
-        for oldIndex in oldIndexes {
-            if oldIndex < row {
-                let currentIdx = oldIndex + oldIndexOffset
-                let newIdx = row - 1
-                
-                self.list[currentIdx].popupIndex = newIdx
-                self.list[newIdx].popupIndex = currentIdx
-                
-                oldIndexOffset -= 1
-            } else {
-                let currentIdx = oldIndex
-                let newIdx = row + newIndexOffset
-                
-                self.list[currentIdx].popupIndex = newIdx
-                self.list[newIdx].popupIndex = currentIdx
-                
-                newIndexOffset += 1
-            }
-            self.list = self.list.sorted(by: { $0.popupIndex < $1.popupIndex })
-            self.reorderCallback()
-            tableView.reloadData()
-        }
-        tableView.endUpdates()
-        
-        return true
-    }
-    
-    @objc private func toggleClock(_ sender: NSButton) {
-        guard let id = sender.identifier, let i = Int(id.rawValue) else { return }
-        self.list[i].popupState = sender.state == NSControl.StateValue.on
     }
 }
