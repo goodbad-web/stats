@@ -360,21 +360,9 @@ extension SensorsReader {
         return modeValue == 1 ? .forced : .automatic
         #else
         // Legacy Intel: Use FS! bitmask
-        // Bitmask: 0 = all auto, 1 = fan 0 forced, 2 = fan 1 forced, 3 = both forced
+        // Bitmask: 0 = all auto, bit 0 = fan 0 forced, bit 1 = fan 1 forced, etc.
         let fansMode: Int = Int(SMC.shared.getValue("FS! ") ?? 0)
-        var mode: FanMode = .automatic
-        
-        if fansMode == 0 {
-            mode = .automatic
-        } else if fansMode == 3 {
-            mode = .forced
-        } else if fansMode == 1 && id == 0 {
-            mode = .forced
-        } else if fansMode == 2 && id == 1 {
-            mode = .forced
-        }
-        
-        return mode
+        return (fansMode & (1 << id)) != 0 ? .forced : .automatic
         #endif
     }
 }

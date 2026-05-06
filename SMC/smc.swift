@@ -168,7 +168,7 @@ public class SMC {
         let device: io_object_t
         
         let matchingDictionary: CFMutableDictionary = IOServiceMatching("AppleSMC")
-        result = IOServiceGetMatchingServices(kIOMasterPortDefault, matchingDictionary, &iterator)
+        result = IOServiceGetMatchingServices(kIOMainPortDefault, matchingDictionary, &iterator)
         if result != kIOReturnSuccess {
             print("Error IOServiceGetMatchingServices(): " + (String(cString: mach_error_string(result), encoding: String.Encoding.ascii) ?? "unknown error"))
             return
@@ -211,7 +211,7 @@ public class SMC {
         }
         
         if val.dataSize > 0 {
-            if val.bytes.first(where: { $0 != 0 }) == nil && val.key != "FS! " && val.key != "F0Md" && val.key != "F1Md" && val.key != "F0md" && val.key != "F1md" {
+            if val.bytes.first(where: { $0 != 0 }) == nil && val.key != "FS! " && !val.key.hasPrefix("F") {
                 return nil
             }
             
@@ -432,24 +432,12 @@ public class SMC {
         }
         
         let fansMode = Int(self.getValue("FS! ") ?? 0)
-        var newMode: UInt8 = 0
+        var newMode: Int = fansMode
         
-        if fansMode == 0 && id == 0 && mode == .forced {
-            newMode = 1
-        } else if fansMode == 0 && id == 1 && mode == .forced {
-            newMode = 2
-        } else if fansMode == 1 && id == 0 && mode == .automatic {
-            newMode = 0
-        } else if fansMode == 1 && id == 1 && mode == .forced {
-            newMode = 3
-        } else if fansMode == 2 && id == 1 && mode == .automatic {
-            newMode = 0
-        } else if fansMode == 2 && id == 0 && mode == .forced {
-            newMode = 3
-        } else if fansMode == 3 && id == 0 && mode == .automatic {
-            newMode = 2
-        } else if fansMode == 3 && id == 1 && mode == .automatic {
-            newMode = 1
+        if mode == .forced {
+            newMode |= (1 << id)
+        } else {
+            newMode &= ~(1 << id)
         }
         
         if fansMode == newMode {
@@ -465,12 +453,12 @@ public class SMC {
             return
         }
         
-        value.bytes = [0, newMode, UInt8(0), UInt8(0), UInt8(0), UInt8(0),
-                       UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
-                       UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
-                       UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
-                       UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
-                       UInt8(0), UInt8(0)]
+        if value.dataSize == 1 {
+            value.bytes[0] = UInt8(newMode & 0xFF)
+        } else if value.dataSize == 2 {
+            value.bytes[0] = UInt8((newMode >> 8) & 0xFF)
+            value.bytes[1] = UInt8(newMode & 0xFF)
+        }
         
         result = write(value)
         if result != kIOReturnSuccess {
@@ -535,7 +523,13 @@ public class SMC {
     
     public func resetFans() {
         var value = SMCVal_t("FS! ")
-        value.dataSize = 2
+        if read(&value) != kIOReturnSuccess {
+            return
+        }
+        
+        for i in 0..<Int(value.dataSize) {
+            value.bytes[i] = 0
+        }
         
         let result = write(value)
         if result != kIOReturnSuccess {
