@@ -12,7 +12,6 @@
 import Cocoa
 
 public enum Platform: String, Codable {
-    case intel
     
     case m1
     case m1Pro
@@ -51,7 +50,6 @@ public enum Platform: String, Codable {
     
     public var generation: Int {
         switch self {
-        case .intel: return 0
         case .m1, .m1Pro, .m1Max, .m1Ultra: return 1
         case .m2, .m2Pro, .m2Max, .m2Ultra: return 2
         case .m3, .m3Pro, .m3Max, .m3Ultra: return 3
@@ -85,7 +83,7 @@ public enum Platform: String, Codable {
     }
     
     public static var all: [Platform] {
-        return apple + [.intel]
+        return apple
     }
 }
 
@@ -228,11 +226,7 @@ public class SystemKit {
             self.device.model = model
         }
         
-        #if arch(x86_64)
-        self.device.arch = "x86_64"
-        #elseif arch(arm64)
         self.device.arch = "arm64"
-        #endif
         
         self.device.bootDate = self.bootDate()
         
@@ -274,7 +268,7 @@ public class SystemKit {
     }
     
     func modelAndSerialNumber() -> (String?, String?) {
-        let service = IOServiceGetMatchingService(kIOMasterPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
         
         var modelIdentifier: String?
         if let property = IORegistryEntryCreateCFProperty(service, "model" as CFString, kCFAllocatorDefault, 0), let value = property.takeUnretainedValue() as? Data {
@@ -359,7 +353,7 @@ public class SystemKit {
     
     func getCPUCores(for platform: Platform?) -> (Int32?, Int32?, Int32?, [core_s])? {
         var iterator: io_iterator_t = io_iterator_t()
-        let result = IOServiceGetMatchingServices(kIOMasterPortDefault, IOServiceMatching("AppleARMPE"), &iterator)
+        let result = IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("AppleARMPE"), &iterator)
         if result != kIOReturnSuccess {
             print("Error find AppleARMPE: " + (String(cString: mach_error_string(result), encoding: String.Encoding.ascii) ?? "unknown error"))
             return nil
@@ -487,7 +481,7 @@ public class SystemKit {
     
     private func getFrequencies(for platform: Platform?) -> ([Int32], [Int32], [Int32])? {
         var iterator = io_iterator_t()
-        let result = IOServiceGetMatchingServices(kIOMasterPortDefault, IOServiceMatching("AppleARMIODevice"), &iterator)
+        let result = IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("AppleARMIODevice"), &iterator)
         if result != kIOReturnSuccess {
             print("Error find AppleARMIODevice: " + (String(cString: mach_error_string(result), encoding: String.Encoding.ascii) ?? "unknown error"))
             return nil
@@ -746,9 +740,7 @@ public class SystemKit {
     
     private func getPlatform(cpuName: String?) -> Platform? {
         if let name = cpuName?.lowercased() {
-            if name.contains("intel") {
-                return .intel
-            } else if name.contains("m1") {
+            if name.contains("m1") {
                 if name.contains("pro") {
                     return .m1Pro
                 } else if name.contains("max") {

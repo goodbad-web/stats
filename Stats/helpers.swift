@@ -105,10 +105,6 @@ extension AppDelegate {
     }
     
     internal func defaultValues() {
-        if Store.shared.exist(key: "runAtLoginInitialized") {
-            LaunchAtLogin.migrate()
-        }
-        
         if Store.shared.exist(key: "dockIcon") {
             let dockIconStatus = Store.shared.bool(key: "dockIcon", defaultValue: false) ? NSApplication.ActivationPolicy.regular : NSApplication.ActivationPolicy.accessory
             NSApp.setActivationPolicy(dockIconStatus)

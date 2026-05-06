@@ -66,7 +66,6 @@ public class CPU: Module {
     private var processReader: ProcessReader? = nil
     private var temperatureReader: TemperatureReader? = nil
     private var frequencyReader: FrequencyReader? = nil
-    private var limitReader: LimitReader? = nil
     private var averageLoadReader: AverageLoadReader? = nil
     
     private var usagePerCoreState: Bool {
@@ -155,16 +154,10 @@ public class CPU: Module {
             self?.popupView.temperatureCallback(value)
         }
         
-        #if arch(x86_64)
-        self.limitReader = LimitReader(.CPU, popup: true) { [weak self] value in
-            self?.popupView.limitCallback(value)
-        }
-        #else
         self.frequencyReader = FrequencyReader(.CPU) { [weak self] value in
             self?.popupView.frequencyCallback(value)
             self?.previewView.frequencyCallback(value)
         }
-        #endif
         
         self.settingsView.callback = { [weak self] in
             self?.loadReader?.read()
@@ -187,7 +180,6 @@ public class CPU: Module {
             self.processReader,
             self.temperatureReader,
             self.frequencyReader,
-            self.limitReader,
             self.averageLoadReader
         ])
     }

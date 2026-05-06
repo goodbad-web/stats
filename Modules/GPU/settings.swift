@@ -55,17 +55,6 @@ internal class Settings: NSStackView, Settings_v {
             ))
         ]))
         
-        #if arch(x86_64)
-        if !widgets.filter({ $0 == .mini }).isEmpty {
-            self.addArrangedSubview(PreferencesSection([
-                PreferencesRow(localizedString("Show GPU type"), component: switchView(
-                    action: #selector(self.toggleShowType),
-                    state: self.showTypeValue
-                ))
-            ]))
-        }
-        #endif
-        
         self.button = selectView(
             action: #selector(self.handleSelection),
             items: [],

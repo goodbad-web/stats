@@ -71,23 +71,19 @@ internal class Popup: PopupWrapper {
                 selected: self.fanValueState.rawValue
             ))
         ]))
-        #if arch(arm64)
         NotificationCenter.default.addObserver(self, selector: #selector(self.checkFanModesAndResetFtst), name: .checkFanModes, object: nil)
-        #endif
     }
     
     deinit {
         NotificationCenter.default.removeObserver(self)
     }
     
-    #if arch(arm64)
     @objc private func checkFanModesAndResetFtst() {
         let fanViews = self.list.values.compactMap { $0 as? FanView }
         guard !fanViews.isEmpty else { return }
         guard fanViews.allSatisfy({ $0.fan.mode.isAutomatic }) else { return }
         SMCHelper.shared.resetFanControl()
     }
-    #endif
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
@@ -996,12 +992,8 @@ private class ModeButtons: NSStackView {
     private var turboBtn: NSButton
     
     public init(frame: NSRect, mode: FanMode) {
-        var turboIcon: NSImage = NSImage(named: NSImage.Name("ac_unit"))!
-        var offIcon: NSImage = NSImage(named: NSImage.Name("ac_unit"))!
-        if #available(macOS 12.0, *) {
-            turboIcon = iconFromSymbol(name: "snowflake", scale: .large)
-            offIcon = iconFromSymbol(name: "fanblades.slash", scale: .medium)
-        }
+        let turboIcon: NSImage = iconFromSymbol(name: "snowflake", scale: .large)
+        let offIcon: NSImage = iconFromSymbol(name: "fanblades.slash", scale: .medium)
         
         self.offBtn = NSButton(image: offIcon, target: nil, action: #selector(offMode))
         self.turboBtn = NSButton(image: turboIcon, target: nil, action: #selector(turboMode))

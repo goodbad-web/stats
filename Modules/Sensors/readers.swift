@@ -115,12 +115,10 @@ internal class SensorsReader: Reader<Sensors_List> {
             return true
         })
         
-        #if arch(arm64)
         if self.HIDState {
             results += self.initHIDSensors()
         }
         results += self.initIOSensors()
-        #endif
         results += self.initCalculatedSensors(results)
         
         return results
@@ -143,7 +141,6 @@ internal class SensorsReader: Reader<Sensors_List> {
         var gpuSensors = self.list.sensors.filter({ $0.group == .GPU && $0.type == .temperature && $0.average }).map{ $0.value }
         let fanSensors = self.list.sensors.filter({ $0.type == .fan && !$0.isComputed })
         
-        #if arch(arm64)
         if self.HIDState {
             for typ in SensorsReader.HIDtypes {
                 let (page, usage, type) = self.m1Preset(type: typ)
@@ -191,7 +188,6 @@ internal class SensorsReader: Reader<Sensors_List> {
                 self.list.sensors[idx].value = pci
             }
         }
-        #endif
         
         if !cpuSensors.isEmpty {
             if let idx = self.list.sensors.firstIndex(where: { $0.key == "Average CPU" }) {
@@ -258,12 +254,10 @@ internal class SensorsReader: Reader<Sensors_List> {
         var cpuSensors = sensors.filter({ $0.group == .CPU && $0.type == .temperature && $0.average }).map{ $0.value }
         var gpuSensors = sensors.filter({ $0.group == .GPU && $0.type == .temperature && $0.average }).map{ $0.value }
         
-        #if arch(arm64)
         if self.HIDState {
             cpuSensors += sensors.filter({ $0.key.hasPrefix("pACC MTR Temp") || $0.key.hasPrefix("eACC MTR Temp") }).map{ $0.value }
             gpuSensors += sensors.filter({ $0.key.hasPrefix("GPU MTR Temp") }).map{ $0.value }
         }
-        #endif
         
         let fanSensors = sensors.filter({ $0.type == .fan && !$0.isComputed })
         
@@ -348,17 +342,10 @@ extension SensorsReader {
     }
     
     private func getFanMode(_ id: Int) -> FanMode {
-        #if arch(arm64)
         // Apple Silicon: Read F%dMd directly
         // Mode values: 0 = auto, 1 = manual, 3 = system (treated as auto for UI)
         let modeValue = Int(SMC.shared.getValue(SMC.shared.fanModeKey(id)) ?? 0)
         return modeValue == 1 ? .forced : .automatic
-        #else
-        // Legacy Intel: Use FS! bitmask
-        // Bitmask: 0 = all auto, bit 0 = fan 0 forced, bit 1 = fan 1 forced, etc.
-        let fansMode: Int = Int(SMC.shared.getValue("FS! ") ?? 0)
-        return (fansMode & (1 << id)) != 0 ? .forced : .automatic
-        #endif
     }
 }
 

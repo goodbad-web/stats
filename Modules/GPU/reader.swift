@@ -20,7 +20,6 @@ public struct device {
 }
 
 let vendors: [Data: String] = [
-    Data.init([0x86, 0x80, 0x00, 0x00]): "Intel",
     Data.init([0x02, 0x10, 0x00, 0x00]): "AMD"
 ]
 
@@ -66,11 +65,9 @@ internal class InfoReader: Reader<GPUs> {
         }
         let devices = PCIdevices.filter{ $0.object(forKey: "IOName") as? String == "display" }
         
-        #if arch(arm64)
         self.aneMaxPower = maxANEPower(for: SystemKit.shared.device.platform)
         self.setupANE()
         self.setupFrames()
-        #endif
 
         devices.forEach { (dict: NSDictionary) in
             guard let deviceID = dict["device-id"] as? Data, let vendorID = dict["vendor-id"] as? Data else {
@@ -156,15 +153,6 @@ internal class InfoReader: Reader<GPUs> {
                         temperature = Int(tmp)
                     }
                 }
-            } else if ioClass.contains("intel") { // intel
-                predictModel = "Intel Graphics"
-                type = .integrated
-                
-                if temperature == nil || temperature == 0 {
-                    if let tmp = SMC.shared.getValue("TCGC"), tmp != 128 {
-                        temperature = Int(tmp)
-                    }
-                }
             } else if ioClass.contains("agx") { // apple
                 predictModel = stats["model"] as? String ?? "Apple Graphics"
                 if let display = self.displays.first(where: { $0.vendor == "sppci_vendor_Apple" }) {
@@ -238,7 +226,6 @@ internal class InfoReader: Reader<GPUs> {
             }
         }
         
-        #if arch(arm64)
         let anePower = self.readANEPower()
         let aneUtil = anePower.map { min(1.0, max(0.0, $0 / self.aneMaxPower)) }
         let fpsValue = self.readFrames()
@@ -246,7 +233,6 @@ internal class InfoReader: Reader<GPUs> {
             self.gpus.list[i].aneUtilization = aneUtil ?? 0
             self.gpus.list[i].fps = fpsValue
         }
-        #endif
         
         self.gpus.list.sort{ !$0.state && $1.state }
         self.callback(self.gpus)

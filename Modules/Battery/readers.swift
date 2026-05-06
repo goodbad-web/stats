@@ -13,7 +13,7 @@ import Cocoa
 import Kit
 
 internal class UsageReader: Reader<Battery_Usage> {
-    private var service: io_connect_t = IOServiceGetMatchingService(kIOMasterPortDefault, IOServiceMatching("AppleSmartBattery"))
+    private var service: io_connect_t = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
     
     private var source: CFRunLoopSource?
     private var loop: CFRunLoop?
@@ -85,10 +85,8 @@ internal class UsageReader: Reader<Battery_Usage> {
                 if self.usage.designedCapacity == 0 {
                     self.usage.designedCapacity = 1
                 }
-                self.usage.maxCapacity = self.getIntValue((isARM ? "AppleRawMaxCapacity" : "MaxCapacity") as CFString) ?? 1
-                if !isARM {
-                    self.usage.state = list[kIOPSBatteryHealthKey] as? String
-                }
+                self.usage.maxCapacity = self.getIntValue("AppleRawMaxCapacity" as CFString) ?? 1
+                self.usage.state = list[kIOPSBatteryHealthKey] as? String
                 self.usage.health = Int((Double(100 * self.usage.maxCapacity) / Double(self.usage.designedCapacity)).rounded(.toNearestOrEven))
                 
                 self.usage.amperage = self.getIntValue("Amperage" as CFString) ?? 0

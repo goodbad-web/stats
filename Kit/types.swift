@@ -225,11 +225,9 @@ extension SColor: CaseIterable {
     public static var magenta: SColor { return SColor(key: "magenta", value: "Magenta", additional: NSColor.magenta) }
     public static var pink: SColor { return SColor(key: "pink", value: "Pink", additional: NSColor.systemPink) }
     public static var teal: SColor { return SColor(key: "teal", value: "Teal", additional: NSColor.systemTeal) }
-    public static var indigo: SColor { if #available(OSX 10.15, *) {
+    public static var indigo: SColor {
         return SColor(key: "indigo", value: "Indigo", additional: NSColor.systemIndigo)
-    } else {
-        return SColor(key: "indigo", value: "Indigo", additional: NSColor(red: 75, green: 0, blue: 130, alpha: 1))
-    } }
+    }
     
     public static var allCases: [SColor] {
         return [.utilization, .pressure, .cluster, separator1,
@@ -286,7 +284,7 @@ public extension Notification.Name {
 }
 
 public var isARM: Bool {
-    SystemKit.shared.device.platform != .intel
+    true
 }
 
 public let notificationLevels: [KeyValue_t] = [

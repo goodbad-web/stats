@@ -14,7 +14,6 @@ import Kit
 
 internal class Settings: NSStackView, Settings_v {
     private var usagePerCoreState: Bool = false
-    private var hyperthreadState: Bool = false
     private var splitValueState: Bool = false
     private var updateIntervalValue: Int = 1
     private var updateTopIntervalValue: Int = 1
@@ -22,30 +21,22 @@ internal class Settings: NSStackView, Settings_v {
     private var clustersGroupState: Bool = false
     
     private let title: String
-    private var hasHyperthreadingCores = false
     
     public var callback: (() -> Void) = {}
     public var callbackWhenUpdateNumberOfProcesses: (() -> Void) = {}
     public var setInterval: ((_ value: Int) -> Void) = {_ in }
     public var setTopInterval: ((_ value: Int) -> Void) = {_ in }
-    
-    private var hyperthreadView: NSSwitch? = nil
     private var splitValueView: NSSwitch? = nil
     private var usagePerCoreView: NSSwitch? = nil
     private var groupByClustersView: NSSwitch? = nil
     
     public init(_ module: ModuleType) {
         self.title = module.stringValue
-        self.hyperthreadState = Store.shared.bool(key: "\(self.title)_hyperhreading", defaultValue: self.hyperthreadState)
         self.usagePerCoreState = Store.shared.bool(key: "\(self.title)_usagePerCore", defaultValue: self.usagePerCoreState)
         self.splitValueState = Store.shared.bool(key: "\(self.title)_splitValue", defaultValue: self.splitValueState)
         self.updateIntervalValue = Store.shared.int(key: "\(self.title)_updateInterval", defaultValue: self.updateIntervalValue)
         self.updateTopIntervalValue = Store.shared.int(key: "\(self.title)_updateTopInterval", defaultValue: self.updateTopIntervalValue)
         self.numberOfProcesses = Store.shared.int(key: "\(self.title)_processes", defaultValue: self.numberOfProcesses)
-        if !self.usagePerCoreState {
-            self.hyperthreadState = false
-        }
-        self.hasHyperthreadingCores = sysctlByName("hw.physicalcpu") != sysctlByName("hw.logicalcpu")
         self.clustersGroupState = Store.shared.bool(key: "\(self.title)_clustersGroup", defaultValue: self.clustersGroupState)
         
         super.init(frame: NSRect(x: 0, y: 0, width: 0, height: 0))
@@ -102,25 +93,12 @@ internal class Settings: NSStackView, Settings_v {
                 PreferencesRow(localizedString("Show usage per core"), component: self.usagePerCoreView!)
             ]
             
-            #if arch(arm64)
             self.groupByClustersView = switchView(
                 action: #selector(self.toggleClustersGroup),
                 state: self.clustersGroupState
             )
             rows.append(PreferencesRow(localizedString("Cluster grouping"), component: self.groupByClustersView!))
-            #endif
             
-            if self.hasHyperthreadingCores {
-                self.hyperthreadView = switchView(
-                    action: #selector(self.toggleMultithreading),
-                    state: self.hyperthreadState
-                )
-                if !self.usagePerCoreState {
-                    self.hyperthreadView?.isEnabled = false
-                    self.hyperthreadView?.state = .off
-                }
-                rows.append(PreferencesRow(localizedString("Show hyper-threading cores"), component: self.hyperthreadView!))
-            }
             rows.append(PreferencesRow(localizedString("Split the value (System/User)"), component: self.splitValueView!))
             
             self.addArrangedSubview(PreferencesSection(rows))
@@ -154,13 +132,10 @@ internal class Settings: NSStackView, Settings_v {
         Store.shared.set(key: "\(self.title)_usagePerCore", value: self.usagePerCoreState)
         self.callback()
         
-        self.hyperthreadView?.isEnabled = self.usagePerCoreState
-        self.splitValueView?.isEnabled = !(self.usagePerCoreState || self.clustersGroupState)
-        
         if !self.usagePerCoreState {
-            self.hyperthreadState = false
-            Store.shared.set(key: "\(self.title)_hyperhreading", value: self.hyperthreadState)
-            self.hyperthreadView?.state = .off
+            self.splitValueState = false
+            Store.shared.set(key: "\(self.title)_splitValue", value: self.splitValueState)
+            self.splitValueView?.state = .off
         } else {
             self.splitValueState = false
             Store.shared.set(key: "\(self.title)_splitValue", value: self.splitValueState)
@@ -173,13 +148,6 @@ internal class Settings: NSStackView, Settings_v {
             self.groupByClustersView?.state = .off
         }
     }
-    
-    @objc func toggleMultithreading(_ sender: NSControl) {
-        self.hyperthreadState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_hyperhreading", value: self.hyperthreadState)
-        self.callback()
-    }
-    
     @objc func toggleSplitValue(_ sender: NSControl) {
         self.splitValueState = controlState(sender)
         Store.shared.set(key: "\(self.title)_splitValue", value: self.splitValueState)

@@ -18,7 +18,7 @@ archive: clean
 
 	xcodebuild \
   		-scheme $(APP) \
-  		-destination 'platform=OS X,arch=x86_64' \
+  		-destination 'platform=OS X,arch=arm64' \
   		-configuration Release archive \
   		-archivePath $(BUILD_PATH)/$(APP).xcarchive \
   		ENABLE_MODULE_VERIFIER=NO
@@ -111,6 +111,6 @@ leveldb:
 		git clone --recurse-submodules https://github.com/google/leveldb.git leveldb-source; \
 	fi
 	mkdir -p $(PWD)/leveldb-source/build
-	cd $(PWD)/leveldb-source/build && cmake -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_BUILD_TYPE=Release .. && cmake --build .
+	cd $(PWD)/leveldb-source/build && cmake -DCMAKE_OSX_ARCHITECTURES="arm64" -DCMAKE_BUILD_TYPE=Release .. && cmake --build .
 	cp $(PWD)/leveldb-source/build/libleveldb.a $(PWD)/Kit/lldb/libleveldb.a
 	rm -rf $(PWD)/leveldb-source

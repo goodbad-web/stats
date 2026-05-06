@@ -17,40 +17,7 @@ import WebKit
 import Metal
 
 public struct LaunchAtLogin {
-    private static let id = "\(Bundle.main.bundleIdentifier!).LaunchAtLogin"
-    
     public static var isEnabled: Bool {
-        get {
-            if #available(macOS 13, *) {
-                return isEnabledNext
-            } else {
-                return isEnabledLegacy
-            }
-        }
-        set {
-            if #available(macOS 13, *) {
-                isEnabledNext = newValue
-            } else {
-                isEnabledLegacy = newValue
-            }
-        }
-    }
-    
-    private static var isEnabledLegacy: Bool {
-        get {
-            guard let jobs = (LaunchAtLogin.self as DeprecationWarningWorkaround.Type).jobsDict else {
-                return false
-            }
-            let job = jobs.first { $0["Label"] as! String == id }
-            return job?["OnDemand"] as? Bool ?? false
-        }
-        set {
-            SMLoginItemSetEnabled(id as CFString, newValue)
-        }
-    }
-    
-    @available(macOS 13, *)
-    private static var isEnabledNext: Bool {
         get { SMAppService.mainApp.status == .enabled }
         set {
             do {
@@ -66,28 +33,6 @@ public struct LaunchAtLogin {
                 print("failed to \(newValue ? "enable" : "disable") launch at login: \(error.localizedDescription)")
             }
         }
-    }
-    
-    public static func migrate() {
-        guard #available(macOS 13, *), !Store.shared.exist(key: "LaunchAtLoginNext") else {
-            return
-        }
-        
-        Store.shared.set(key: "LaunchAtLoginNext", value: true)
-        isEnabledNext = isEnabledLegacy
-        isEnabledLegacy = false
-        try? SMAppService.loginItem(identifier: id).unregister()
-    }
-}
-
-private protocol DeprecationWarningWorkaround {
-    static var jobsDict: [[String: AnyObject]]? { get }
-}
-
-extension LaunchAtLogin: DeprecationWarningWorkaround {
-    @available(*, deprecated)
-    static var jobsDict: [[String: AnyObject]]? {
-        SMCopyAllJobDictionaries(kSMDomainUserLaunchd)?.takeRetainedValue() as? [[String: AnyObject]]
     }
 }
 
@@ -665,7 +610,7 @@ public func fetchIOService(_ name: String) -> [NSDictionary]? {
     var obj: io_registry_entry_t = 1
     var list: [NSDictionary] = []
     
-    let result = IOServiceGetMatchingServices(kIOMasterPortDefault, IOServiceMatching(name), &iterator)
+    let result = IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching(name), &iterator)
     if result != kIOReturnSuccess {
         print("Error IOServiceGetMatchingServices(): " + (String(cString: mach_error_string(result), encoding: String.Encoding.ascii) ?? "unknown error"))
         return nil
@@ -960,48 +905,13 @@ public class SMCHelper {
     }
     
     public func install(completion: @escaping (_ installed: Bool) -> Void) {
-        var authRef: AuthorizationRef?
-        var authStatus = AuthorizationCreate(nil, nil, [.preAuthorize], &authRef)
-        
-        guard authStatus == errAuthorizationSuccess else {
-            print("Unable to get a valid empty authorization reference to load Helper daemon")
+        do {
+            try SMAppService.daemon(plistName: "eu.exelban.Stats.SMC.Helper").register()
+            completion(true)
+        } catch {
+            print("Error while installing the Helper: \(error.localizedDescription)")
             completion(false)
-            return
         }
-        
-        let authItem = kSMRightBlessPrivilegedHelper.withCString { authorizationString in
-            AuthorizationItem(name: authorizationString, valueLength: 0, value: nil, flags: 0)
-        }
-        
-        let pointer = UnsafeMutablePointer<AuthorizationItem>.allocate(capacity: 1)
-        pointer.initialize(to: authItem)
-        
-        defer {
-            pointer.deinitialize(count: 1)
-            pointer.deallocate()
-        }
-        
-        var authRights = AuthorizationRights(count: 1, items: pointer)
-        
-        let flags: AuthorizationFlags = [.interactionAllowed, .extendRights, .preAuthorize]
-        authStatus = AuthorizationCreate(&authRights, nil, flags, &authRef)
-        
-        guard authStatus == errAuthorizationSuccess else {
-            print("Unable to get a valid loading authorization reference to load Helper daemon")
-            completion(false)
-            return
-        }
-        
-        var error: Unmanaged<CFError>?
-        if SMJobBless(kSMDomainSystemLaunchd, "eu.exelban.Stats.SMC.Helper" as CFString, authRef, &error) == false {
-            let blessError = error!.takeRetainedValue() as Error
-            print("Error while installing the Helper: \(blessError.localizedDescription)")
-            completion(false)
-            return
-        }
-        
-        AuthorizationFree(authRef!, [])
-        completion(true)
     }
     
     private func helperConnection() -> NSXPCConnection? {
@@ -1236,14 +1146,7 @@ public class AppIcon: NSView {
 }
 
 public func controlState(_ sender: NSControl) -> Bool {
-    var state: NSControl.StateValue
-    
-    if #available(OSX 10.15, *) {
-        state = sender is NSSwitch ? (sender as! NSSwitch).state : .off
-    } else {
-        state = sender is NSButton ? (sender as! NSButton).state : .off
-    }
-    
+    let state = sender is NSSwitch ? (sender as! NSSwitch).state : .off
     return state == .on
 }
 
@@ -1274,7 +1177,7 @@ public func showAlert(_ message: String, _ information: String? = nil, _ style: 
 }
 
 var isDarkMode: Bool {
-    switch NSAppearance.current.name {
+    switch NSAppearance.currentDrawing().name {
     case .darkAqua, .vibrantDark, .accessibilityHighContrastDarkAqua, .accessibilityHighContrastVibrantDark:
         return true
     default:

@@ -264,7 +264,6 @@ public struct Fan: Sensor_p, Codable {
     public var group: SensorGroup = .sensor
     public var type: SensorType = .fan
     public var platforms: [Platform] = Platform.all
-    public var isIntelOnly: Bool = false
     public var isComputed: Bool = false
     public var average: Bool = false
     public var unit: String = "RPM"
@@ -330,7 +329,6 @@ public struct Fan: Sensor_p, Codable {
 internal let SensorsList: [Sensor] = [
     // Temperature
     Sensor(key: "TA%P", name: "Ambient %", group: .sensor, type: .temperature, platforms: Platform.all),
-    Sensor(key: "Th%H", name: "Heatpipe %", group: .sensor, type: .temperature, platforms: [.intel]),
     Sensor(key: "TZ%C", name: "Thermal zone %", group: .sensor, type: .temperature, platforms: Platform.all),
     
     Sensor(key: "TC0D", name: "CPU diode", group: .CPU, type: .temperature, platforms: Platform.all),
@@ -350,8 +348,6 @@ internal let SensorsList: [Sensor] = [
     Sensor(key: "TG0P", name: "GPU proximity", group: .GPU, type: .temperature, platforms: Platform.all),
     
     Sensor(key: "Tm0P", name: "Mainboard", group: .system, type: .temperature, platforms: Platform.all),
-    Sensor(key: "Tp0P", name: "Powerboard", group: .system, type: .temperature, platforms: [.intel]),
-    Sensor(key: "TB1T", name: "Battery", group: .system, type: .temperature, platforms: [.intel]),
     Sensor(key: "TW0P", name: "Airport", group: .system, type: .temperature, platforms: Platform.all),
     Sensor(key: "TL0P", name: "Display", group: .system, type: .temperature, platforms: Platform.all),
     Sensor(key: "TI%P", name: "Thunderbolt %", group: .system, type: .temperature, platforms: Platform.all),

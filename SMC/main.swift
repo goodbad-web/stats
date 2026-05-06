@@ -139,15 +139,11 @@ func main() {
             print()
         }
     case .reset:
-        #if arch(arm64)
         if SMC.shared.resetFanControl() {
             print("[reset] fan control restored to automatic")
         } else {
             print("[reset] fan control reset FAILED")
         }
-        #else
-        print("[reset] not needed on Intel Macs")
-        #endif
     case .help, .unknown:
         print("SMC tool\n")
         print("Usage:")
@@ -157,7 +153,7 @@ func main() {
         print("  set      set value to a key")
         print("  fan      set fan speed")
         print("  fans     list of fans")
-        print("  reset    reset Ftst (Apple Silicon only)")
+        print("  reset    reset fan control")
         print("  help     help menu\n")
         print("Available Flags:")
         print("  -t    list temperature sensors")
