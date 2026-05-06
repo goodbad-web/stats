@@ -193,7 +193,7 @@ internal class Popup: PopupWrapper {
     }
     
     internal func usageCallback(_ values: [Sensor_p]) {
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             values.filter({ $0 is Sensor }).forEach { (s: Sensor_p) in
                 if let sensor = self.list[s.key] as? SensorView {
                     sensor.addHistoryPoint(s)
@@ -214,7 +214,7 @@ internal class Popup: PopupWrapper {
                     }
                 }
             }
-        })
+        }
     }
     
     private func recalculateHeight() {
@@ -483,7 +483,7 @@ internal class FanView: NSStackView {
     
     private var slider: NSSlider? = nil
     private var modeButtons: ModeButtons? = nil
-    private var debouncer: DispatchWorkItem? = nil
+    private var debounceTask: Task<Void, Never>? = nil
     
     private var barView: BarChartView? = nil
     
@@ -551,7 +551,7 @@ internal class FanView: NSStackView {
             self.modeButtons?.setMode(FanMode(rawValue: fanMode.rawValue) ?? .automatic)
             
             self.setSpeed(value: Int(self.speed), then: {
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     self.sliderValueField?.textColor = .systemBlue
                 }
             })
@@ -756,17 +756,22 @@ internal class FanView: NSStackView {
             self.slider?.doubleValue = self.speed
             if self.speedState {
                 self.setSpeed(value: Int(self.speed), then: {
-                    DispatchQueue.main.async {
+                    Task { @MainActor in
                         self.sliderValueField?.textColor = .systemBlue
                     }
                 })
             }
             self.addArrangedSubview(view)
         } else {
-            self.sliderValueField?.stringValue = ""
-            self.sliderValueField?.textColor = .secondaryLabelColor
-            self.minBtn?.state = .off
-            self.maxBtn?.state = .off
+            Task {
+                try? await Task.sleep(nanoseconds: 3 * 1_000_000_000)
+                await MainActor.run {
+                    self.sliderValueField?.stringValue = ""
+                    self.sliderValueField?.textColor = .secondaryLabelColor
+                    self.minBtn?.state = .off
+                    self.maxBtn?.state = .off
+                }
+            }
             view.removeFromSuperview()
         }
         
@@ -780,19 +785,20 @@ internal class FanView: NSStackView {
         self.sliderValueField?.textColor = .secondaryLabelColor
         self.fan.customSpeed = value
         
-        self.debouncer?.cancel()
-        
-        let task = DispatchWorkItem { [weak self] in
-            DispatchQueue.global(qos: .userInteractive).async { [weak self] in
-                if let id = self?.fan.id {
-                    SMCHelper.shared.setFanSpeed(id, speed: value)
-                }
+        self.debounceTask?.cancel()
+        self.debounceTask = Task {
+            try? await Task.sleep(nanoseconds: 300 * 1_000_000)
+            if Task.isCancelled { return }
+            
+            let id = self.fan.id
+            await Task.detached(priority: .userInteractive) {
+                SMCHelper.shared.setFanSpeed(id, speed: value)
+            }.value
+            
+            await MainActor.run {
                 then()
             }
         }
-        
-        self.debouncer = task
-        DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + 0.3, execute: task)
     }
     
     @objc private func sliderCallback(_ sender: NSSlider) {
@@ -807,7 +813,7 @@ internal class FanView: NSStackView {
         self.maxBtn?.state = .off
         
         self.setSpeed(value: Int(value), then: {
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.slider?.intValue = Int32(value)
                 self.sliderValueField?.textColor = .systemBlue
             }
@@ -842,15 +848,18 @@ internal class FanView: NSStackView {
         
         if self.speedState {
             if let mode = self.willSleepMode, let speed = self.willSleepSpeed {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                    SMCHelper.shared.setFanMode(self.fan.id, mode: mode.rawValue)
-                    self.modeButtons?.setMode(mode)
-                    if !mode.isAutomatic {
-                        self.setSpeed(value: speed, then: {
-                            DispatchQueue.main.async {
-                                self.sliderValueField?.textColor = .systemBlue
-                            }
-                        })
+                Task {
+                    try? await Task.sleep(nanoseconds: 3 * 1_000_000_000)
+                    await MainActor.run {
+                        SMCHelper.shared.setFanMode(self.fan.id, mode: mode.rawValue)
+                        self.modeButtons?.setMode(mode)
+                        if !mode.isAutomatic {
+                            self.setSpeed(value: speed, then: {
+                                Task { @MainActor in
+                                    self.sliderValueField?.textColor = .systemBlue
+                                }
+                            })
+                        }
                     }
                 }
             }
@@ -860,7 +869,7 @@ internal class FanView: NSStackView {
         
         if let value = self.fan.customSpeed, !self.fan.mode.isAutomatic {
             self.setSpeed(value: value, then: {
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     self.sliderValueField?.textColor = .systemBlue
                 }
             })
@@ -894,7 +903,7 @@ internal class FanView: NSStackView {
     }
     
     public func update(_ value: Fan) {
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if (self.window?.isVisible ?? false) || !self.ready {
                 self.fan.value = value.value
                 
@@ -926,7 +935,7 @@ internal class FanView: NSStackView {
                 
                 self.ready = true
             }
-        })
+        }
     }
     
     @objc private func installHelper(_ sender: NSButton) {

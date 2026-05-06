@@ -11,15 +11,9 @@
 
 import Cocoa
 import Kit
+import SwiftUI
 
 internal class Settings: NSStackView, Settings_v {
-    private var updateIntervalValue: Int = 3
-    private var hidState: Bool
-    private var fanSpeedState: Bool = false
-    private var fansSyncState: Bool = false
-    private var unknownSensorsState: Bool = false
-    private var fanValueState: FanValue = .percentage
-    
     public var callback: (() -> Void) = {}
     public var HIDcallback: (() -> Void) = {}
     public var unknownCallback: (() -> Void) = {}
@@ -27,71 +21,32 @@ internal class Settings: NSStackView, Settings_v {
     public var selectedHandler: (String) -> Void = {_ in }
     
     private let title: String
-    private var button: NSPopUpButton?
-    private var list: [Sensor_p] = []
-    private var sensorsPrefs: PreferencesSection?
-    private var selectedSensor: String = "Average System Total"
+    private var hostingView: NSHostingView<SensorsSettingsView>?
     
     public init(_ module: ModuleType) {
         self.title = module.stringValue
-        self.hidState = SystemKit.shared.device.platform == .m1 ? true : false
-        
         super.init(frame: NSRect.zero)
         self.orientation = .vertical
-        self.spacing = Constants.Settings.margin
+        self.spacing = 0
         
-        self.updateIntervalValue = Store.shared.int(key: "\(self.title)_updateInterval", defaultValue: self.updateIntervalValue)
-        self.hidState = Store.shared.bool(key: "\(self.title)_hid", defaultValue: self.hidState)
-        self.fanSpeedState = Store.shared.bool(key: "\(self.title)_speed", defaultValue: self.fanSpeedState)
-        self.fansSyncState = Store.shared.bool(key: "\(self.title)_fansSync", defaultValue: self.fansSyncState)
-        self.unknownSensorsState = Store.shared.bool(key: "\(self.title)_unknown", defaultValue: self.unknownSensorsState)
-        self.fanValueState = FanValue(rawValue: Store.shared.string(key: "\(self.title)_fanValue", defaultValue: self.fanValueState.rawValue)) ?? .percentage
-        self.selectedSensor = Store.shared.string(key: "\(self.title)_sensor", defaultValue: self.selectedSensor)
+        let sensorsSettingsView = SensorsSettingsView(
+            title: self.title,
+            onCallback: { [weak self] in self?.callback() },
+            onHIDCallback: { [weak self] in self?.HIDcallback() },
+            onUnknownCallback: { [weak self] in self?.unknownCallback() },
+            onSetInterval: { [weak self] value in self?.setInterval(value) },
+            onSelectedHandler: { [weak self] value in self?.selectedHandler(value) }
+        )
         
-        self.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("Update interval"), component: selectView(
-                action: #selector(self.changeUpdateInterval),
-                items: ReaderUpdateIntervals,
-                selected: "\(self.updateIntervalValue)"
-            ))
-        ]))
+        let hostingView = NSHostingView(rootView: sensorsSettingsView)
+        hostingView.translatesAutoresizingMaskIntoConstraints = false
+        self.addArrangedSubview(hostingView)
+        self.hostingView = hostingView
         
-        self.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("Fan value"), component: selectView(
-                action: #selector(self.toggleFanValue),
-                items: FanValues,
-                selected: self.fanValueState.rawValue
-            )),
-            PreferencesRow(localizedString("Save the fan speed"), component: switchView(
-                action: #selector(self.toggleSpeedState),
-                state: self.fanSpeedState
-            )),
-            PreferencesRow(localizedString("Synchronize fan's control"), component: switchView(
-                action: #selector(self.toggleFansSync),
-                state: self.fansSyncState
-            ))
-        ]))
-        
-        var sensorsRows: [PreferencesRow] = [
-            PreferencesRow(localizedString("Show unknown sensors"), component: switchView(
-                action: #selector(self.toggleuUnknownSensors),
-                state: self.unknownSensorsState
-            ))
-        ]
-        if isARM {
-            sensorsRows.append(PreferencesRow(localizedString("HID sensors"), component: switchView(
-                action: #selector(self.toggleHID),
-                state: self.hidState
-            )))
-        }
-        sensorsRows.append(PreferencesRow(localizedString("Sensor to show"), id: "active_sensor", component: selectView(
-            action: #selector(self.handleSelection),
-            items: [],
-            selected: self.selectedSensor)
-        ))
-        let sensorsPrefs = PreferencesSection(sensorsRows)
-        self.sensorsPrefs = sensorsPrefs
-        self.addArrangedSubview(sensorsPrefs)
+        NSLayoutConstraint.activate([
+            hostingView.widthAnchor.constraint(equalTo: self.widthAnchor),
+            hostingView.heightAnchor.constraint(greaterThanOrEqualToConstant: 400)
+        ])
     }
     
     required init?(coder: NSCoder) {
@@ -99,111 +54,136 @@ internal class Settings: NSStackView, Settings_v {
     }
     
     public func load(widgets: [widget_t]) {
-        var sensors = self.list
-        guard !sensors.isEmpty else {
-            return
-        }
-        if !self.unknownSensorsState {
-            sensors = sensors.filter({ $0.group != .unknown })
-        }
-        
-        self.subviews.filter({ $0.identifier == NSUserInterfaceItemIdentifier("sensor") }).forEach { v in
-            v.removeFromSuperview()
-        }
-        
-        var types: [SensorType] = []
-        sensors.forEach { (s: Sensor_p) in
-            if !types.contains(s.type) {
-                types.append(s.type)
-            }
-        }
-        
-        var buttonList: [KeyValue_t] = []
-        types.forEach { (typ: SensorType) in
-            let section = PreferencesSection(title: localizedString(typ.rawValue))
-            section.identifier = NSUserInterfaceItemIdentifier("sensor")
-            
-            let filtered = sensors.filter{ $0.type == typ }
-            var groups: [SensorGroup] = []
-            filtered.forEach { (s: Sensor_p) in
-                if !groups.contains(s.group) {
-                    groups.append(s.group)
-                }
-            }
-            groups.forEach { (group: SensorGroup) in
-                filtered.filter{ $0.group == group }.forEach { (s: Sensor_p) in
-                    let btn = switchView(
-                        action: #selector(self.toggleSensor),
-                        state: s.state
-                    )
-                    btn.identifier = NSUserInterfaceItemIdentifier(rawValue: s.key)
-                    section.add(PreferencesRow(localizedString(s.name), component: btn))
-                    buttonList.append(KeyValue_t(key: s.key, value: "\(localizedString(typ.rawValue)) - \(s.name)"))
-                }
-            }
-            
-            self.addArrangedSubview(section)
-        }
-        
-        if let row = self.sensorsPrefs?.findRow("active_sensor") {
-            if !widgets.isEmpty {
-                self.sensorsPrefs?.setRowVisibility(row, newState: widgets.contains(where: { $0 == .mini }))
-            }
-            row.replaceComponent(with: selectView(
-                action: #selector(self.handleSelection),
-                items: buttonList,
-                selected: self.selectedSensor
-            ))
-        }
+        self.hostingView?.rootView.widgets = widgets
     }
     
     public func setList(_ list: [Sensor_p]?) {
         guard let list else { return }
-        self.list = self.unknownSensorsState ? list : list.filter({ $0.group != .unknown })
-        self.load(widgets: [])
+        self.hostingView?.rootView.allSensors = list
+    }
+}
+
+struct SensorsSettingsView: View {
+    let title: String
+    
+    @AppStorage("Sensors_updateInterval") private var updateInterval: Int = 3
+    @AppStorage("Sensors_hid") private var hidState: Bool = isARM
+    @AppStorage("Sensors_speed") private var fanSpeedState: Bool = false
+    @AppStorage("Sensors_fansSync") private var fansSyncState: Bool = false
+    @AppStorage("Sensors_unknown") private var unknownSensorsState: Bool = false
+    @AppStorage("Sensors_fanValue") private var fanValueState: String = "percentage"
+    @AppStorage("Sensors_sensor") private var selectedSensor: String = "Average System Total"
+    
+    @State var allSensors: [Sensor_p] = []
+    @State var widgets: [widget_t] = []
+    
+    var onCallback: () -> Void = {}
+    var onHIDCallback: () -> Void = {}
+    var onUnknownCallback: () -> Void = {}
+    var onSetInterval: (Int) -> Void = { _ in }
+    var onSelectedHandler: (String) -> Void = { _ in }
+    
+    var sensors: [Sensor_p] {
+        if unknownSensorsState {
+            return allSensors
+        }
+        return allSensors.filter { $0.group != .unknown }
     }
     
-    @objc private func toggleSensor(_ sender: NSControl) {
-        guard let id = sender.identifier else { return }
-        Store.shared.set(key: "sensor_\(id.rawValue)", value: controlState(sender))
-        self.callback()
-    }
-    @objc private func changeUpdateInterval(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String, let value = Int(key) else { return }
-        self.updateIntervalValue = value
-        Store.shared.set(key: "\(self.title)_updateInterval", value: value)
-        self.setInterval(value)
-    }
-    @objc private func toggleSpeedState(_ sender: NSControl) {
-        self.fanSpeedState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_speed", value: self.fanSpeedState)
-        self.callback()
-    }
-    @objc private func toggleHID(_ sender: NSControl) {
-        self.hidState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_hid", value: self.hidState)
-        self.HIDcallback()
-    }
-    @objc private func toggleFansSync(_ sender: NSControl) {
-        self.fansSyncState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_fansSync", value: self.fansSyncState)
-    }
-    @objc private func toggleuUnknownSensors(_ sender: NSControl) {
-        self.unknownSensorsState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_unknown", value: self.unknownSensorsState)
-        self.unknownCallback()
-    }
-    @objc private func toggleFanValue(_ sender: NSMenuItem) {
-        if let key = sender.representedObject as? String, let value = FanValue(rawValue: key) {
-            self.fanValueState = value
-            Store.shared.set(key: "\(self.title)_fanValue", value: self.fanValueState.rawValue)
-            self.callback()
+    var sensorTypes: [SensorType] {
+        var types: [SensorType] = []
+        sensors.forEach { s in
+            if !types.contains(s.type) {
+                types.append(s.type)
+            }
         }
+        return types
     }
-    @objc private func handleSelection(_ sender: NSPopUpButton) {
-        guard let item = sender.selectedItem, let id = item.representedObject as? String else { return }
-        self.selectedSensor = id
-        Store.shared.set(key: "\(self.title)_sensor", value: self.selectedSensor)
-        self.selectedHandler(self.selectedSensor)
+    
+    var body: some View {
+        Form {
+            Section {
+                Picker(localizedString("Update interval"), selection: $updateInterval) {
+                    ForEach(ReaderUpdateIntervals, id: \.key) { item in
+                        Text(localizedString(item.value)).tag(Int(item.key) ?? 3)
+                    }
+                }
+                .onChange(of: updateInterval) { _, newValue in
+                    onSetInterval(newValue)
+                }
+            }
+            
+            Section {
+                Picker(localizedString("Fan value"), selection: $fanValueState) {
+                    ForEach(FanValues, id: \.key) { item in
+                        Text(localizedString(item.value)).tag(item.key)
+                    }
+                }
+                .onChange(of: fanValueState) { _, _ in
+                    onCallback()
+                }
+                
+                Toggle(localizedString("Save the fan speed"), isOn: $fanSpeedState)
+                    .onChange(of: fanSpeedState) { _, _ in
+                        onCallback()
+                    }
+                
+                Toggle(localizedString("Synchronize fan's control"), isOn: $fansSyncState)
+                
+                Toggle(localizedString("Show unknown sensors"), isOn: $unknownSensorsState)
+                    .onChange(of: unknownSensorsState) { _, _ in
+                        onUnknownCallback()
+                    }
+                
+                if isARM {
+                    Toggle(localizedString("HID sensors"), isOn: $hidState)
+                        .onChange(of: hidState) { _, _ in
+                            onHIDCallback()
+                        }
+                }
+                
+                if widgets.contains(where: { $0 == .mini }) {
+                    Picker(localizedString("Sensor to show"), selection: $selectedSensor) {
+                        ForEach(sensors, id: \.key) { s in
+                            Text("\(localizedString(s.type.rawValue)) - \(localizedString(s.name))").tag(s.key)
+                        }
+                    }
+                    .onChange(of: selectedSensor) { _, newValue in
+                        onSelectedHandler(newValue)
+                    }
+                }
+            }
+            
+            ForEach(sensorTypes, id: \.self) { type in
+                Section(header: Text(localizedString(type.rawValue))) {
+                    ForEach(sensors.filter { $0.type == type }, id: \.key) { sensor in
+                        SensorToggleRow(sensor: sensor, onCallback: onCallback)
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+}
+
+struct SensorToggleRow: View {
+    let sensor: Sensor_p
+    let onCallback: () -> Void
+    
+    @State private var isOn: Bool
+    
+    init(sensor: Sensor_p, onCallback: @escaping () -> Void) {
+        self.sensor = sensor
+        self.onCallback = onCallback
+        self._isOn = State(initialValue: sensor.state)
+    }
+    
+    var body: some View {
+        Toggle(localizedString(sensor.name), isOn: $isOn)
+            .onChange(of: isOn) { _, newValue in
+                Store.shared.set(key: "sensor_\(sensor.key)", value: newValue)
+                onCallback()
+            }
     }
 }

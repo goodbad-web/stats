@@ -84,7 +84,7 @@ public class Portal: NSStackView, Portal_p {
     }
     
     public func usageCallback(_ values: [Sensor_p]) {
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if self.window?.isVisible ?? false {
                 values.forEach { (s: Sensor_p) in
                     if let v = self.list[s.key] as? ValueSensorView {
@@ -92,7 +92,7 @@ public class Portal: NSStackView, Portal_p {
                     }
                 }
             }
-        })
+        }
     }
     
 }
