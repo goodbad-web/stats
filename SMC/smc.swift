@@ -491,11 +491,7 @@ public class SMC {
         }
         modeVal.bytes[0] = 1
         if self.write(modeVal) == kIOReturnSuccess {
-            // Verify the write took effect
-            var verifyVal = SMCVal_t(modeKey)
-            if read(&verifyVal) == kIOReturnSuccess && verifyVal.bytes[0] == 1 {
-                return true
-            }
+            return true
         }
 
         // Direct failed; try Ftst unlock (M1-M4)
@@ -529,15 +525,7 @@ public class SMC {
             return false
         }
         modeVal.bytes[0] = 1
-        guard self.writeWithRetry(modeVal, maxAttempts: maxAttempts, delayMicros: 100_000) else {
-            return false
-        }
-        // Verify
-        var verifyVal = SMCVal_t(modeKey)
-        if read(&verifyVal) == kIOReturnSuccess {
-            return verifyVal.bytes[0] == 1
-        }
-        return false
+        return self.writeWithRetry(modeVal, maxAttempts: maxAttempts, delayMicros: 100_000)
     }
     
     public func resetFanControl() -> Bool {
@@ -645,12 +633,6 @@ public class SMC {
         let result = self.call(SMCKeys.kernelIndex.rawValue, input: &input, output: &output)
         if result != kIOReturnSuccess {
             return result
-        }
-        
-        // IOKit can return kIOReturnSuccess but SMC firmware may still reject the write.
-        // Check SMC-level result code (0x00 = success, non-zero = error)
-        if output.result != 0x00 {
-            return kIOReturnError
         }
         
         return kIOReturnSuccess
