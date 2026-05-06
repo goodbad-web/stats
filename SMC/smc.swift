@@ -168,7 +168,7 @@ public class SMC {
         let device: io_object_t
         
         let matchingDictionary: CFMutableDictionary = IOServiceMatching("AppleSMC")
-        result = IOServiceGetMatchingServices(kIOMainPortDefault, matchingDictionary, &iterator)
+        result = IOServiceGetMatchingServices(kIOMasterPortDefault, matchingDictionary, &iterator)
         if result != kIOReturnSuccess {
             print("Error IOServiceGetMatchingServices(): " + (String(cString: mach_error_string(result), encoding: String.Encoding.ascii) ?? "unknown error"))
             return
@@ -377,33 +377,30 @@ public class SMC {
             let modeKey = fanModeKey(id)
             let targetKey = "F\(id)Tg"
             
-            if self.getValue(modeKey) != nil {
-                var modeVal = SMCVal_t(modeKey)
-                let readResult = read(&modeVal)
-                guard readResult == kIOReturnSuccess else {
-                    print(smcError("read", key: modeKey, result: readResult))
-                    return
-                }
+            // Reset fan mode to automatic
+            var modeVal = SMCVal_t(modeKey)
+            let readResult = read(&modeVal)
+            if readResult == kIOReturnSuccess && modeVal.dataSize > 0 {
                 if modeVal.bytes[0] != 0 {
                     modeVal.bytes[0] = 0
-                    if !writeWithRetry(modeVal) { return }
+                    _ = writeWithRetry(modeVal)
                 }
             }
             
+            // Clear target speed
             var targetValue = SMCVal_t(targetKey)
             let result = read(&targetValue)
-            guard result == kIOReturnSuccess else {
-                print(smcError("read", key: targetKey, result: result))
-                return
+            if result == kIOReturnSuccess && targetValue.dataSize > 0 {
+                let bytes = Float(0).bytes
+                targetValue.bytes[0] = bytes[0]
+                targetValue.bytes[1] = bytes[1]
+                targetValue.bytes[2] = bytes[2]
+                targetValue.bytes[3] = bytes[3]
+                _ = writeWithRetry(targetValue)
             }
             
-            let bytes = Float(0).bytes
-            targetValue.bytes[0] = bytes[0]
-            targetValue.bytes[1] = bytes[1]
-            targetValue.bytes[2] = bytes[2]
-            targetValue.bytes[3] = bytes[3]
-            
-            if !writeWithRetry(targetValue) { return }
+            // Reset Ftst if all fans are now automatic
+            self.resetFtstIfAllAuto()
         }
         #else
         // Intel
@@ -573,7 +570,11 @@ public class SMC {
         }
         modeVal.bytes[0] = 1
         if write(modeVal) == kIOReturnSuccess {
-            return true
+            // Verify the write took effect
+            var verifyVal = SMCVal_t(modeKey)
+            if read(&verifyVal) == kIOReturnSuccess && verifyVal.bytes[0] == 1 {
+                return true
+            }
         }
 
         // Direct failed; try Ftst unlock (M1-M4)
@@ -607,31 +608,73 @@ public class SMC {
             return false
         }
         modeVal.bytes[0] = 1
-        return writeWithRetry(modeVal, maxAttempts: maxAttempts, delayMicros: 100_000)
+        guard writeWithRetry(modeVal, maxAttempts: maxAttempts, delayMicros: 100_000) else {
+            return false
+        }
+        // Verify
+        var verifyVal = SMCVal_t(modeKey)
+        if read(&verifyVal) == kIOReturnSuccess {
+            return verifyVal.bytes[0] == 1
+        }
+        return false
     }
     
     public func resetFanControl() -> Bool {
+        var ftstPresent = false
         var value = SMCVal_t("Ftst")
         let result = read(&value)
         if result == kIOReturnSuccess && value.dataSize > 0 {
-            if value.bytes[0] == 0 { return true }
-            value.bytes[0] = 0
-            return writeWithRetry(value)
+            ftstPresent = true
+            if value.bytes[0] != 0 {
+                value.bytes[0] = 0
+                if !writeWithRetry(value) { return false }
+            }
         }
 
-        // Ftst absent (M5+): reset fan modes directly
-        guard let count = getValue("FNum") else { return false }
+        // Also reset individual fan modes and target speeds
+        guard let count = getValue("FNum") else {
+            return ftstPresent // Ftst-only reset succeeded
+        }
         var success = true
         for i in 0..<Int(count) {
             let modeKey = fanModeKey(i)
             var modeVal = SMCVal_t(modeKey)
             let readResult = read(&modeVal)
-            guard readResult == kIOReturnSuccess else { continue }
-            if modeVal.bytes[0] == 0 { continue }
-            modeVal.bytes[0] = 0
-            if !writeWithRetry(modeVal) { success = false }
+            if readResult == kIOReturnSuccess && modeVal.bytes[0] != 0 {
+                modeVal.bytes[0] = 0
+                if !writeWithRetry(modeVal) { success = false }
+            }
+            
+            // Clear target speed
+            let targetKey = "F\(i)Tg"
+            var targetVal = SMCVal_t(targetKey)
+            if read(&targetVal) == kIOReturnSuccess && targetVal.dataSize > 0 {
+                let bytes = Float(0).bytes
+                targetVal.bytes[0] = bytes[0]
+                targetVal.bytes[1] = bytes[1]
+                targetVal.bytes[2] = bytes[2]
+                targetVal.bytes[3] = bytes[3]
+                _ = writeWithRetry(targetVal)
+            }
         }
         return success
+    }
+    
+    /// Reset Ftst if all fans are in automatic mode
+    private func resetFtstIfAllAuto() {
+        guard let count = getValue("FNum") else { return }
+        for i in 0..<Int(count) {
+            var modeVal = SMCVal_t(fanModeKey(i))
+            if read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] != 0 {
+                return // At least one fan is still forced
+            }
+        }
+        // All fans automatic — reset Ftst
+        var ftstVal = SMCVal_t("Ftst")
+        if read(&ftstVal) == kIOReturnSuccess && ftstVal.dataSize > 0 && ftstVal.bytes[0] != 0 {
+            ftstVal.bytes[0] = 0
+            _ = writeWithRetry(ftstVal)
+        }
     }
     
     #endif

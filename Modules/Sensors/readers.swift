@@ -320,7 +320,6 @@ extension SensorsReader {
         var list: [Fan] = []
         for i in 0..<Int(count) {
             var name = SMC.shared.getStringValue("F\(i)ID")
-            var mode: FanMode
             
             if name == nil && count == 2 {
                 switch i {
@@ -332,11 +331,7 @@ extension SensorsReader {
                 }
             }
             
-            if let md = SMC.shared.getValue(SMC.shared.fanModeKey(i)), let parsed = FanMode(rawValue: Int(md)) {
-                mode = parsed.isAutomatic ? .automatic : parsed
-            } else {
-                mode = self.getFanMode(i)
-            }
+            let mode = self.getFanMode(i)
             
             list.append(Fan(
                 id: i,
