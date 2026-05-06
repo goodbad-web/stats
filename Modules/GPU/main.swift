@@ -166,9 +166,9 @@ public class GPU: Module {
     private func infoCallback(_ raw: GPUs?) {
         guard raw != nil && !raw!.list.isEmpty, let value = raw, self.enabled else { return }
         
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             self.popupView.infoCallback(value)
-        })
+        }
         self.settingsView.setList(value)
         
         let activeGPUs = value.active()

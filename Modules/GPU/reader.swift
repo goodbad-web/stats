@@ -10,7 +10,7 @@
 //
 
 import Cocoa
-import Kit
+@preconcurrency import Kit
 
 public struct device {
     public let vendor: String?
@@ -40,20 +40,20 @@ private func maxANEPower(for platform: Platform?) -> Double {
 }
 
 internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
-    private var gpus: GPUs = GPUs()
-    private var displays: [gpu_s] = []
-    private var devices: [device] = []
+    private nonisolated(unsafe) var gpus: GPUs = GPUs()
+    private nonisolated(unsafe) var displays: [gpu_s] = []
+    private nonisolated(unsafe) var devices: [device] = []
 
-    private var aneChannels: CFMutableDictionary? = nil
-    private var aneSubscription: IOReportSubscriptionRef? = nil
-    private var previousANEEnergy: Double = 0
-    private var previousANERead: Date? = nil
-    private var aneMaxPower: Double = 8.0
+    private nonisolated(unsafe) var aneChannels: CFMutableDictionary? = nil
+    private nonisolated(unsafe) var aneSubscription: IOReportSubscriptionRef? = nil
+    private nonisolated(unsafe) var previousANEEnergy: Double = 0
+    private nonisolated(unsafe) var previousANERead: Date? = nil
+    private nonisolated(unsafe) var aneMaxPower: Double = 8.0
 
-    private var framesChannels: CFMutableDictionary? = nil
-    private var framesSubscription: IOReportSubscriptionRef? = nil
-    private var previousFramesCount: Int64 = 0
-    private var previousFramesTime: CFAbsoluteTime = 0
+    private nonisolated(unsafe) var framesChannels: CFMutableDictionary? = nil
+    private nonisolated(unsafe) var framesSubscription: IOReportSubscriptionRef? = nil
+    private nonisolated(unsafe) var previousFramesCount: Int64 = 0
+    private nonisolated(unsafe) var previousFramesTime: CFAbsoluteTime = 0
     
     public override func setup() {
         if let list = SystemKit.shared.device.info.gpu {
@@ -98,145 +98,146 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
     
     nonisolated public override func read() {
         Task { @MainActor in
-        guard let accelerators = fetchIOService(kIOAcceleratorClassName) else {
-            return
-        }
-        var devices = self.devices
-        
-        for (index, accelerator) in accelerators.enumerated() {
-            guard let IOClass = accelerator.object(forKey: "IOClass") as? String else {
-                error("IOClass not found", log: self.log)
-                return
-            }
-            
-            guard let stats = accelerator["PerformanceStatistics"] as? [String: Any] else {
-                error("PerformanceStatistics not found", log: self.log)
-                return
-            }
-            
-            var id: String = ""
-            var vendor: String? = nil
-            var model: String = ""
-            var cores: Int? = nil
-            let accMatch = (accelerator["IOPCIMatch"] as? String ?? accelerator["IOPCIPrimaryMatch"] as? String ?? "").lowercased()
-            
-            for (i, device) in devices.enumerated() {
-                if accMatch.range(of: device.pci) != nil && !device.used {
-                    model = device.model
-                    vendor = device.vendor
-                    id = "\(model) #\(index)"
-                    devices[i].used = true
-                    break
+            let updatedGPUs = await Task.detached(priority: .userInitiated) {
+                guard let accelerators = fetchIOService(kIOAcceleratorClassName) else {
+                    return self.gpus
                 }
-            }
-            
-            let ioClass = IOClass.lowercased()
-            var predictModel = ""
-            var type: GPU_types = .unknown
-            
-            let utilization: Int? = stats["Device Utilization %"] as? Int ?? stats["GPU Activity(%)"] as? Int ?? nil
-            let renderUtilization: Int? = stats["Renderer Utilization %"] as? Int ?? nil
-            let tilerUtilization: Int? = stats["Tiler Utilization %"] as? Int ?? nil
-            var temperature: Int? = stats["Temperature(C)"] as? Int ?? nil
-            let fanSpeed: Int? = stats["Fan Speed(%)"] as? Int ?? nil
-            let coreClock: Int? = stats["Core Clock(MHz)"] as? Int ?? nil
-            let memoryClock: Int? = stats["Memory Clock(MHz)"] as? Int ?? nil
-            
-            if ioClass == "nvaccelerator" || ioClass.contains("nvidia") { // nvidia
-                predictModel = "Nvidia Graphics"
-                type = .discrete
-            } else if ioClass.contains("amd") { // amd
-                predictModel = "AMD Graphics"
-                type = .discrete
                 
-                if temperature == nil || temperature == 0 {
-                    if let tmp = SMC.shared.getValue("TGDD"), tmp != 128 {
-                        temperature = Int(tmp)
+                for (index, accelerator) in accelerators.enumerated() {
+                    guard let IOClass = accelerator.object(forKey: "IOClass") as? String else {
+                        continue
+                    }
+                    
+                    guard let stats = accelerator["PerformanceStatistics"] as? [String: Any] else {
+                        continue
+                    }
+                    
+                    var id: String = ""
+                    var vendor: String? = nil
+                    var model: String = ""
+                    var cores: Int? = nil
+                    let accMatch = (accelerator["IOPCIMatch"] as? String ?? accelerator["IOPCIPrimaryMatch"] as? String ?? "").lowercased()
+                    
+                    for (i, device) in self.devices.enumerated() {
+                        if accMatch.range(of: device.pci) != nil && !device.used {
+                            model = device.model
+                            vendor = device.vendor
+                            id = "\(model) #\(index)"
+                            self.devices[i].used = true
+                            break
+                        }
+                    }
+                    
+                    let ioClass = IOClass.lowercased()
+                    var predictModel = ""
+                    var type: GPU_types = .unknown
+                    
+                    let utilization: Int? = stats["Device Utilization %"] as? Int ?? stats["GPU Activity(%)"] as? Int ?? nil
+                    let renderUtilization: Int? = stats["Renderer Utilization %"] as? Int ?? nil
+                    let tilerUtilization: Int? = stats["Tiler Utilization %"] as? Int ?? nil
+                    var temperature: Int? = stats["Temperature(C)"] as? Int ?? nil
+                    let fanSpeed: Int? = stats["Fan Speed(%)"] as? Int ?? nil
+                    let coreClock: Int? = stats["Core Clock(MHz)"] as? Int ?? nil
+                    let memoryClock: Int? = stats["Memory Clock(MHz)"] as? Int ?? nil
+                    
+                    if ioClass == "nvaccelerator" || ioClass.contains("nvidia") { // nvidia
+                        predictModel = "Nvidia Graphics"
+                        type = .discrete
+                    } else if ioClass.contains("amd") { // amd
+                        predictModel = "AMD Graphics"
+                        type = .discrete
+                        
+                        if temperature == nil || temperature == 0 {
+                            if let tmp = SMC.shared.getValue("TGDD"), tmp != 128 {
+                                temperature = Int(tmp)
+                            }
+                        }
+                    } else if ioClass.contains("agx") { // apple
+                        predictModel = stats["model"] as? String ?? "Apple Graphics"
+                        if let display = self.displays.first(where: { $0.vendor == "sppci_vendor_Apple" }) {
+                            if let name = display.name {
+                                predictModel = name
+                            }
+                            if let num = display.cores {
+                                cores = num
+                            }
+                        }
+                        type = .integrated
+                    } else {
+                        predictModel = "Unknown"
+                        type = .unknown
+                    }
+                    
+                    if model == "" {
+                        model = predictModel
+                    }
+                    if let v = vendor {
+                        model = model.removedRegexMatches(pattern: v, replaceWith: "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                    
+                    if self.gpus.list.first(where: { $0.id == id }) == nil {
+                        self.gpus.list.append(GPU_Info(
+                            id: id,
+                            type: type.rawValue,
+                            IOClass: IOClass,
+                            vendor: vendor,
+                            model: model,
+                            cores: cores
+                        ))
+                    }
+                    guard let idx = self.gpus.list.firstIndex(where: { $0.id == id }) else {
+                        continue
+                    }
+                    
+                    if let agcInfo = accelerator["AGCInfo"] as? [String: Int], let state = agcInfo["poweredOffByAGC"] {
+                        self.gpus.list[idx].state = state == 0
+                    }
+                    
+                    if var value = utilization {
+                        if value > 100 {
+                            value = 100
+                        }
+                        self.gpus.list[idx].utilization = Double(value)/100
+                    }
+                    if var value = renderUtilization {
+                        if value > 100 {
+                            value = 100
+                        }
+                        self.gpus.list[idx].renderUtilization = Double(value)/100
+                    }
+                    if var value = tilerUtilization {
+                        if value > 100 {
+                            value = 100
+                        }
+                        self.gpus.list[idx].tilerUtilization = Double(value)/100
+                    }
+                    if let value = temperature {
+                        self.gpus.list[idx].temperature = Double(value)
+                    }
+                    if let value = fanSpeed {
+                        self.gpus.list[idx].fanSpeed = value
+                    }
+                    if let value = coreClock {
+                        self.gpus.list[idx].coreClock = value
+                    }
+                    if let value = memoryClock {
+                        self.gpus.list[idx].memoryClock = value
                     }
                 }
-            } else if ioClass.contains("agx") { // apple
-                predictModel = stats["model"] as? String ?? "Apple Graphics"
-                if let display = self.displays.first(where: { $0.vendor == "sppci_vendor_Apple" }) {
-                    if let name = display.name {
-                        predictModel = name
-                    }
-                    if let num = display.cores {
-                        cores = num
-                    }
+                
+                let anePower = self.readANEPower()
+                let aneUtil = anePower.map { min(1.0, max(0.0, $0 / self.aneMaxPower)) }
+                let fpsValue = self.readFrames()
+                for i in self.gpus.list.indices where self.gpus.list[i].IOClass.lowercased().contains("agx") {
+                    self.gpus.list[i].aneUtilization = aneUtil ?? 0
+                    self.gpus.list[i].fps = fpsValue
                 }
-                type = .integrated
-            } else {
-                predictModel = "Unknown"
-                type = .unknown
-            }
+                
+                self.gpus.list.sort{ !$0.state && $1.state }
+                return self.gpus
+            }.value
             
-            if model == "" {
-                model = predictModel
-            }
-            if let v = vendor {
-                model = model.removedRegexMatches(pattern: v, replaceWith: "").trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-            
-            if self.gpus.list.first(where: { $0.id == id }) == nil {
-                self.gpus.list.append(GPU_Info(
-                    id: id,
-                    type: type.rawValue,
-                    IOClass: IOClass,
-                    vendor: vendor,
-                    model: model,
-                    cores: cores
-                ))
-            }
-            guard let idx = self.gpus.list.firstIndex(where: { $0.id == id }) else {
-                return
-            }
-            
-            if let agcInfo = accelerator["AGCInfo"] as? [String: Int], let state = agcInfo["poweredOffByAGC"] {
-                self.gpus.list[idx].state = state == 0
-            }
-            
-            if var value = utilization {
-                if value > 100 {
-                    value = 100
-                }
-                self.gpus.list[idx].utilization = Double(value)/100
-            }
-            if var value = renderUtilization {
-                if value > 100 {
-                    value = 100
-                }
-                self.gpus.list[idx].renderUtilization = Double(value)/100
-            }
-            if var value = tilerUtilization {
-                if value > 100 {
-                    value = 100
-                }
-                self.gpus.list[idx].tilerUtilization = Double(value)/100
-            }
-            if let value = temperature {
-                self.gpus.list[idx].temperature = Double(value)
-            }
-            if let value = fanSpeed {
-                self.gpus.list[idx].fanSpeed = value
-            }
-            if let value = coreClock {
-                self.gpus.list[idx].coreClock = value
-            }
-            if let value = memoryClock {
-                self.gpus.list[idx].memoryClock = value
-            }
-        }
-        
-        let anePower = self.readANEPower()
-        let aneUtil = anePower.map { min(1.0, max(0.0, $0 / self.aneMaxPower)) }
-        let fpsValue = self.readFrames()
-        for i in self.gpus.list.indices where self.gpus.list[i].IOClass.lowercased().contains("agx") {
-            self.gpus.list[i].aneUtilization = aneUtil ?? 0
-            self.gpus.list[i].fps = fpsValue
-        }
-        
-        self.gpus.list.sort{ !$0.state && $1.state }
-        self.callback(self.gpus)
+            self.callback(updatedGPUs)
         }
     }
     
@@ -255,7 +256,7 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
             }
         }
         
-        guard let merged, let dict = merged as? [String: Any], dict["IOReportChannels"] != nil else { return }
+        guard let merged, let dict = (merged as AnyObject) as? [String: Any], dict["IOReportChannels"] != nil else { return }
         
         self.framesChannels = merged
         var sub: Unmanaged<CFMutableDictionary>?
@@ -263,11 +264,11 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
         sub?.release()
     }
     
-    private func readFrames() -> Double? {
+    nonisolated private func readFrames() -> Double? {
         guard let subscription = self.framesSubscription,
               let channels = self.framesChannels,
               let sample = IOReportCreateSamples(subscription, channels, nil)?.takeRetainedValue(),
-              let dict = sample as? [String: Any] else {
+              let dict = (sample as AnyObject) as? [String: Any] else {
             return nil
         }
         let items = dict["IOReportChannels"] as! CFArray
@@ -303,7 +304,7 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
         
         let size = CFDictionaryGetCount(channel)
         guard let mutable = CFDictionaryCreateMutableCopy(kCFAllocatorDefault, size, channel),
-              let dict = mutable as? [String: Any], dict["IOReportChannels"] != nil else { return }
+              let dict = (mutable as AnyObject) as? [String: Any], dict["IOReportChannels"] != nil else { return }
         
         self.aneChannels = mutable
         var sub: Unmanaged<CFMutableDictionary>?
@@ -311,11 +312,11 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
         sub?.release()
     }
     
-    private func readANEPower() -> Double? {
+    nonisolated private func readANEPower() -> Double? {
         guard let subscription = self.aneSubscription,
               let channels = self.aneChannels,
               let reportSample = IOReportCreateSamples(subscription, channels, nil)?.takeRetainedValue(),
-              let dict = reportSample as? [String: Any] else {
+              let dict = (reportSample as AnyObject) as? [String: Any] else {
             return nil
         }
         let items = dict["IOReportChannels"] as! CFArray

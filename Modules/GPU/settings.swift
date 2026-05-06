@@ -11,58 +11,94 @@
 
 import Cocoa
 import Kit
+import SwiftUI
 
-@MainActor internal class Settings: NSStackView, Settings_v {
-    private var updateIntervalValue: Int = 1
-    private var selectedGPU: String
-    private var showTypeValue: Bool = false
+struct GPUSettingsView: View {
+    @AppStorage("GPU_updateInterval") private var updateInterval = 1
+    @AppStorage("GPU_gpu") private var selectedGPU = "automatic"
     
-    private let title: String
+    var gpuList: [KeyValue_t]
+    var setInterval: (Int) -> Void
+    var selectedGPUHandler: (String) -> Void
     
+    var body: some View {
+        VStack(spacing: 16) {
+            Section {
+                HStack {
+                    Text(localizedString("Update interval"))
+                    Spacer()
+                    Picker("", selection: $updateInterval) {
+                        ForEach(ReaderUpdateIntervals, id: \.key) { item in
+                            Text(item.value).tag(Int(item.key) ?? 1)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    .onChange(of: updateInterval) { newValue in
+                        setInterval(newValue)
+                    }
+                }
+                .padding(10)
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(5)
+            }
+            
+            Section {
+                HStack {
+                    Text(localizedString("GPU to show"))
+                    Spacer()
+                    Picker("", selection: $selectedGPU) {
+                        ForEach(gpuList, id: \.key) { item in
+                            if item.key == "separator" {
+                                Divider()
+                            } else {
+                                Text(localizedString(item.value)).tag(item.key)
+                            }
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    .onChange(of: selectedGPU) { newValue in
+                        selectedGPUHandler(newValue)
+                    }
+                }
+                .padding(10)
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(5)
+            }
+        }
+        .padding()
+    }
+}
+
+internal class Settings: NSHostingView<GPUSettingsView>, Settings_v {
     public var selectedGPUHandler: (String) -> Void = {_ in }
     public var callback: (() -> Void) = {}
     public var setInterval: ((_ value: Int) -> Void) = {_ in }
     
-    private var hyperthreadView: NSView? = nil
-    private var button: NSPopUpButton?
+    private var gpuList: [KeyValue_t] = [
+        KeyValue_t(key: "automatic", value: "Automatic"),
+        KeyValue_t(key: "separator", value: "separator")
+    ]
     
     public init(_ module: ModuleType) {
-        self.title = module.stringValue
-        self.selectedGPU = Store.shared.string(key: "\(self.title)_gpu", defaultValue: "")
-        self.updateIntervalValue = Store.shared.int(key: "\(self.title)_updateInterval", defaultValue: self.updateIntervalValue)
-        self.showTypeValue = Store.shared.bool(key: "\(self.title)_showType", defaultValue: self.showTypeValue)
-        
-        super.init(frame: NSRect(x: 0, y: 0, width: 0, height: 0))
-        
-        self.wantsLayer = true
-        self.orientation = .vertical
-        self.distribution = .gravityAreas
-        self.spacing = Constants.Settings.margin
+        super.init(rootView: GPUSettingsView(
+            gpuList: [],
+            setInterval: { _ in },
+            selectedGPUHandler: { _ in }
+        ))
     }
     
-    required init?(coder: NSCoder) {
+    @MainActor required dynamic init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
+    required public init(rootView: GPUSettingsView) {
+        super.init(rootView: rootView)
+    }
+    
     public func load(widgets: [widget_t]) {
-        self.subviews.forEach{ $0.removeFromSuperview() }
-        
-        self.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("Update interval"), component: selectView(
-                action: #selector(self.changeUpdateInterval),
-                items: ReaderUpdateIntervals,
-                selected: "\(self.updateIntervalValue)"
-            ))
-        ]))
-        
-        self.button = selectView(
-            action: #selector(self.handleSelection),
-            items: [],
-            selected: ""
-        )
-        self.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("GPU to show"), component: self.button!)
-        ]))
+        self.updateView()
     }
     
     internal func setList(_ gpus: GPUs) {
@@ -71,46 +107,15 @@ import Kit
             KeyValue_t(key: "separator", value: "separator")
         ]
         gpus.active().forEach{ list.append(KeyValue_t(key: $0.model, value: $0.model)) }
-        
-        DispatchQueue.main.async(execute: {
-            guard let button = self.button else { return }
-            if button.menu?.items.count != list.count {
-                let menu = NSMenu()
-                
-                list.forEach { (item) in
-                    if item.key.contains("separator") {
-                        menu.addItem(NSMenuItem.separator())
-                    } else {
-                        let interfaceMenu = NSMenuItem(title: localizedString(item.value), action: nil, keyEquivalent: "")
-                        interfaceMenu.representedObject = item.key
-                        menu.addItem(interfaceMenu)
-                        if self.selectedGPU == item.key {
-                            interfaceMenu.state = .on
-                        }
-                    }
-                }
-                
-                button.menu = menu
-                button.sizeToFit()
-            }
-        })
+        self.gpuList = list
+        self.updateView()
     }
     
-    @objc private func changeUpdateInterval(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String, let value = Int(key) else { return }
-        self.updateIntervalValue = value
-        Store.shared.set(key: "\(self.title)_updateInterval", value: value)
-        self.setInterval(value)
-    }
-    @objc private func handleSelection(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String else { return }
-        self.selectedGPU = key
-        Store.shared.set(key: "\(self.title)_gpu", value: key)
-        self.selectedGPUHandler(key)
-    }
-    @objc private func toggleShowType(_ sender: NSControl) {
-        self.showTypeValue = controlState(sender)
-        Store.shared.set(key: "\(self.title)_showType", value: self.showTypeValue)
-        self.callback()
+    private func updateView() {
+        self.rootView = GPUSettingsView(
+            gpuList: self.gpuList,
+            setInterval: self.setInterval,
+            selectedGPUHandler: self.selectedGPUHandler
+        )
     }
 }

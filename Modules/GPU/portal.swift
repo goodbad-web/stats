@@ -80,26 +80,28 @@ public class Portal: PortalWrapper {
     }
     
     internal func callback(_ value: GPU_Info) {
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if (self.window?.isVisible ?? false) || !self.initialized {
-                if let value = value.utilization {
-                    self.usageField?.stringValue = "\(Int(value*100))%"
+                if let val = value.utilization {
+                    self.usageField?.stringValue = "\(Int(val*100))%"
                 }
-                if let value = value.renderUtilization {
-                    self.renderField?.stringValue = "\(Int(value*100))%"
+                if let val = value.renderUtilization {
+                    self.renderField?.stringValue = "\(Int(val*100))%"
                 }
-                if let value = value.tilerUtilization {
-                    self.tilerField?.stringValue = "\(Int(value*100))%"
+                if let val = value.tilerUtilization {
+                    self.tilerField?.stringValue = "\(Int(val*100))%"
                 }
-                if let value = value.aneUtilization {
-                    self.aneField?.stringValue = "\(Int(value*100))%"
+                if let val = value.aneUtilization {
+                    self.aneField?.stringValue = "\(Int(val*100))%"
                 }
                 
-                self.circle?.toolTip = "\(localizedString("GPU usage")): \(Int(value.utilization!*100))%"
-                self.circle?.setValue(value.utilization!)
-                self.circle?.setText("\(Int(value.utilization!*100))%")
+                if let util = value.utilization {
+                    self.circle?.toolTip = "\(localizedString("GPU usage")): \(Int(util*100))%"
+                    self.circle?.setValue(util)
+                    self.circle?.setText("\(Int(util*100))%")
+                }
                 self.initialized = true
             }
-        })
+        }
     }
 }
