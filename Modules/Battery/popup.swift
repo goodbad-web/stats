@@ -48,8 +48,6 @@ internal class Popup: PopupWrapper {
     private var processes: ProcessesView? = nil
     private var processesInitialized: Bool = false
     
-    private var colorState: Bool = false
-    
     private var numberOfProcesses: Int {
         Store.shared.int(key: "\(self.title)_processes", defaultValue: 8)
     }
@@ -65,8 +63,6 @@ internal class Popup: PopupWrapper {
         
         self.spacing = 0
         self.orientation = .vertical
-        
-        self.colorState = Store.shared.bool(key: "\(self.title)_color", defaultValue: self.colorState)
         
         self.addArrangedSubview(self.initDashboard())
         self.addArrangedSubview(self.initDetails())
@@ -222,7 +218,7 @@ internal class Popup: PopupWrapper {
     }
     
     public func usageCallback(_ value: Battery_Usage) {
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             self.dashboardBatteryView?.setValue(abs(value.level))
             
             self.levelField?.stringValue = "\(Int(abs(value.level) * 100))%"
@@ -304,11 +300,11 @@ internal class Popup: PopupWrapper {
             self.chargingStateField?.stringValue = value.isCharging ? localizedString("Yes") : localizedString("No")
             self.chargingCurrentField?.stringValue = value.isBatteryPowered ? localizedString("Not connected") : "\(value.chargingCurrent) mA"
             self.chargingVoltageField?.stringValue = value.isBatteryPowered ? localizedString("Not connected") : "\(value.chargingVoltage) mV"
-        })
+        }
     }
     
     public func processCallback(_ list: [TopProcess]) {
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if !(self.window?.isVisible ?? false) && self.processesInitialized {
                 return
             }
@@ -321,20 +317,20 @@ internal class Popup: PopupWrapper {
             }
             
             self.processesInitialized = true
-        })
+        }
     }
     
     public func numberOfProcessesUpdated() {
         if self.processes?.count == self.numberOfProcesses { return }
         
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             self.processesView?.removeFromSuperview()
             self.processesView = nil
             self.processes = nil
             self.addArrangedSubview(self.initProcesses())
             self.processesInitialized = false
             self.recalculateHeight()
-        })
+        }
     }
     
     // MARK: - Settings
@@ -349,20 +345,33 @@ internal class Popup: PopupWrapper {
             ))
         ]))
         
-        view.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("Colorize battery"), component: switchView(
-                action: #selector(self.toggleColor),
-                state: self.colorState
-            ))
-        ]))
+        let hostingView = NSHostingView(rootView: BatteryPopupSettingsView(
+            onColorChange: { [weak self] in
+                self?.dashboardBatteryView?.display()
+            }
+        ))
+        hostingView.translatesAutoresizingMaskIntoConstraints = false
+        view.addArrangedSubview(hostingView)
         
         return view
     }
+}
+
+import SwiftUI
+
+struct BatteryPopupSettingsView: View {
+    @AppStorage("Battery_color") private var colorState: Bool = false
     
-    @objc private func toggleColor(_ sender: NSControl) {
-        self.colorState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_color", value: self.colorState)
-        self.dashboardBatteryView?.display()
+    var onColorChange: () -> Void = {}
+    
+    var body: some View {
+        VStack {
+            Toggle(localizedString("Colorize battery"), isOn: $colorState)
+                .onChange(of: colorState) { _, _ in
+                    onColorChange()
+                }
+        }
+        .padding()
     }
 }
 

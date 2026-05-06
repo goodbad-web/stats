@@ -12,25 +12,39 @@
 import Cocoa
 import Kit
 import SystemConfiguration
+import SwiftUI
 
 internal class Settings: NSStackView, Settings_v {
     public var callback: (() -> Void) = {}
     public var callbackWhenUpdateNumberOfProcesses: (() -> Void) = {}
     
     private let title: String
-    private var button: NSPopUpButton?
-    
-    private var numberOfProcesses: Int = 8
-    private var timeFormat: String = "short"
+    private var hostingView: NSHostingView<BatterySettingsView>?
     
     public init(_ module: ModuleType) {
         self.title = module.stringValue
-        self.numberOfProcesses = Store.shared.int(key: "\(self.title)_processes", defaultValue: self.numberOfProcesses)
-        self.timeFormat = Store.shared.string(key: "\(self.title)_timeFormat", defaultValue: self.timeFormat)
-        
         super.init(frame: NSRect.zero)
         self.orientation = .vertical
-        self.spacing = Constants.Settings.margin
+        self.spacing = 0
+        
+        let settingsView = BatterySettingsView(
+            title: self.title,
+            onNumberOfProcessesChange: { [weak self] in
+                self?.callbackWhenUpdateNumberOfProcesses()
+            },
+            onTimeFormatChange: { [weak self] in
+                self?.callback()
+            }
+        )
+        let hostingView = NSHostingView(rootView: settingsView)
+        hostingView.translatesAutoresizingMaskIntoConstraints = false
+        self.addArrangedSubview(hostingView)
+        self.hostingView = hostingView
+        
+        NSLayoutConstraint.activate([
+            hostingView.widthAnchor.constraint(equalTo: self.widthAnchor),
+            hostingView.heightAnchor.constraint(greaterThanOrEqualToConstant: 150)
+        ])
     }
     
     required init?(coder: NSCoder) {
@@ -38,38 +52,47 @@ internal class Settings: NSStackView, Settings_v {
     }
     
     public func load(widgets: [widget_t]) {
-        self.subviews.forEach{ $0.removeFromSuperview() }
-        
-        self.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("Number of top processes"), component: selectView(
-                action: #selector(self.changeNumberOfProcesses),
-                items: NumbersOfProcesses.map{ KeyValue_t(key: "\($0)", value: "\($0)") },
-                selected: "\(self.numberOfProcesses)"
-            ))
-        ]))
-        
-        if !widgets.filter({ $0 == .battery }).isEmpty {
-            self.addArrangedSubview(PreferencesSection([
-                PreferencesRow(localizedString("Time format"), component: selectView(
-                    action: #selector(toggleTimeFormat),
-                    items: ShortLong,
-                    selected: self.timeFormat
-                ))
-            ]))
-        }
+        self.hostingView?.rootView.widgets = widgets
     }
+}
+
+struct BatterySettingsView: View {
+    let title: String
+    @AppStorage("Battery_processes") private var numberOfProcesses: Int = 8
+    @AppStorage("Battery_timeFormat") private var timeFormat: String = "short"
     
-    @objc private func changeNumberOfProcesses(_ sender: NSMenuItem) {
-        if let value = Int(sender.title) {
-            self.numberOfProcesses = value
-            Store.shared.set(key: "\(self.title)_processes", value: value)
-            self.callbackWhenUpdateNumberOfProcesses()
+    @State var widgets: [widget_t] = []
+    
+    var onNumberOfProcessesChange: () -> Void = {}
+    var onTimeFormatChange: () -> Void = {}
+    
+    var body: some View {
+        Form {
+            Section {
+                Picker(localizedString("Number of top processes"), selection: $numberOfProcesses) {
+                    ForEach(NumbersOfProcesses, id: \.self) { num in
+                        Text("\(num)").tag(num)
+                    }
+                }
+                .onChange(of: numberOfProcesses) { _, _ in
+                    onNumberOfProcessesChange()
+                }
+            }
+            
+            if widgets.contains(.battery) {
+                Section {
+                    Picker(localizedString("Time format"), selection: $timeFormat) {
+                        ForEach(ShortLong, id: \.key) { item in
+                            Text(localizedString(item.value)).tag(item.key)
+                        }
+                    }
+                    .onChange(of: timeFormat) { _, _ in
+                        onTimeFormatChange()
+                    }
+                }
+            }
         }
-    }
-    @objc private func toggleTimeFormat(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String else { return }
-        self.timeFormat = key
-        Store.shared.set(key: "\(self.title)_timeFormat", value: key)
-        self.callback()
+        .formStyle(.grouped)
+        .padding()
     }
 }

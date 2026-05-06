@@ -80,14 +80,14 @@ public class Battery: Module {
         
         let usageReader = self.usageReader
         self.settingsView.callback = {
-            DispatchQueue.global(qos: .background).async {
+            Task {
                 usageReader?.read()
             }
         }
         let processReader = self.processReader
         self.settingsView.callbackWhenUpdateNumberOfProcesses = { [weak self] in
             self?.popupView.numberOfProcessesUpdated()
-            DispatchQueue.global(qos: .background).async {
+            Task {
                 processReader?.read()
             }
         }
@@ -109,32 +109,34 @@ public class Battery: Module {
     private func usageCallback(_ raw: Battery_Usage?) {
         guard let value = raw, self.enabled else { return }
         
-        self.popupView.usageCallback(value)
-        self.portalView.loadCallback(value)
-        self.notificationsView.usageCallback(value)
-        
-        self.menuBar.widgets.filter{ $0.isActive }.forEach { (w: SWidget) in
-            switch w.item {
-            case let widget as Mini:
-                widget.setValue(abs(value.level))
-                widget.setColorZones((0.15, 0.3))
-            case let widget as BarChart:
-                widget.setValue([[ColorValue(value.level)]])
-                widget.setColorZones((0.15, 0.3))
-            case let widget as BatteryWidget:
-                widget.setValue(
-                    percentage: value.level,
-                    ACStatus: !value.isBatteryPowered,
-                    isCharging: value.isCharging,
-                    optimizedCharging: value.optimizedChargingEngaged,
-                    time: value.timeToEmpty == 0 && value.timeToCharge != 0 ? value.timeToCharge : value.timeToEmpty
-                )
-            case let widget as BatteryDetailsWidget:
-                widget.setValue(
-                    percentage: value.level,
-                    time: value.timeToEmpty == 0 && value.timeToCharge != 0 ? value.timeToCharge : value.timeToEmpty
-                )
-            default: break
+        Task { @MainActor in
+            self.popupView.usageCallback(value)
+            self.portalView.loadCallback(value)
+            self.notificationsView.usageCallback(value)
+            
+            self.menuBar.widgets.filter{ $0.isActive }.forEach { (w: SWidget) in
+                switch w.item {
+                case let widget as Mini:
+                    widget.setValue(abs(value.level))
+                    widget.setColorZones((0.15, 0.3))
+                case let widget as BarChart:
+                    widget.setValue([[ColorValue(value.level)]])
+                    widget.setColorZones((0.15, 0.3))
+                case let widget as BatteryWidget:
+                    widget.setValue(
+                        percentage: value.level,
+                        ACStatus: !value.isBatteryPowered,
+                        isCharging: value.isCharging,
+                        optimizedCharging: value.optimizedChargingEngaged,
+                        time: value.timeToEmpty == 0 && value.timeToCharge != 0 ? value.timeToCharge : value.timeToEmpty
+                    )
+                case let widget as BatteryDetailsWidget:
+                    widget.setValue(
+                        percentage: value.level,
+                        time: value.timeToEmpty == 0 && value.timeToCharge != 0 ? value.timeToCharge : value.timeToEmpty
+                    )
+                default: break
+                }
             }
         }
     }

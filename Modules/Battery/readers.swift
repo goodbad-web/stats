@@ -173,61 +173,64 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
     
     nonisolated public override func read() {
         Task { @MainActor in
-            if self.numberOfProcesses == 0 {
+            let limit = self.numberOfProcesses
+            let log = self.log
+            
+            if limit == 0 {
                 return
             }
             
-            let limit = self.numberOfProcesses
-            let log = self.log
-            DispatchQueue.global(qos: .background).async {
+            Task.detached(priority: .background) { [weak self] in
+                guard let self else { return }
                 let task = Process()
-                task.launchPath = "/usr/bin/top"
-                task.arguments = ["-o", "power", "-l", "2", "-n", "\(limit)", "-stats", "pid,command,power"]
-                
-                let outputPipe = Pipe()
-                defer {
-                    outputPipe.fileHandleForReading.closeFile()
+            task.launchPath = "/usr/bin/top"
+            task.arguments = ["-o", "power", "-l", "2", "-n", "\(limit)", "-stats", "pid,command,power"]
+            
+            let outputPipe = Pipe()
+            task.standardOutput = outputPipe
+            
+            do {
+                try task.run()
+            } catch let err {
+                error("error read ps: \(err.localizedDescription)", log: log)
+                return
+            }
+            
+            let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            outputPipe.fileHandleForReading.closeFile()
+            if outputData.isEmpty {
+                return
+            }
+            
+            let output = String(data: outputData.advanced(by: outputData.count/2), encoding: .utf8)
+            guard let output, !output.isEmpty else { return }
+            
+            var processes: [TopProcess] = []
+            output.enumerateLines { (line, _) in
+                if line.matches("^\\d+ *[^(\\d)]*\\d+\\.*\\d* *$") {
+                    let str = line.trimmingCharacters(in: .whitespaces)
+                    let pidFind = str.findAndCrop(pattern: "^\\d+")
+                    let usageFind = pidFind.remain.findAndCrop(pattern: " +[0-9]+.*[0-9]*$")
+                    let command = usageFind.remain.trimmingCharacters(in: .whitespaces)
+                    let pid = Int(pidFind.cropped) ?? 0
+                    guard let usage = Double(usageFind.cropped.filter("01234567890.".contains)) else {
+                        return
+                    }
+                    
+                    var name: String = command
+                    if let app = NSRunningApplication(processIdentifier: pid_t(pid)), let n = app.localizedName {
+                        name = n
+                    }
+                    
+                    processes.append(TopProcess(pid: pid, name: name, usage: usage))
                 }
-                task.standardOutput = outputPipe
-                
-                do {
-                    try task.run()
-                } catch let err {
-                    error("error read ps: \(err.localizedDescription)", log: log)
-                    return
-                }
-        
-        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        if outputData.isEmpty {
-            return
-        }
-        
-        let output = String(data: outputData.advanced(by: outputData.count/2), encoding: .utf8)
-        guard let output, !output.isEmpty else { return }
-        
-        var processes: [TopProcess] = []
-        output.enumerateLines { (line, _) in
-            if line.matches("^\\d+ *[^(\\d)]*\\d+\\.*\\d* *$") {
-                let str = line.trimmingCharacters(in: .whitespaces)
-                let pidFind = str.findAndCrop(pattern: "^\\d+")
-                let usageFind = pidFind.remain.findAndCrop(pattern: " +[0-9]+.*[0-9]*$")
-                let command = usageFind.remain.trimmingCharacters(in: .whitespaces)
-                let pid = Int(pidFind.cropped) ?? 0
-                guard let usage = Double(usageFind.cropped.filter("01234567890.".contains)) else {
-                    return
-                }
-                
-                var name: String = command
-                if let app = NSRunningApplication(processIdentifier: pid_t(pid)), let n = app.localizedName {
-                    name = n
-                }
-                
-                processes.append(TopProcess(pid: pid, name: name, usage: usage))
+            }
+            
+            let result = Array(processes.suffix(limit).sorted(by: { $0.usage > $1.usage }))
+            await MainActor.run {
+                self.callback(result)
             }
         }
-        
-        self.callback(processes.suffix(limit).sorted(by: { $0.usage > $1.usage }))
-            }
         }
     }
 }
