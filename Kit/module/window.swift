@@ -11,11 +11,11 @@
 
 import Cocoa
 
-public protocol Settings_v: NSView {
+@MainActor public protocol Settings_v: NSView {
     func load(widgets: [widget_t])
 }
 
-open class PreviewWrapper: NSStackView {
+@MainActor open class PreviewWrapper: NSStackView {
     public let module: ModuleType
     
     public init(type: ModuleType) {
@@ -33,7 +33,7 @@ open class PreviewWrapper: NSStackView {
     }
 }
 
-open class Window: NSStackView {
+@MainActor open class Window: NSStackView {
     private var config: UnsafePointer<module_c>
     private var widgets: [SWidget]
     
@@ -334,7 +334,7 @@ open class Window: NSStackView {
     }
 }
 
-private class WidgetSelectorView: NSStackView {
+@MainActor private class WidgetSelectorView: NSStackView {
     private var module: String
     private var stateCallback: () -> Void = {}
     private var moved: Bool = false
@@ -538,7 +538,7 @@ private class WidgetSelectorView: NSStackView {
     }
 }
 
-private class WidgetPreview: NSStackView {
+@MainActor private class WidgetPreview: NSStackView {
     private var stateCallback: (_ status: Bool) -> Void = {_ in }
     
     private let rgbImage: NSImage
@@ -629,7 +629,7 @@ private class WidgetPreview: NSStackView {
     }
 }
 
-private class WidgetSettings: NSStackView {
+@MainActor private class WidgetSettings: NSStackView {
     fileprivate init(title: String, image: NSImage, settingsView: NSView) {
         super.init(frame: NSRect.zero)
         

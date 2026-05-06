@@ -12,7 +12,7 @@
 import Cocoa
 import Kit
 
-internal class Settings: NSStackView, Settings_v {
+@MainActor internal class Settings: NSStackView, Settings_v {
     private var usagePerCoreState: Bool = false
     private var splitValueState: Bool = false
     private var updateIntervalValue: Int = 1

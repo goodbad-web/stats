@@ -11,7 +11,7 @@
 
 import Cocoa
 
-public struct DoubleValue {
+public struct DoubleValue: Sendable {
     public var ts: Date = Date()
     public let value: Double
     
@@ -23,7 +23,7 @@ extension [DoubleValue] {
     public func max() -> Double? { self.max(by: { $0.value < $1.value })?.value }
 }
 
-public struct ColorValue: Equatable {
+public struct ColorValue: Equatable, @unchecked Sendable {
     public let value: Double
     public var color: NSColor?
     
@@ -39,7 +39,7 @@ public struct ColorValue: Equatable {
     // swiftlint:enable function_name_whitespace
 }
 
-public enum AppUpdateInterval: String {
+public enum AppUpdateInterval: String, Sendable {
     case silent = "Silent"
     case atStart = "At start"
     case separator1 = "separator_1"
@@ -87,7 +87,7 @@ public let PublicIPAddressRefreshIntervals: [KeyValue_t] = [
     KeyValue_t(key: "24", value: "Every 24 hours")
 ]
 
-public enum DataSizeBase: String {
+public enum DataSizeBase: String, Sendable {
     case bit
     case byte
 }
@@ -96,7 +96,7 @@ public let SpeedBase: [KeyValue_t] = [
     KeyValue_t(key: "byte", value: "Byte", additional: DataSizeBase.byte)
 ]
 
-internal enum StackMode: String {
+internal enum StackMode: String, Sendable {
     case auto = "automatic"
     case oneRow = "oneRow"
     case twoRows = "twoRows"

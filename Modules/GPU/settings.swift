@@ -12,7 +12,7 @@
 import Cocoa
 import Kit
 
-internal class Settings: NSStackView, Settings_v {
+@MainActor internal class Settings: NSStackView, Settings_v {
     private var updateIntervalValue: Int = 1
     private var selectedGPU: String
     private var showTypeValue: Bool = false

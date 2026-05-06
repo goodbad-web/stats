@@ -9,13 +9,12 @@
 //  Copyright © 2020 Serhiy Mytrovtsiy. All rights reserved.
 //
 
-import Cocoa
+import os
 
-public class Store {
+public final class Store: @unchecked Sendable {
     public static let shared = Store()
     private let defaults = UserDefaults.standard
-    private var cache: [String: Any] = [:]
-    private let cacheQueue = DispatchQueue(label: "eu.exelban.Stats.Store.cache", attributes: .concurrent)
+    private let lock = OSAllocatedUnfairLock(initialState: [String: Any]())
     
     public init() {
         self.loadCache()
@@ -24,18 +23,20 @@ public class Store {
     private func loadCache() {
         guard let bundleId = Bundle.main.bundleIdentifier,
               let domain = self.defaults.persistentDomain(forName: bundleId) else { return }
-        self.cache = domain
+        self.lock.withLock { cache in
+            cache = domain
+        }
     }
     
     private func getValue<T>(for key: String, type: T.Type) -> T? {
-        return self.cacheQueue.sync {
-            return self.cache[key] as? T
+        self.lock.withLock { cache in
+            return cache[key] as? T
         }
     }
     
     private func setValue(_ value: Any?, for key: String) {
-        self.cacheQueue.async(flags: .barrier) {
-            self.cache[key] = value
+        self.lock.withLock { cache in
+            cache[key] = value
         }
         
         if let value = value {
@@ -46,8 +47,8 @@ public class Store {
     }
     
     public func exist(key: String) -> Bool {
-        return self.cacheQueue.sync {
-            self.cache.keys.contains(key) || self.defaults.object(forKey: key) != nil
+        self.lock.withLock { cache in
+            return cache.keys.contains(key) || self.defaults.object(forKey: key) != nil
         }
     }
     
@@ -96,8 +97,8 @@ public class Store {
     }
     
     public func reset() {
-        self.cacheQueue.async(flags: .barrier) {
-            self.cache.removeAll()
+        self.lock.withLock { cache in
+            cache.removeAll()
         }
         
         self.defaults.dictionaryRepresentation().keys.forEach { key in
@@ -127,8 +128,8 @@ public class Store {
             }
         }
         
-        self.cacheQueue.async(flags: .barrier) {
-            self.cache = importedDict
+        self.lock.withLock { cache in
+            cache = importedDict
         }
         
         self.defaults.setPersistentDomain(importedDict, forName: id)
