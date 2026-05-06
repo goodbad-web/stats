@@ -10,7 +10,7 @@
 //
 
 import Cocoa
-import Kit
+@preconcurrency import Kit
 import WidgetKit
 
 public struct stats: Codable {
@@ -73,12 +73,11 @@ public struct drive: Codable {
     }
 }
 
-public class Disks: Codable, RemoteType {
-    private var queue: DispatchQueue = DispatchQueue(label: "eu.exelban.Stats.Disk.SynchronizedArray")
-    private var _array: [drive] = []
+public class Disks: Codable, RemoteType, @unchecked Sendable {
+    private nonisolated(unsafe) var _array: [drive] = []
     public var array: [drive] {
-        get { self.queue.sync { self._array } }
-        set { self.queue.sync { self._array = newValue } }
+        get { self._array }
+        set { self._array = newValue }
     }
     
     enum CodingKeys: String, CodingKey {
@@ -98,20 +97,18 @@ public class Disks: Codable, RemoteType {
     init() {}
     
     public var count: Int {
-        self.queue.sync { self._array.count }
+        self._array.count
     }
     
-    // swiftlint:disable empty_count
     public var isEmpty: Bool {
         self.count == 0
     }
-    // swiftlint:enable empty_count
     
     public func first(where predicate: (drive) -> Bool) -> drive? {
         return self.array.first(where: predicate)
     }
     
-    public func index(where predicate: (drive) -> Bool) -> Int? {
+    public func firstIndex(where predicate: (drive) -> Bool) -> Int? {
         return self.array.firstIndex(where: predicate)
     }
     
@@ -279,7 +276,7 @@ public class Disk: Module {
         let processReader = self.processReader
         self.settingsView.callbackWhenUpdateNumberOfProcesses = { [weak self] in
             self?.popupView.numberOfProcessesUpdated()
-            DispatchQueue.global(qos: .background).async {
+            Task {
                 processReader?.read()
             }
         }
@@ -290,101 +287,101 @@ public class Disk: Module {
     private func capacityCallback(_ value: Disks) {
         guard self.enabled else { return }
         
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             self.popupView.capacityCallback(value)
             self.previewView.capacityCallback(value)
-        })
-        self.settingsView.setList(value)
-        
-        guard let d = value.first(where: { $0.mediaName == self.selectedDisk }) ?? value.first(where: { $0.root }) else {
-            return
-        }
-        
-        self.portalView.utilizationCallback(d)
-        self.notificationsView.utilizationCallback(d.percentage)
-        
-        self.menuBar.widgets.filter{ $0.isActive }.forEach { (w: SWidget) in
-            switch w.item {
-            case let widget as Mini: widget.setValue(d.percentage)
-            case let widget as BarChart: widget.setValue([[ColorValue(d.percentage)]])
-            case let widget as MemoryWidget:
-                widget.setValue((DiskSize(d.free).getReadableMemory(), DiskSize(d.size - d.free).getReadableMemory()), usedPercentage: d.percentage)
-            case let widget as PieChart:
-                widget.setValue([
-                    ColorValue(d.percentage, color: NSColor.systemBlue)
-                ])
-            case let widget as TextWidget:
-                var text = "\(self.textValue)"
-                let pairs = TextWidget.parseText(text)
-                pairs.forEach { pair in
-                    var replacement: String? = nil
-                    
-                    switch pair.key {
-                    case "$capacity":
-                        switch pair.value {
-                        case "total": replacement = DiskSize(d.size).getReadableMemory()
-                        case "used": replacement = DiskSize(d.size - d.free).getReadableMemory()
-                        case "free": replacement = DiskSize(d.free).getReadableMemory()
-                        default: return
-                        }
-                    case "$percentage":
-                        var percentage: Int
-                        if d.size == 0 {
-                            percentage = 0
-                        } else {
+            self.settingsView.setList(value)
+            
+            guard let d = value.first(where: { $0.mediaName == self.selectedDisk }) ?? value.first(where: { $0.root }) else {
+                return
+            }
+            
+            self.portalView.utilizationCallback(d)
+            self.notificationsView.utilizationCallback(d.percentage)
+            
+            self.menuBar.widgets.filter{ $0.isActive }.forEach { (w: SWidget) in
+                switch w.item {
+                case let widget as Mini: widget.setValue(d.percentage)
+                case let widget as BarChart: widget.setValue([[ColorValue(d.percentage)]])
+                case let widget as MemoryWidget:
+                    widget.setValue((DiskSize(d.free).getReadableMemory(), DiskSize(d.size - d.free).getReadableMemory()), usedPercentage: d.percentage)
+                case let widget as PieChart:
+                    widget.setValue([
+                        ColorValue(d.percentage, color: NSColor.systemBlue)
+                    ])
+                case let widget as TextWidget:
+                    var text = "\(self.textValue)"
+                    let pairs = TextWidget.parseText(text)
+                    pairs.forEach { pair in
+                        var replacement: String? = nil
+                        
+                        switch pair.key {
+                        case "$capacity":
                             switch pair.value {
-                            case "used": percentage = Int((Double(d.size - d.free) / Double(d.size)) * 100)
-                            case "free": percentage = Int((Double(d.free) / Double(d.size)) * 100)
+                            case "total": replacement = DiskSize(d.size).getReadableMemory()
+                            case "used": replacement = DiskSize(d.size - d.free).getReadableMemory()
+                            case "free": replacement = DiskSize(d.free).getReadableMemory()
                             default: return
                             }
+                        case "$percentage":
+                            var percentage: Int
+                            if d.size == 0 {
+                                percentage = 0
+                            } else {
+                                switch pair.value {
+                                case "used": percentage = Int((Double(d.size - d.free) / Double(d.size)) * 100)
+                                case "free": percentage = Int((Double(d.free) / Double(d.size)) * 100)
+                                default: return
+                                }
+                            }
+                            replacement = "\(percentage < 0 ? 0 : percentage)%"
+                        default: return
                         }
-                        replacement = "\(percentage < 0 ? 0 : percentage)%"
-                    default: return
+                        
+                        if let replacement {
+                            let key = pair.value.isEmpty ? pair.key : "\(pair.key).\(pair.value)"
+                            text = text.replacingOccurrences(of: key, with: replacement)
+                        }
                     }
-                    
-                    if let replacement {
-                        let key = pair.value.isEmpty ? pair.key : "\(pair.key).\(pair.value)"
-                        text = text.replacingOccurrences(of: key, with: replacement)
-                    }
+                    widget.setValue(text)
+                default: break
                 }
-                widget.setValue(text)
-            default: break
             }
-        }
-        
-        if self.systemWidgetsUpdatesState {
-            if isWidgetActive(self.userDefaults, [Disk_entry.kind, "UnitedWidget"]), let blobData = try? JSONEncoder().encode(d) {
-                self.userDefaults?.set(blobData, forKey: "Disk@CapacityReader")
+            
+            if self.systemWidgetsUpdatesState {
+                if isWidgetActive(self.userDefaults, [Disk_entry.kind, "UnitedWidget"]), let blobData = try? JSONEncoder().encode(d) {
+                    self.userDefaults?.set(blobData, forKey: "Disk@CapacityReader")
+                }
+                WidgetCenter.shared.reloadTimelines(ofKind: Disk_entry.kind)
+                WidgetCenter.shared.reloadTimelines(ofKind: "UnitedWidget")
             }
-            WidgetCenter.shared.reloadTimelines(ofKind: Disk_entry.kind)
-            WidgetCenter.shared.reloadTimelines(ofKind: "UnitedWidget")
         }
     }
     
     private func activityCallback(_ value: Disks) {
         guard self.enabled else { return }
         
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             self.popupView.activityCallback(value)
             self.previewView.activityCallback(value)
-        })
-        
-        guard let d = value.first(where: { $0.mediaName == self.selectedDisk }) ?? value.first(where: { $0.root }) else {
-            return
-        }
-        
-        self.portalView.activityCallback(d)
-        
-        self.menuBar.widgets.filter{ $0.isActive }.forEach { (w: SWidget) in
-            switch w.item {
-            case let widget as SpeedWidget: 
-                widget.setValue(input: d.activity.read, output: d.activity.write)
-            case let widget as NetworkChart:
-                widget.setValue(upload: Double(d.activity.write), download: Double(d.activity.read))
-                if self.capacityReader?.interval != 1 {
-                    self.settingsView.setUpdateInterval(value: 1)
+            
+            guard let d = value.first(where: { $0.mediaName == self.selectedDisk }) ?? value.first(where: { $0.root }) else {
+                return
+            }
+            
+            self.portalView.activityCallback(d)
+            
+            self.menuBar.widgets.filter{ $0.isActive }.forEach { (w: SWidget) in
+                switch w.item {
+                case let widget as SpeedWidget: 
+                    widget.setValue(input: d.activity.read, output: d.activity.write)
+                case let widget as NetworkChart:
+                    widget.setValue(upload: Double(d.activity.write), download: Double(d.activity.read))
+                    if self.capacityReader?.interval != 1 {
+                        self.settingsView.setInterval(1)
+                    }
+                default: break
                 }
-            default: break
             }
         }
     }

@@ -159,7 +159,7 @@ internal class Popup: PopupWrapper {
     }
     
     internal func processCallback(_ list: [Disk_process]) {
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if !(self.window?.isVisible ?? false) && self.processesInitialized {
                 return
             }
@@ -174,20 +174,20 @@ internal class Popup: PopupWrapper {
             }
             
             self.processesInitialized = true
-        })
+        }
     }
     
     internal func numberOfProcessesUpdated() {
         if self.processes?.count == self.numberOfProcesses { return }
         
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             self.processesView?.removeFromSuperview()
             self.processesView = nil
             self.processes = nil
             self.addArrangedSubview(self.initProcesses())
             self.processesInitialized = false
             self.recalculateHeight()
-        })
+        }
     }
     
     // MARK: - Settings

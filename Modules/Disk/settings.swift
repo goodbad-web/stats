@@ -11,6 +11,7 @@
 
 import Cocoa
 import Kit
+import SwiftUI
 
 var textWidgetHelp = """
 <h2>Description</h2>
@@ -31,186 +32,138 @@ You can use a combination of any of the variables.
 </ul>
 """
 
-internal class Settings: NSStackView, Settings_v, NSTextFieldDelegate {
-    private let title: String
+struct DiskSettingsView: View {
+    @AppStorage("Disk_updateInterval") private var updateInterval = 10
+    @AppStorage("Disk_processes") private var numberOfProcesses = 5
+    @AppStorage("Disk_disk") private var selectedDisk = ""
+    @AppStorage("Disk_removable") private var removableDisks = false
+    @AppStorage("Disk_base") private var base = "byte"
+    @AppStorage("Disk_SMART") private var smartData = true
+    @AppStorage("Disk_textWidgetValue") private var textValue = "$capacity.free/$capacity.total"
     
-    private var removableState: Bool = false
-    private var updateIntervalValue: Int = 10
-    private var numberOfProcesses: Int = 5
-    private var baseValue: String = "byte"
-    private var SMARTState: Bool = true
-    private var textValue: String = "$capacity.free/$capacity.total"
+    var disks: [String]
+    var widgets: [widget_t]
     
+    var onUpdateIntervalChange: (Int) -> Void
+    var onNumberOfProcessesChange: () -> Void
+    var onSelectedDiskChange: (String) -> Void
+    var onRemovableDisksChange: () -> Void
+    var onSMARTDataChange: () -> Void
+    
+    var body: some View {
+        Form {
+            Section {
+                Picker(localizedString("Update interval"), selection: $updateInterval) {
+                    ForEach(ReaderUpdateIntervals, id: \.key) { item in
+                        Text(localizedString(item.value)).tag(Int(item.key) ?? 10)
+                    }
+                }
+                .onChange(of: updateInterval) { newValue in
+                    onUpdateIntervalChange(newValue)
+                }
+                
+                Picker(localizedString("Number of top processes"), selection: $numberOfProcesses) {
+                    ForEach(NumbersOfProcesses, id: \.self) { num in
+                        Text("\(num)").tag(num)
+                    }
+                }
+                .onChange(of: numberOfProcesses) { _ in
+                    onNumberOfProcessesChange()
+                }
+            }
+            
+            Section {
+                Picker(localizedString("Disk to show"), selection: $selectedDisk) {
+                    ForEach(disks, id: \.self) { disk in
+                        Text(disk).tag(disk)
+                    }
+                }
+                .onChange(of: selectedDisk) { newValue in
+                    onSelectedDiskChange(newValue)
+                }
+                
+                Toggle(localizedString("Show removable disks"), isOn: $removableDisks)
+                    .onChange(of: removableDisks) { _ in
+                        onRemovableDisksChange()
+                    }
+            }
+            
+            if widgets.contains(.speed) {
+                Section {
+                    Picker(localizedString("Base"), selection: $base) {
+                        ForEach(SpeedBase, id: \.key) { item in
+                            Text(localizedString(item.value)).tag(item.key)
+                        }
+                    }
+                }
+            }
+            
+            Section {
+                Toggle(localizedString("SMART data"), isOn: $smartData)
+                    .onChange(of: smartData) { _ in
+                        onSMARTDataChange()
+                    }
+            }
+            
+            if widgets.contains(.text) {
+                Section(localizedString("Text widget value")) {
+                    TextField("", text: $textValue)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+}
+
+internal class Settings: NSHostingView<DiskSettingsView>, Settings_v {
     public var selectedDiskHandler: (String) -> Void = {_ in }
     public var callback: (() -> Void) = {}
     public var setInterval: ((_ value: Int) -> Void) = {_ in }
     public var callbackWhenUpdateNumberOfProcesses: (() -> Void) = {}
     
-    private var selectedDisk: String
-    private var button: NSPopUpButton?
-    
-    private var list: [String] = []
-    
-    private let textWidgetHelpPanel: HelpHUD = HelpHUD(textWidgetHelp)
+    private var disks: [String] = []
+    private var widgets: [widget_t] = []
     
     public init(_ module: ModuleType) {
-        self.title = module.stringValue
-        
-        self.selectedDisk = Store.shared.string(key: "\(self.title)_disk", defaultValue: "")
-        self.removableState = Store.shared.bool(key: "\(self.title)_removable", defaultValue: self.removableState)
-        self.updateIntervalValue = Store.shared.int(key: "\(self.title)_updateInterval", defaultValue: self.updateIntervalValue)
-        self.numberOfProcesses = Store.shared.int(key: "\(self.title)_processes", defaultValue: self.numberOfProcesses)
-        self.baseValue = Store.shared.string(key: "\(self.title)_base", defaultValue: self.baseValue)
-        self.SMARTState = Store.shared.bool(key: "\(self.title)_SMART", defaultValue: self.SMARTState)
-        self.textValue = Store.shared.string(key: "\(self.title)_textWidgetValue", defaultValue: self.textValue)
-        
-        super.init(frame: NSRect.zero)
-        
-        self.orientation = .vertical
-        self.spacing = Constants.Settings.margin
+        super.init(rootView: DiskSettingsView(
+            disks: [],
+            widgets: [],
+            onUpdateIntervalChange: { _ in },
+            onNumberOfProcessesChange: {},
+            onSelectedDiskChange: { _ in },
+            onRemovableDisksChange: {},
+            onSMARTDataChange: {}
+        ))
     }
     
-    required init?(coder: NSCoder) {
+    @MainActor required dynamic init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
+    required public init(rootView: DiskSettingsView) {
+        super.init(rootView: rootView)
+    }
+    
     public func load(widgets: [widget_t]) {
-        self.subviews.forEach{ $0.removeFromSuperview() }
-        
-        self.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("Update interval"), component: selectView(
-                action: #selector(self.changeUpdateInterval),
-                items: ReaderUpdateIntervals,
-                selected: "\(self.updateIntervalValue)"
-            ))
-        ]))
-        
-        self.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("Number of top processes"), component: selectView(
-                action: #selector(self.changeNumberOfProcesses),
-                items: NumbersOfProcesses.map{ KeyValue_t(key: "\($0)", value: "\($0)") },
-                selected: "\(self.numberOfProcesses)"
-            ))
-        ]))
-        
-        self.button = selectView(
-            action: #selector(self.handleSelection),
-            items: [],
-            selected: ""
-        )
-        self.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("Disk to show"), component: self.button!),
-            PreferencesRow(localizedString("Show removable disks"), component: switchView(
-                action: #selector(self.toggleRemovable),
-                state: self.removableState
-            ))
-        ]))
-        
-        if widgets.contains(where: { $0 == .speed }) {
-            self.addArrangedSubview(PreferencesSection([
-                PreferencesRow(localizedString("Base"), component: selectView(
-                    action: #selector(self.toggleBase),
-                    items: SpeedBase,
-                    selected: self.baseValue
-                ))
-            ]))
-        }
-        
-        self.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("SMART data"), component: switchView(
-                action: #selector(self.toggleSMART),
-                state: self.SMARTState
-            ))
-        ]))
-        
-        if widgets.contains(where: { $0 == .text }) {
-            let textField = self.inputField(id: "text", value: self.textValue, placeholder: localizedString("This will be visible in the text widget"))
-            self.addArrangedSubview(PreferencesSection([
-                PreferencesRow(localizedString("Text widget value"), component: textField) { [weak self] in
-                    self?.textWidgetHelpPanel.show()
-                }
-            ]))
-        }
+        self.widgets = widgets
+        self.updateView()
     }
     
     internal func setList(_ list: Disks) {
-        DispatchQueue.main.async(execute: {
-            let disks = list.map{ $0.mediaName }
-            if self.button?.itemTitles.count != disks.count {
-                self.button?.removeAllItems()
-            }
-            if disks != self.button?.itemTitles {
-                self.button?.addItems(withTitles: disks)
-                self.list = disks
-                if self.selectedDisk != "" {
-                    self.button?.selectItem(withTitle: self.selectedDisk)
-                }
-            }
-        })
+        self.disks = list.map{ $0.mediaName }
+        self.updateView()
     }
     
-    private func inputField(id: String, value: String, placeholder: String) -> NSView {
-        let field: NSTextField = NSTextField()
-        field.identifier = NSUserInterfaceItemIdentifier(id)
-        field.widthAnchor.constraint(equalToConstant: 250).isActive = true
-        field.font = NSFont.systemFont(ofSize: 12, weight: .regular)
-        field.textColor = .textColor
-        field.isEditable = true
-        field.isSelectable = true
-        field.usesSingleLineMode = true
-        field.maximumNumberOfLines = 1
-        field.focusRingType = .none
-        field.stringValue = value
-        field.delegate = self
-        field.placeholderString = placeholder
-        return field
-    }
-    
-    @objc private func changeNumberOfProcesses(_ sender: NSMenuItem) {
-        if let value = Int(sender.title) {
-            self.numberOfProcesses = value
-            Store.shared.set(key: "\(self.title)_processes", value: value)
-            self.callbackWhenUpdateNumberOfProcesses()
-        }
-    }
-    @objc private func handleSelection(_ sender: NSPopUpButton) {
-        guard let item = sender.selectedItem else { return }
-        self.selectedDisk = item.title
-        Store.shared.set(key: "\(self.title)_disk", value: item.title)
-        self.selectedDiskHandler(item.title)
-    }
-    @objc private func toggleRemovable(_ sender: NSControl) {
-        self.removableState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_removable", value: self.removableState)
-        self.callback()
-    }
-    @objc private func changeUpdateInterval(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String, let value = Int(key) else { return }
-        self.setUpdateInterval(value: value)
-    }
-    public func setUpdateInterval(value: Int) {
-        self.updateIntervalValue = value
-        Store.shared.set(key: "\(self.title)_updateInterval", value: value)
-        self.setInterval(value)
-    }
-    
-    @objc private func toggleBase(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String else { return }
-        self.baseValue = key
-        Store.shared.set(key: "\(self.title)_base", value: self.baseValue)
-    }
-    @objc private func toggleSMART(_ sender: NSControl) {
-        self.SMARTState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_SMART", value: self.SMARTState)
-        self.callback()
-    }
-    
-    func controlTextDidChange(_ notification: Notification) {
-        if let field = notification.object as? NSTextField {
-            if field.identifier == NSUserInterfaceItemIdentifier("text") {
-                self.textValue = field.stringValue
-                Store.shared.set(key: "\(self.title)_textWidgetValue", value: self.textValue)
-            }
-        }
+    private func updateView() {
+        self.rootView = DiskSettingsView(
+            disks: self.disks,
+            widgets: self.widgets,
+            onUpdateIntervalChange: { [weak self] val in self?.setInterval(val) },
+            onNumberOfProcessesChange: { [weak self] in self?.callbackWhenUpdateNumberOfProcesses() },
+            onSelectedDiskChange: { [weak self] val in self?.selectedDiskHandler(val) },
+            onRemovableDisksChange: { [weak self] in self?.callback() },
+            onSMARTDataChange: { [weak self] in self?.callback() }
+        )
     }
 }

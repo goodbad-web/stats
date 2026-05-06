@@ -10,7 +10,7 @@
 //
 
 import Cocoa
-import Kit
+@preconcurrency import Kit
 import IOKit.storage
 import CoreServices
 
@@ -34,68 +34,75 @@ let kIOCFPlugInInterfaceID = CFUUIDGetConstantUUIDWithBytes(nil,
 )
 
 internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
-    internal var list: Disks = Disks()
+    internal nonisolated(unsafe) var list: Disks = Disks()
     
-    private var SMART: Bool {
+    private nonisolated var SMART: Bool {
         Store.shared.bool(key: "\(ModuleType.disk.stringValue)_SMART", defaultValue: true)
     }
-    private var purgableSpace: [URL: (Date, Int64)] = [:]
+    private nonisolated(unsafe) var purgableSpace: [URL: (Date, Int64)] = [:]
     
     nonisolated public override func read() {
         Task { @MainActor in
-        let keys: [URLResourceKey] = [.volumeNameKey]
-        let removableState = Store.shared.bool(key: "Disk_removable", defaultValue: false)
-        let paths = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes])!
-        
-        guard let session = DASessionCreate(kCFAllocatorDefault) else {
-            error("cannot create main DASessionCreate()", log: self.log)
-            return
-        }
-        
-        var active: [String] = []
-        for url in paths {
-            if url.pathComponents.count == 1 || (url.pathComponents.count > 1 && url.pathComponents[1] == "Volumes") {
-                if let disk = DADiskCreateFromVolumePath(kCFAllocatorDefault, session, url as CFURL) {
-                    if let diskName = DADiskGetBSDName(disk) {
-                        let BSDName: String = String(cString: diskName)
-                        active.append(BSDName)
-                        
-                        if let d = self.list.first(where: { $0.BSDName == BSDName}), let idx = self.list.index(where: { $0.BSDName == BSDName}) {
-                            if d.removable && !removableState {
-                                self.list.remove(at: idx)
-                                continue
+            let keys: [URLResourceKey] = [.volumeNameKey]
+            let removableState = Store.shared.bool(key: "Disk_removable", defaultValue: false)
+            guard let paths = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]) else {
+                return
+            }
+            
+            guard let session = DASessionCreate(kCFAllocatorDefault) else {
+                error("cannot create main DASessionCreate()", log: self.log)
+                return
+            }
+            
+            let updatedList = await Task.detached(priority: .background) {
+                var localList = self.list
+                var active: [String] = []
+                for url in paths {
+                    if url.pathComponents.count == 1 || (url.pathComponents.count > 1 && url.pathComponents[1] == "Volumes") {
+                        if let disk = DADiskCreateFromVolumePath(kCFAllocatorDefault, session, url as CFURL) {
+                            if let diskName = DADiskGetBSDName(disk) {
+                                let BSDName: String = String(cString: diskName)
+                                active.append(BSDName)
+                                
+                                if let d = localList.first(where: { $0.BSDName == BSDName}), let idx = localList.firstIndex(where: { $0.BSDName == BSDName}) {
+                                    if d.removable && !removableState {
+                                        localList.remove(at: idx)
+                                        continue
+                                    }
+                                    
+                                    if let path = d.path {
+                                        localList.updateFreeSize(idx, newValue: self.freeDiskSpaceInBytes(path))
+                                        localList.updateSMARTData(idx, smart: self.getSMARTDetails(for: BSDName))
+                                    }
+                                    
+                                    continue
+                                }
+                                
+                                if var d = driveDetails(disk, removableState: removableState) {
+                                    if let path = d.path {
+                                        d.free = self.freeDiskSpaceInBytes(path)
+                                        d.size = self.totalDiskSpaceInBytes(path)
+                                    }
+                                    d.smart = self.getSMARTDetails(for: BSDName)
+                                    guard d.size != 0 else { continue }
+                                    localList.append(d)
+                                    localList.sort()
+                                }
                             }
-                            
-                            if let path = d.path {
-                                self.list.updateFreeSize(idx, newValue: self.freeDiskSpaceInBytes(path))
-                                self.list.updateSMARTData(idx, smart: self.getSMARTDetails(for: BSDName))
-                            }
-                            
-                            continue
-                        }
-                        
-                        if var d = driveDetails(disk, removableState: removableState) {
-                            if let path = d.path {
-                                d.free = self.freeDiskSpaceInBytes(path)
-                                d.size = self.totalDiskSpaceInBytes(path)
-                            }
-                            d.smart = self.getSMARTDetails(for: BSDName)
-                            guard d.size != 0 else { continue }
-                            self.list.append(d)
-                            self.list.sort()
                         }
                     }
                 }
-            }
-        }
-        
-        active.difference(from: self.list.map{ $0.BSDName }).forEach { (BSDName: String) in
-            if let idx = self.list.index(where: { $0.BSDName == BSDName }) {
-                self.list.remove(at: idx)
-            }
-        }
-        
-        self.callback(self.list)
+                
+                active.difference(from: localList.map{ $0.BSDName }).forEach { (BSDName: String) in
+                    if let idx = localList.firstIndex(where: { $0.BSDName == BSDName }) {
+                        localList.remove(at: idx)
+                    }
+                }
+                return localList
+            }.value
+            
+            self.list = updatedList
+            self.callback(self.list)
         }
     }
     
@@ -105,7 +112,7 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
         }
     }
     
-    private func freeDiskSpaceInBytes(_ path: URL) -> Int64 {
+    nonisolated private func freeDiskSpaceInBytes(_ path: URL) -> Int64 {
         var stat = statfs()
         if statfs(path.path, &stat) == 0 {
             var purgeable: Int64 = 0
@@ -149,7 +156,7 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
         return 0
     }
     
-    private func totalDiskSpaceInBytes(_ path: URL) -> Int64 {
+    nonisolated private func totalDiskSpaceInBytes(_ path: URL) -> Int64 {
         do {
             let systemAttributes = try FileManager.default.attributesOfFileSystem(forPath: path.path)
             if let totalSpace = (systemAttributes[FileAttributeKey.systemSize] as? NSNumber)?.int64Value {
@@ -162,7 +169,7 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
         return 0
     }
     
-    private func getSMARTDetails(for BSDName: String) -> smart_t? {
+    nonisolated private func getSMARTDetails(for BSDName: String) -> smart_t? {
         guard self.SMART else { return nil }
         
         var disk = IOServiceGetMatchingService(kIOMainPortDefault, IOBSDNameMatching(kIOMainPortDefault, 0, BSDName.cString(using: .utf8)))
@@ -233,7 +240,7 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
         )
     }
     
-    private func extractUInt128(_ tuple: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8)) -> Int64 {
+    nonisolated private func extractUInt128(_ tuple: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8)) -> Int64 {
         let byteArray: [UInt8] = [
             tuple.0, tuple.1, tuple.2, tuple.3, tuple.4, tuple.5, tuple.6, tuple.7,
             tuple.8, tuple.9, tuple.10, tuple.11, tuple.12, tuple.13, tuple.14, tuple.15
@@ -251,61 +258,68 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
 }
 
 internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
-    internal var list: Disks = Disks()
+    internal nonisolated(unsafe) var list: Disks = Disks()
     
-    override func setup() {
+    @MainActor override func setup() {
         self.setInterval(1)
     }
     
     nonisolated public override func read() {
         Task { @MainActor in
-        let keys: [URLResourceKey] = [.volumeNameKey]
-        let removableState = Store.shared.bool(key: "Disk_removable", defaultValue: false)
-        let paths = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys)!
-        
-        guard let session = DASessionCreate(kCFAllocatorDefault) else {
-            error("cannot create a DASessionCreate()", log: self.log)
-            return
-        }
-        
-        var active: [String] = []
-        for url in paths {
-            if url.pathComponents.count == 1 || (url.pathComponents.count > 1 && url.pathComponents[1] == "Volumes") {
-                if let disk = DADiskCreateFromVolumePath(kCFAllocatorDefault, session, url as CFURL) {
-                    if let diskName = DADiskGetBSDName(disk) {
-                        let BSDName: String = String(cString: diskName)
-                        active.append(BSDName)
-                        
-                        if let d = self.list.first(where: { $0.BSDName == BSDName}), let idx = self.list.index(where: { $0.BSDName == BSDName}) {
-                            if d.removable && !removableState {
-                                self.list.remove(at: idx)
-                                continue
+            let keys: [URLResourceKey] = [.volumeNameKey]
+            let removableState = Store.shared.bool(key: "Disk_removable", defaultValue: false)
+            guard let paths = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys) else {
+                return
+            }
+            
+            guard let session = DASessionCreate(kCFAllocatorDefault) else {
+                error("cannot create a DASessionCreate()", log: self.log)
+                return
+            }
+            
+            let updatedList = await Task.detached(priority: .background) {
+                var localList = self.list
+                var active: [String] = []
+                for url in paths {
+                    if url.pathComponents.count == 1 || (url.pathComponents.count > 1 && url.pathComponents[1] == "Volumes") {
+                        if let disk = DADiskCreateFromVolumePath(kCFAllocatorDefault, session, url as CFURL) {
+                            if let diskName = DADiskGetBSDName(disk) {
+                                let BSDName: String = String(cString: diskName)
+                                active.append(BSDName)
+                                
+                                if let d = localList.first(where: { $0.BSDName == BSDName}), let idx = localList.firstIndex(where: { $0.BSDName == BSDName}) {
+                                    if d.removable && !removableState {
+                                        localList.remove(at: idx)
+                                        continue
+                                    }
+                                    
+                                    self.driveStats(&localList, idx, d)
+                                    continue
+                                }
+                                
+                                if let d = driveDetails(disk, removableState: removableState) {
+                                    localList.append(d)
+                                    localList.sort()
+                                }
                             }
-                            
-                            self.driveStats(idx, d)
-                            continue
-                        }
-                        
-                        if let d = driveDetails(disk, removableState: removableState) {
-                            self.list.append(d)
-                            self.list.sort()
                         }
                     }
                 }
-            }
-        }
-        
-        active.difference(from: self.list.map{ $0.BSDName }).forEach { (BSDName: String) in
-            if let idx = self.list.index(where: { $0.BSDName == BSDName }) {
-                self.list.remove(at: idx)
-            }
-        }
-        
-        self.callback(self.list)
+                
+                active.difference(from: localList.map{ $0.BSDName }).forEach { (BSDName: String) in
+                    if let idx = localList.firstIndex(where: { $0.BSDName == BSDName }) {
+                        localList.remove(at: idx)
+                    }
+                }
+                return localList
+            }.value
+            
+            self.list = updatedList
+            self.callback(self.list)
         }
     }
     
-    private func driveStats(_ idx: Int, _ d: drive) {
+    nonisolated private func driveStats(_ list: inout Disks, _ idx: Int, _ d: drive) {
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOBSDNameMatching(kIOMainPortDefault, 0, d.BSDName))
         if service == 0 { return }
         IOObjectRelease(service)
@@ -317,16 +331,14 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
             let writeBytes = statistics.object(forKey: "Bytes (Write)") as? Int64 ?? 0
             
             if d.activity.readBytes != 0 {
-                self.list.updateRead(idx, newValue: readBytes - d.activity.readBytes)
+                list.updateRead(idx, newValue: readBytes - d.activity.readBytes)
             }
             if d.activity.writeBytes != 0 {
-                self.list.updateWrite(idx, newValue: writeBytes - d.activity.writeBytes)
+                list.updateWrite(idx, newValue: writeBytes - d.activity.writeBytes)
             }
             
-            self.list.updateReadWrite(idx, read: readBytes, write: writeBytes)
+            list.updateReadWrite(idx, read: readBytes, write: writeBytes)
         }
-        
-        return
     }
 }
 
@@ -429,23 +441,13 @@ struct io {
 }
 
 public class ProcessReader: Reader<[Disk_process]>, @unchecked Sendable {
-    private let queue = DispatchQueue(label: "eu.exelban.Disk.processReader")
-    
-    private var _list: [Int32: io] = [:]
-    private var list: [Int32: io] {
-        get {
-            self.queue.sync { self._list }
-        }
-        set {
-            self.queue.sync { self._list = newValue }
-        }
-    }
+    private nonisolated(unsafe) var _list: [Int32: io] = [:]
     
     private var numberOfProcesses: Int {
         Store.shared.int(key: "\(ModuleType.disk.stringValue)_processes", defaultValue: 5)
     }
     
-    public override func setup() {
+    @MainActor public override func setup() {
         self.popup = true
         self.setInterval(1)
     }
@@ -457,9 +459,9 @@ public class ProcessReader: Reader<[Disk_process]>, @unchecked Sendable {
                 return
             }
             
-            let currentList = self.list
-            DispatchQueue.global(qos: .background).async {
-                guard let output = runProcess(path: "/bin/ps", args: ["-Aceo pid,args", "-r"]) else { return }
+            let currentList = self._list
+            let (updatedList, result) = await Task.detached(priority: .background) {
+                guard let output = runProcess(path: "/bin/ps", args: ["-Aceo pid,args", "-r"]) else { return (currentList, [] as [Disk_process]) }
                 
                 var snapshot = currentList
                 var processes: [Disk_process] = []
@@ -502,18 +504,17 @@ public class ProcessReader: Reader<[Disk_process]>, @unchecked Sendable {
                     let firstMin = min($0.read, $0.write)
                     let secondMin = min($1.read, $1.write)
                     
-                    if firstMax == secondMax && firstMin != secondMin { // max values are the same, min not. Sort by min values
+                    if firstMax == secondMax && firstMin != secondMin {
                         return firstMin < secondMin
                     }
-                    return firstMax < secondMax // max values are not the same, sort by max value
+                    return firstMax < secondMax
                 }
                 
-                let result = processes.suffix(limit).reversed()
-                Task { @MainActor in
-                    self.list = snapshot
-                    self.callback(Array(result))
-                }
-            }
+                return (snapshot, Array(processes.suffix(limit).reversed()))
+            }.value
+            
+            self._list = updatedList
+            self.callback(result)
         }
     }
 }

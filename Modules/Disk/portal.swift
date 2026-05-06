@@ -100,7 +100,7 @@ public class Portal: PortalWrapper {
     }
     
     internal func utilizationCallback(_ value: drive) {
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if (self.window?.isVisible ?? false) || !self.initialized {
                 self.nameField?.stringValue = value.mediaName
                 self.usedField?.stringValue = DiskSize(value.size - value.free).getReadableMemory()
@@ -113,12 +113,12 @@ public class Portal: PortalWrapper {
                 ])
                 self.initialized = true
             }
-        })
+        }
     }
     
     internal func activityCallback(_ value: drive) {
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             self.chart?.addValue(upload: Double(value.activity.write), download: Double(value.activity.read))
-        })
+        }
     }
 }

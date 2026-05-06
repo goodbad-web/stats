@@ -10,7 +10,7 @@
 //
 
 import Cocoa
-import Kit
+@preconcurrency import Kit
 import SystemConfiguration
 import CoreWLAN
 
@@ -105,15 +105,15 @@ extension CWChannel {
 }
 
 internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked Sendable {
-    private var reachability: Reachability = Reachability(start: true)
-    private var _usage: Network_Usage = Network_Usage()
+    private nonisolated(unsafe) var reachability: Reachability = Reachability(start: true)
+    private nonisolated(unsafe) var _usage: Network_Usage = Network_Usage()
     public var usage: Network_Usage {
         get { self._usage }
         set { self._usage = newValue }
     }
     
     private var primaryInterface: String {
-        if let global = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString), let name = global["PrimaryInterface"] as? String {
+        if let global = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString), let name = (global as? [String: Any])?["PrimaryInterface"] as? String {
             return name
         }
         return ""
@@ -143,7 +143,7 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
     }
     
     private let wifiClient = CWWiFiClient.shared()
-    private var lastDetailsReadTS: Date = .distantPast
+    private nonisolated(unsafe) var lastDetailsReadTS: Date = .distantPast
     
     @MainActor public override func setup() {
         self.reachability.reachable = {
@@ -206,7 +206,6 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
                 }
             }.value
             
-            // Update on main actor
             if self.usage.bandwidth.upload != 0 {
                 self.usage.bandwidth.upload = currentBandwidth.upload - currentUsage.bandwidth.upload
             }
@@ -483,20 +482,20 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
     private var HTTPHost: String { Store.shared.string(key: "Net_HTTPHost", defaultValue: "https://google.com") }
     private var connectivityMode: String { Store.shared.string(key: "Net_connectivityMode", defaultValue: "icmp") }
     
-    private var lastHost: String = ""
-    private var addr: Data? = nil
+    private nonisolated(unsafe) var lastHost: String = ""
+    private nonisolated(unsafe) var addr: Data? = nil
     private let timeout: TimeInterval = 5
     
-    private var socket: CFSocket?
-    private var socketSource: CFRunLoopSource?
-    private var wrapper: Network_Connectivity = Network_Connectivity(status: false)
+    private nonisolated(unsafe) var socket: CFSocket?
+    private nonisolated(unsafe) var socketSource: CFRunLoopSource?
+    private nonisolated(unsafe) var wrapper: Network_Connectivity = Network_Connectivity(status: false)
     
-    private var isPinging: Bool = false
-    private var latency: Double? = nil
-    private var previousLatency: Double? = nil
-    private var jitter: Double? = nil
-    private var start: DispatchTime? = nil
-    private var timeoutTimer: Timer?
+    private nonisolated(unsafe) var isPinging: Bool = false
+    private nonisolated(unsafe) var latency: Double? = nil
+    private nonisolated(unsafe) var previousLatency: Double? = nil
+    private nonisolated(unsafe) var jitter: Double? = nil
+    private nonisolated(unsafe) var start: DispatchTime? = nil
+    private nonisolated(unsafe) var timeoutTimer: Timer?
     
     private struct ICMPHeader {
         var type: UInt8; var code: UInt8; var checksum: UInt16; var identifier: UInt16; var sequenceNumber: UInt16; var payload: uuid_t

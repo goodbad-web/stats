@@ -48,7 +48,7 @@ private struct ReaderState<T> {
 }
 
 @MainActor open class Reader<T: Codable & Sendable>: NSObject, ReaderInternal_p, @unchecked Sendable {
-    public var log: NextLog {
+    nonisolated public var log: NextLog {
         NextLog.shared.copy(category: "\(String(describing: self))")
     }
     
