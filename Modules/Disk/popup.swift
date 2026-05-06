@@ -282,7 +282,7 @@ internal class DiskView: NSStackView {
     private let size: Int64
     
     private var nameView: NameView
-    private var chartView: ChartView
+    private var chartView: DiskChartView
     private var barView: BarChartView
     private var legendView: LegendView
     private var detailsView: DetailsView
@@ -301,7 +301,7 @@ internal class DiskView: NSStackView {
         self.size = size
         let innerWidth: CGFloat = width - (Constants.Popup.margins * 2)
         self.nameView = NameView(width: innerWidth, name: name, size: size, free: free, path: path)
-        self.chartView = ChartView(width: innerWidth)
+        self.chartView = DiskChartView(width: innerWidth)
         self.barView = BarChartView(frame: NSRect(x: 0, y: 0, width: innerWidth, height: 10), horizontal: true)
         self.barView.widthAnchor.constraint(equalToConstant: innerWidth).isActive = true
         self.barView.heightAnchor.constraint(equalToConstant: 10).isActive = true
@@ -513,7 +513,7 @@ internal class NameView: NSStackView {
     }
 }
 
-internal class ChartView: NSStackView {
+internal class DiskChartView: NSStackView {
     private var chart: NetworkChartView? = nil
     private var ready: Bool = false
     

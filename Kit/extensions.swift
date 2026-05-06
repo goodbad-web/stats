@@ -595,6 +595,7 @@ public class KeyboardShartcutView: NSStackView {
     private var keyCodes: [UInt16] = []
     private var value: [UInt16] = []
     private var interaction: Bool = false
+    private var monitor: Any? = nil
     
     public init(callback: @escaping (_ value: [UInt16]) -> Void, value: [UInt16]) {
         self.callback = callback
@@ -619,9 +620,16 @@ public class KeyboardShartcutView: NSStackView {
         self.startButton = startButton
         self.stopButton = stopButton
         
-        NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+        self.monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
             self?.handleKeyEvent(event)
             return event
+        }
+    }
+    
+    deinit {
+        if let monitor = self.monitor {
+            NSEvent.removeMonitor(monitor)
+            self.monitor = nil
         }
     }
     

@@ -46,6 +46,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     internal var menuBarItem: NSStatusItem? = nil
     internal var combinedView: CombinedView = CombinedView()
     
+    private var globalMonitor: Any? = nil
+    private var localMonitor: Any? = nil
+    
     internal var pauseState: Bool {
         Store.shared.bool(key: "pause", defaultValue: false)
     }
@@ -73,10 +76,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         self.icon()
         
         NotificationCenter.default.addObserver(self, selector: #selector(listenForAppPause), name: .pause, object: nil)
-        NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+        self.globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
             self?.handleKeyEvent(event)
         }
-        NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+        self.localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
             self?.handleKeyEvent(event)
             return event
         }
@@ -92,6 +95,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     
     deinit {
         NotificationCenter.default.removeObserver(self)
+        if let monitor = self.globalMonitor {
+            NSEvent.removeMonitor(monitor)
+            self.globalMonitor = nil
+        }
+        if let monitor = self.localMonitor {
+            NSEvent.removeMonitor(monitor)
+            self.localMonitor = nil
+        }
     }
     
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

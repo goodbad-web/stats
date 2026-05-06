@@ -1,4 +1,4 @@
-APP = Stats
+APP = MyStats
 BUNDLE_ID = eu.exelban.$(APP)
 
 BUILD_PATH = $(PWD)/build
@@ -20,7 +20,8 @@ archive: clean
   		-scheme $(APP) \
   		-destination 'platform=OS X,arch=x86_64' \
   		-configuration Release archive \
-  		-archivePath $(BUILD_PATH)/$(APP).xcarchive
+  		-archivePath $(BUILD_PATH)/$(APP).xcarchive \
+  		ENABLE_MODULE_VERIFIER=NO
 
 	echo "Application built, starting the export archive..."
 

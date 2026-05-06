@@ -1,31 +1,31 @@
-# Stats
+# MyStats
 
 <a href="https://github.com/exelban/stats/releases"><p align="center"><img src="https://github.com/exelban/stats/raw/master/Stats/Supporting%20Files/Assets.xcassets/AppIcon.appiconset/icon_256x256.png" width="120"></p></a>
 
 [![Stats](https://serhiy.s3.eu-central-1.amazonaws.com/Github_repo/stats/menus%3Fv2.3.2.png?v1)](https://github.com/exelban/stats/releases)
 [![Stats](https://serhiy.s3.eu-central-1.amazonaws.com/Github_repo/stats/popups%3Fv2.3.2.png?v3)](https://github.com/exelban/stats/releases)
 
-macOS system monitor in your menu bar
+Personal macOS system monitor in your menu bar
 
 ## Installation
-### Manual
-You can download the latest version [here](https://github.com/exelban/stats/releases/latest/download/Stats.dmg).
-This will download a file called `Stats.dmg`. Open it and move the app to the application folder.
 
-### Homebrew
-To install it using Homebrew, open the Terminal app and type:
+### Build Locally
+To build MyStats from source:
+
 ```bash
-brew install stats
+cd /path/to/MyStats
+xcodebuild -project Stats.xcodeproj -scheme Stats build
+# Or use the Makefile
+make build
 ```
 
-### Legacy version
-Legacy version for older systems could be found [here](https://mac-stats.com/downloads).
+The built app will be available in the `build/` directory.
 
 ## Requirements
-Stats is supported on the released macOS version starting from macOS 11.15 (Big Sur).
+MyStats is supported on the released macOS version starting from macOS 11.15 (Big Sur).
 
 ## Features
-Stats is an application that allows you to monitor your macOS system.
+MyStats is an application that allows you to monitor your macOS system.
 
  - CPU utilization
  - GPU utilization
