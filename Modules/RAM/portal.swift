@@ -98,7 +98,7 @@ public class Portal: PortalWrapper {
     }
     
     internal func callback(_ value: RAM_Usage) {
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if (self.window?.isVisible ?? false) || !self.initialized {
                 self.usedField?.stringValue = Units(bytes: Int64(value.used)).getReadableMemory(style: .memory)
                 self.freeField?.stringValue = Units(bytes: Int64(value.free)).getReadableMemory(style: .memory)
@@ -122,6 +122,6 @@ public class Portal: PortalWrapper {
                 
                 self.initialized = true
             }
-        })
+        }
     }
 }

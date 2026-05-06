@@ -10,10 +10,10 @@
 //
 
 import Cocoa
-import Kit
+@preconcurrency import Kit
 
 internal class UsageReader: Reader<RAM_Usage>, @unchecked Sendable {
-    public var totalSize: Double = 0
+    private nonisolated(unsafe) var totalSize: Double = 0
     
     public override func setup() {
         var stats = host_basic_info()
@@ -21,7 +21,7 @@ internal class UsageReader: Reader<RAM_Usage>, @unchecked Sendable {
         
         let kerr: kern_return_t = withUnsafeMutablePointer(to: &stats) {
             $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                host_info(mach_host_self(), HOST_BASIC_INFO, $0, &count)
+                host_statistics(mach_host_self(), HOST_BASIC_INFO, $0, &count)
             }
         }
         
@@ -36,71 +36,78 @@ internal class UsageReader: Reader<RAM_Usage>, @unchecked Sendable {
     
     nonisolated public override func read() {
         Task { @MainActor in
-            var stats = vm_statistics64()
-            var count = UInt32(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
+            let localTotalSize = self.totalSize
             
-            let result: kern_return_t = withUnsafeMutablePointer(to: &stats) {
-                $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
-                    host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
-                }
-            }
-            
-            if result == KERN_SUCCESS {
-                let active = Double(stats.active_count) * Double(vm_page_size)
-                let speculative = Double(stats.speculative_count) * Double(vm_page_size)
-                let inactive = Double(stats.inactive_count) * Double(vm_page_size)
-                let wired = Double(stats.wire_count) * Double(vm_page_size)
-                let compressed = Double(stats.compressor_page_count) * Double(vm_page_size)
-                let purgeable = Double(stats.purgeable_count) * Double(vm_page_size)
-                let external = Double(stats.external_page_count) * Double(vm_page_size)
-                let swapins = Int64(stats.swapins)
-                let swapouts = Int64(stats.swapouts)
+            let usage = await Task.detached(priority: .userInitiated) { () -> RAM_Usage? in
+                var stats = vm_statistics64()
+                var count = UInt32(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
                 
-                let used = active + inactive + speculative + wired + compressed - purgeable - external
-                let free = self.totalSize - used
-                
-                var intSize: size_t = MemoryLayout<uint>.size
-                var pressureLevel: Int = 0
-                sysctlbyname("kern.memorystatus_vm_pressure_level", &pressureLevel, &intSize, nil, 0)
-                
-                var pressureValue: RAMPressure
-                switch pressureLevel {
-                case 2: pressureValue = .warning
-                case 4: pressureValue = .critical
-                default: pressureValue = .normal
+                let result: kern_return_t = withUnsafeMutablePointer(to: &stats) {
+                    $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
+                        host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
+                    }
                 }
                 
-                var stringSize: size_t = MemoryLayout<xsw_usage>.size
-                var swap: xsw_usage = xsw_usage()
-                sysctlbyname("vm.swapusage", &swap, &stringSize, nil, 0)
-                
-                self.callback(RAM_Usage(
-                    total: self.totalSize,
-                    used: used,
-                    free: free,
+                if result == KERN_SUCCESS {
+                    let active = Double(stats.active_count) * Double(vm_page_size)
+                    let speculative = Double(stats.speculative_count) * Double(vm_page_size)
+                    let inactive = Double(stats.inactive_count) * Double(vm_page_size)
+                    let wired = Double(stats.wire_count) * Double(vm_page_size)
+                    let compressed = Double(stats.compressor_page_count) * Double(vm_page_size)
+                    let purgeable = Double(stats.purgeable_count) * Double(vm_page_size)
+                    let external = Double(stats.external_page_count) * Double(vm_page_size)
+                    let swapins = Int64(stats.swapins)
+                    let swapouts = Int64(stats.swapouts)
                     
-                    active: active,
-                    inactive: inactive,
-                    wired: wired,
-                    compressed: compressed,
+                    let used = active + inactive + speculative + wired + compressed - purgeable - external
+                    let free = localTotalSize - used
                     
-                    app: used - wired - compressed,
-                    cache: purgeable + external,
+                    var intSize: size_t = MemoryLayout<uint>.size
+                    var pressureLevel: Int = 0
+                    sysctlbyname("kern.memorystatus_vm_pressure_level", &pressureLevel, &intSize, nil, 0)
                     
-                    swap: Swap(
-                        total: Double(swap.xsu_total),
-                        used: Double(swap.xsu_used),
-                        free: Double(swap.xsu_avail)
-                    ),
-                    pressure: Pressure(level: pressureLevel, value: pressureValue),
+                    let pressureValue: RAMPressure = {
+                        switch pressureLevel {
+                        case 2: return .warning
+                        case 4: return .critical
+                        default: return .normal
+                        }
+                    }()
                     
-                    swapins: swapins,
-                    swapouts: swapouts
-                ))
-                return
-            }
+                    var stringSize: size_t = MemoryLayout<xsw_usage>.size
+                    var swap: xsw_usage = xsw_usage()
+                    sysctlbyname("vm.swapusage", &swap, &stringSize, nil, 0)
+                    
+                    return RAM_Usage(
+                        total: localTotalSize,
+                        used: used,
+                        free: free,
+                        
+                        active: active,
+                        inactive: inactive,
+                        wired: wired,
+                        compressed: compressed,
+                        
+                        app: used - wired - compressed,
+                        cache: purgeable + external,
+                        
+                        swap: Swap(
+                            total: Double(swap.xsu_total),
+                            used: Double(swap.xsu_used),
+                            free: Double(swap.xsu_avail)
+                        ),
+                        pressure: Pressure(level: pressureLevel, value: pressureValue),
+                        
+                        swapins: swapins,
+                        swapouts: swapouts
+                    )
+                }
+                return nil
+            }.value
             
-            error("host_statistics64(): \(String(cString: mach_error_string(result), encoding: String.Encoding.ascii) ?? "unknown error")", log: self.log)
+            if let usage = usage {
+                self.callback(usage)
+            }
         }
     }
 }
@@ -133,7 +140,7 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
             let combined = self.combinedProcesses
             let log = self.log
             
-            Task.detached(priority: .background) {
+            let finalResult = await Task.detached(priority: .background) {
                 let task = Process()
                 task.launchPath = "/usr/bin/top"
                 if combined {
@@ -146,8 +153,8 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
                 let errorPipe = Pipe()
                 
                 defer {
-                    outputPipe.fileHandleForReading.closeFile()
-                    errorPipe.fileHandleForReading.closeFile()
+                    try? outputPipe.fileHandleForReading.close()
+                    try? errorPipe.fileHandleForReading.close()
                 }
                 
                 task.standardOutput = outputPipe
@@ -155,16 +162,15 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
                 
                 do {
                     try task.run()
+                    task.waitUntilExit()
                 } catch let err {
                     error("top(): \(err.localizedDescription)", log: log)
-                    return
+                    return [TopProcess]()
                 }
                 
                 let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
                 let output = String(data: outputData, encoding: .utf8)
-                _ = String(data: errorData, encoding: .utf8)
-                guard let output, !output.isEmpty else { return }
+                guard let output, !output.isEmpty else { return [TopProcess]() }
                 
                 var processes: [TopProcess] = []
                 output.enumerateLines { (line, _) in
@@ -173,12 +179,8 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
                     }
                 }
                 
-                let resultProcesses = processes
                 if !combined {
-                    await MainActor.run {
-                        self.callback(resultProcesses)
-                    }
-                    return
+                    return processes
                 }
                 
                 var processGroups: [String: [TopProcess]] = [:]
@@ -199,7 +201,8 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
                     let firstProcess = processes.first!
                     let name: String
                     
-                    if let app = NSRunningApplication(processIdentifier: pid_t(ProcessReader.getResponsiblePid(firstProcess.pid))),
+                    let respPid = ProcessReader.getResponsiblePid(firstProcess.pid)
+                    if let app = NSRunningApplication(processIdentifier: pid_t(respPid)),
                        let appName = app.localizedName {
                         name = appName
                     } else {
@@ -207,18 +210,17 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
                     }
                     
                     result.append(TopProcess(
-                        pid: ProcessReader.getResponsiblePid(firstProcess.pid),
+                        pid: respPid,
                         name: name,
                         usage: totalUsage
                     ))
                 }
                 
                 result.sort { $0.usage > $1.usage }
-                let finalResult = Array(result.prefix(limit))
-                await MainActor.run {
-                    self.callback(finalResult)
-                }
-            }
+                return Array(result.prefix(limit))
+            }.value
+            
+            self.callback(finalResult)
         }
     }
     
@@ -231,10 +233,10 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
     }()
     
     nonisolated static func getResponsiblePid(_ childPid: Int) -> Int {
-        guard ProcessReader.dynGetResponsiblePidFunc != nil else {
+        guard let funcPtr = ProcessReader.dynGetResponsiblePidFunc else {
             return childPid
         }
-        let responsiblePid = unsafeBitCast(ProcessReader.dynGetResponsiblePidFunc, to: dynGetResponsiblePidFuncType.self)(CInt(childPid))
+        let responsiblePid = unsafeBitCast(funcPtr, to: dynGetResponsiblePidFuncType.self)(CInt(childPid))
         guard responsiblePid != -1 else {
             return childPid
         }

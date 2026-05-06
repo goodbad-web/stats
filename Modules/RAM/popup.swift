@@ -116,7 +116,7 @@ internal class Popup: PopupWrapper {
     public func numberOfProcessesUpdated() {
         if self.processes?.count == self.numberOfProcesses { return }
         
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             let h: CGFloat = self.dashboardHeight + self.chartHeight + self.detailsHeight + self.processesHeight
             self.setFrameSize(NSSize(width: self.frame.width, height: h))
             
@@ -129,7 +129,7 @@ internal class Popup: PopupWrapper {
             self.processesInitialized = false
             
             self.sizeCallback?(self.frame.size)
-        })
+        }
     }
     
     private func initDashboard() -> NSView {
@@ -239,7 +239,7 @@ internal class Popup: PopupWrapper {
     }
     
     public func loadCallback(_ value: RAM_Usage) {
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if (self.window?.isVisible ?? false) || !self.initialized {
                 self.appField?.stringValue = Units(bytes: Int64(value.app)).getReadableMemory(style: .memory)
                 self.inactiveField?.stringValue = Units(bytes: Int64(value.inactive)).getReadableMemory(style: .memory)
@@ -265,11 +265,11 @@ internal class Popup: PopupWrapper {
                 self.initialized = true
             }
             self.chart?.addValue(value.usage)
-        })
+        }
     }
     
     public func processCallback(_ list: [TopProcess]) {
-        DispatchQueue.main.async(execute: {
+        Task { @MainActor in
             if !(self.window?.isVisible ?? false) && self.processesInitialized {
                 return
             }
@@ -282,7 +282,7 @@ internal class Popup: PopupWrapper {
             }
             
             self.processesInitialized = true
-        })
+        }
     }
     
     // MARK: - Settings

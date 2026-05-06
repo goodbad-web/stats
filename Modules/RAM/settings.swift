@@ -11,6 +11,7 @@
 
 import Cocoa
 import Kit
+import SwiftUI
 
 var textWidgetHelp = """
 <h2>Description</h2>
@@ -42,145 +43,159 @@ You can use a combination of any of the variables.
 </ul>
 """
 
-internal class Settings: NSStackView, Settings_v, NSTextFieldDelegate {
-    private var updateIntervalValue: Int = 1
-    private var updateTopIntervalValue: Int = 1
-    private var numberOfProcesses: Int = 8
-    private var splitValueState: Bool = false
-    private var notificationLevel: String = "Disabled"
-    private var textValue: String = "$mem.used/$mem.total ($pressure.value)"
-    private var combinedProcessesState: Bool = false
+struct RAMSettingsView: View {
+    @AppStorage("RAM_updateInterval") private var updateInterval = 1
+    @AppStorage("RAM_updateTopInterval") private var updateTopInterval = 1
+    @AppStorage("RAM_processes") private var numberOfProcesses = 8
+    @AppStorage("RAM_splitValue") private var splitValue = false
+    @AppStorage("RAM_combinedProcesses") private var combinedProcesses = false
+    @AppStorage("RAM_textWidgetValue") private var textWidgetValue = "$mem.used/$mem.total ($pressure.value)"
     
-    private let title: String
+    var widgets: [widget_t]
+    var callback: () -> Void
+    var callbackWhenUpdateNumberOfProcesses: () -> Void
+    var setInterval: (Int) -> Void
+    var setTopInterval: (Int) -> Void
     
+    private let textWidgetHelpPanel: HelpHUD = HelpHUD(textWidgetHelp)
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            Section {
+                VStack(spacing: 8) {
+                    HStack {
+                        Text(localizedString("Update interval"))
+                        Spacer()
+                        Picker("", selection: $updateInterval) {
+                            ForEach(ReaderUpdateIntervals, id: \.key) { item in
+                                Text(item.value).tag(Int(item.key) ?? 1)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        .onChange(of: updateInterval) { newValue in
+                            setInterval(newValue)
+                        }
+                    }
+                    
+                    HStack {
+                        Text(localizedString("Update interval for top processes"))
+                        Spacer()
+                        Picker("", selection: $updateTopInterval) {
+                            ForEach(ReaderUpdateIntervals, id: \.key) { item in
+                                Text(item.value).tag(Int(item.key) ?? 1)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        .onChange(of: updateTopInterval) { newValue in
+                            setTopInterval(newValue)
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(5)
+            }
+            
+            Section {
+                VStack(spacing: 8) {
+                    Toggle(localizedString("Combined processes"), isOn: $combinedProcesses)
+                        .onChange(of: combinedProcesses) { _ in
+                            callback()
+                        }
+                    
+                    HStack {
+                        Text(localizedString("Number of top processes"))
+                        Spacer()
+                        Picker("", selection: $numberOfProcesses) {
+                            ForEach(NumbersOfProcesses, id: \.self) { val in
+                                Text("\(val)").tag(val)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        .onChange(of: numberOfProcesses) { _ in
+                            callbackWhenUpdateNumberOfProcesses()
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(5)
+            }
+            
+            if widgets.contains(.barChart) {
+                Section {
+                    Toggle(localizedString("Split the value (App/Wired/Compressed)"), isOn: $splitValue)
+                        .onChange(of: splitValue) { _ in
+                            callback()
+                        }
+                        .padding(10)
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(5)
+                }
+            }
+            
+            if widgets.contains(.text) {
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(localizedString("Text widget value"))
+                            Spacer()
+                            Button(action: { textWidgetHelpPanel.show() }) {
+                                Image(systemName: "questionmark.circle")
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        
+                        TextField(localizedString("This will be visible in the text widget"), text: $textWidgetValue)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    .padding(10)
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(5)
+                }
+            }
+        }
+        .padding()
+    }
+}
+
+internal class Settings: NSHostingView<RAMSettingsView>, Settings_v {
     public var callback: (() -> Void) = {}
     public var callbackWhenUpdateNumberOfProcesses: (() -> Void) = {}
     public var setInterval: ((_ value: Int) -> Void) = {_ in }
     public var setTopInterval: ((_ value: Int) -> Void) = {_ in }
     
-    private let textWidgetHelpPanel: HelpHUD = HelpHUD(textWidgetHelp)
+    private var widgets: [widget_t] = []
     
     public init(_ module: ModuleType) {
-        self.title = module.stringValue
-        self.updateIntervalValue = Store.shared.int(key: "\(self.title)_updateInterval", defaultValue: self.updateIntervalValue)
-        self.updateTopIntervalValue = Store.shared.int(key: "\(self.title)_updateTopInterval", defaultValue: self.updateTopIntervalValue)
-        self.numberOfProcesses = Store.shared.int(key: "\(self.title)_processes", defaultValue: self.numberOfProcesses)
-        self.splitValueState = Store.shared.bool(key: "\(self.title)_splitValue", defaultValue: self.splitValueState)
-        self.notificationLevel = Store.shared.string(key: "\(self.title)_notificationLevel", defaultValue: self.notificationLevel)
-        self.textValue = Store.shared.string(key: "\(self.title)_textWidgetValue", defaultValue: self.textValue)
-        self.combinedProcessesState = Store.shared.bool(key: "\(self.title)_combinedProcesses", defaultValue: self.combinedProcessesState)
-        
-        super.init(frame: NSRect.zero)
-        
-        self.orientation = .vertical
-        self.distribution = .gravityAreas
-        self.spacing = Constants.Settings.margin
+        super.init(rootView: RAMSettingsView(
+            widgets: [],
+            callback: {},
+            callbackWhenUpdateNumberOfProcesses: {},
+            setInterval: { _ in },
+            setTopInterval: { _ in }
+        ))
     }
     
-    required init?(coder: NSCoder) {
+    @MainActor required dynamic init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
+    required public init(rootView: RAMSettingsView) {
+        super.init(rootView: rootView)
+    }
+    
     public func load(widgets: [widget_t]) {
-        self.subviews.forEach{ $0.removeFromSuperview() }
-        
-        self.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("Update interval"), component: selectView(
-                action: #selector(self.changeUpdateInterval),
-                items: ReaderUpdateIntervals,
-                selected: "\(self.updateIntervalValue)"
-            )),
-            PreferencesRow(localizedString("Update interval for top processes"), component: selectView(
-                action: #selector(self.changeUpdateTopInterval),
-                items: ReaderUpdateIntervals,
-                selected: "\(self.updateTopIntervalValue)"
-            ))
-        ]))
-        
-        self.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("Combined processes"), component: switchView(
-                action: #selector(toggleCombinedProcesses),
-                state: self.combinedProcessesState
-            )),
-            PreferencesRow(localizedString("Number of top processes"), component: selectView(
-                action: #selector(changeNumberOfProcesses),
-                items: NumbersOfProcesses.map{ KeyValue_t(key: "\($0)", value: "\($0)") },
-                selected: "\(self.numberOfProcesses)"
-            ))
-        ]))
-        
-        if !widgets.filter({ $0 == .barChart }).isEmpty {
-            self.addArrangedSubview(PreferencesSection([
-                PreferencesRow(localizedString("Split the value (App/Wired/Compressed)"), component: switchView(
-                    action: #selector(toggleSplitValue),
-                    state: self.splitValueState
-                ))
-            ]))
-        }
-        
-        if widgets.contains(where: { $0 == .text }) {
-            let textField = self.inputField(id: "text", value: self.textValue, placeholder: localizedString("This will be visible in the text widget"))
-            self.addArrangedSubview(PreferencesSection([
-                PreferencesRow(localizedString("Text widget value"), component: textField) { [weak self] in
-                    self?.textWidgetHelpPanel.show()
-                }
-            ]))
-        }
-    }
-    
-    private func inputField(id: String, value: String, placeholder: String) -> NSView {
-        let field: NSTextField = NSTextField()
-        field.identifier = NSUserInterfaceItemIdentifier(id)
-        field.widthAnchor.constraint(equalToConstant: 250).isActive = true
-        field.font = NSFont.systemFont(ofSize: 12, weight: .regular)
-        field.textColor = .textColor
-        field.isEditable = true
-        field.isSelectable = true
-        field.usesSingleLineMode = true
-        field.maximumNumberOfLines = 1
-        field.focusRingType = .none
-        field.stringValue = value
-        field.delegate = self
-        field.placeholderString = placeholder
-        return field
-    }
-    
-    @objc private func changeUpdateInterval(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String, let value = Int(key) else { return }
-        self.updateIntervalValue = value
-        Store.shared.set(key: "\(self.title)_updateInterval", value: value)
-        self.setInterval(value)
-    }
-    @objc private func changeUpdateTopInterval(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String, let value = Int(key) else { return }
-        self.updateTopIntervalValue = value
-        Store.shared.set(key: "\(self.title)_updateTopInterval", value: value)
-        self.setTopInterval(value)
-    }
-    @objc private func changeNumberOfProcesses(_ sender: NSMenuItem) {
-        if let value = Int(sender.title) {
-            self.numberOfProcesses = value
-            Store.shared.set(key: "\(self.title)_processes", value: value)
-            self.callbackWhenUpdateNumberOfProcesses()
-        }
-    }
-    @objc private func toggleSplitValue(_ sender: NSControl) {
-        self.splitValueState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_splitValue", value: self.splitValueState)
-        self.callback()
-    }
-    @objc private func toggleCombinedProcesses(_ sender: NSControl) {
-        self.combinedProcessesState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_combinedProcesses", value: self.combinedProcessesState)
-        self.callback()
-    }
-    
-    func controlTextDidChange(_ notification: Notification) {
-        if let field = notification.object as? NSTextField {
-            if field.identifier == NSUserInterfaceItemIdentifier("text") {
-                self.textValue = field.stringValue
-                Store.shared.set(key: "\(self.title)_textWidgetValue", value: self.textValue)
-            }
-        }
+        self.widgets = widgets
+        self.rootView = RAMSettingsView(
+            widgets: widgets,
+            callback: self.callback,
+            callbackWhenUpdateNumberOfProcesses: self.callbackWhenUpdateNumberOfProcesses,
+            setInterval: self.setInterval,
+            setTopInterval: self.setTopInterval
+        )
     }
 }
