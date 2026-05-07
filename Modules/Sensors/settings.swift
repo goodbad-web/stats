@@ -76,8 +76,8 @@ struct SensorsSettingsView: View {
     @AppStorage("Sensors_fanSafety") private var fanSafetyState: Bool = true
     @AppStorage("Sensors_fanBatteryAuto") private var fanBatteryAutoState: Bool = false
     
-    @State var allSensors: [Sensor_p] = []
-    @State var widgets: [widget_t] = []
+    var allSensors: [Sensor_p] = []
+    var widgets: [widget_t] = []
     
     var onCallback: () -> Void = {}
     var onHIDCallback: () -> Void = {}

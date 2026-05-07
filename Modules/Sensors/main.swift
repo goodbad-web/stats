@@ -77,12 +77,17 @@ public class Sensors: Module {
         self.selectedSensor = Store.shared.string(key: "\(ModuleType.sensors.stringValue)_sensor", defaultValue: self.selectedSensor)
         self.settingsView.selectedHandler = { [weak self] value in
             self?.selectedSensor = value
+            Store.shared.set(key: "\(ModuleType.sensors.stringValue)_sensor", value: value)
             self?.sensorsReader?.read()
         }
         
         NotificationCenter.default.addObserver(self, selector: #selector(self.fanControlOverrideCallback), name: .fanControlOverride, object: nil)
         
         self.setReaders([self.sensorsReader])
+        
+        if let reader = self.sensorsReader {
+            self.usageCallback(reader.list)
+        }
     }
     
     public override func willTerminate() {
@@ -150,7 +155,7 @@ public class Sensors: Module {
                                 value = "\(f.percentage)%"
                             }
                         }
-                        list.append(Stack_t(key: s.key, value: value))
+                        list.append(Stack_t(key: s.key, value: value, label: localizedString(s.name)))
                     }
                 }
                 
