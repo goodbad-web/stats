@@ -11,6 +11,7 @@
 
 import Cocoa
 @preconcurrency import Kit
+import IOKit.ps
 
 internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
     nonisolated static let HIDtypes: [SensorType] = [.temperature, .voltage]
@@ -228,6 +229,23 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
             
             self.list.sensors = updatedSensors
             self.lastRead = Date()
+            
+            let safetyState = Store.shared.bool(key: "Sensors_fanSafety", defaultValue: true)
+            if safetyState {
+                let hottest = updatedSensors.filter{ $0.type == .temperature && $0.group == .CPU }.map{ $0.value }.max() ?? 0
+                if hottest > 95 {
+                    if updatedSensors.filter({ $0 is Fan }).contains(where: { ($0 as? Fan)?.mode == .forced }) {
+                        SMCHelper.shared.resetFanControl()
+                    }
+                }
+            }
+            
+            let batteryAutoState = Store.shared.bool(key: "Sensors_fanBatteryAuto", defaultValue: false)
+            if batteryAutoState && !self.isAC() {
+                if updatedSensors.filter({ $0 is Fan }).contains(where: { ($0 as? Fan)?.mode == .forced }) {
+                    SMCHelper.shared.resetFanControl()
+                }
+            }
             if let (cpu, gpu, ane, ram, pci) = self.IOSensors() {
                 if let idx = self.list.sensors.firstIndex(where: { $0.key == "CPU Power" }) {
                     self.list.sensors[idx].value = cpu
@@ -342,6 +360,25 @@ extension SensorsReader {
     private func getFanMode(_ id: Int) -> FanMode {
         let modeValue = Int(SMC.shared.getValue(SMC.shared.fanModeKey(id)) ?? 0)
         return modeValue == 1 ? .forced : .automatic
+    }
+    
+    private func isAC() -> Bool {
+        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? Array<CFTypeRef> else {
+            return true
+        }
+        
+        for source in sources {
+            if let description = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue() as? [String: Any] {
+                if let type = description[kIOPSTypeKey] as? String, type == kIOPSInternalBatteryType {
+                    if let powerSource = description[kIOPSPowerSourceStateKey] as? String {
+                        return powerSource == kIOPSACPowerValue
+                    }
+                }
+            }
+        }
+        
+        return true
     }
 }
 

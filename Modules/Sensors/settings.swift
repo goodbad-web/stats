@@ -73,6 +73,8 @@ struct SensorsSettingsView: View {
     @AppStorage("Sensors_unknown") private var unknownSensorsState: Bool = false
     @AppStorage("Sensors_fanValue") private var fanValueState: String = "percentage"
     @AppStorage("Sensors_sensor") private var selectedSensor: String = "Average System Total"
+    @AppStorage("Sensors_fanSafety") private var fanSafetyState: Bool = true
+    @AppStorage("Sensors_fanBatteryAuto") private var fanBatteryAutoState: Bool = false
     
     @State var allSensors: [Sensor_p] = []
     @State var widgets: [widget_t] = []
@@ -140,6 +142,11 @@ struct SensorsSettingsView: View {
                         .onChange(of: hidState) { _, _ in
                             onHIDCallback()
                         }
+                }
+                
+                Section(header: Text(localizedString("Fan control"))) {
+                    Toggle(localizedString("Safety override"), isOn: $fanSafetyState)
+                    Toggle(localizedString("Auto mode on battery"), isOn: $fanBatteryAutoState)
                 }
                 
                 if widgets.contains(where: { $0 == .mini }) {
