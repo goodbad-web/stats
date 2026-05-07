@@ -203,7 +203,13 @@ public struct Sensor: Sensor_p, Codable {
         case .voltage:
             let val = value >= 100 ? "\(Int(value))" : String(format: "%.3f", value)
             return "\(val)\(unit)"
-        case .power, .energy:
+        case .power:
+            if value < 0.1 {
+                return "\(Int(value * 1000)) mW"
+            }
+            let val = value >= 100 ? "\(Int(value))" : String(format: "%.2f", value)
+            return "\(val)\(unit)"
+        case .energy:
             let val = value >= 100 ? "\(Int(value))" : String(format: "%.2f", value)
             return "\(val)\(unit)"
         case .current:

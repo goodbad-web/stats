@@ -323,6 +323,9 @@ internal class SensorView: NSStackView {
             if type == .current && value < 0.1 {
                 return "\(Int(value * 1000)) mA"
             }
+            if type == .power && value < 0.1 {
+                return "\(Int(value * 1000)) mW"
+            }
             let val = value >= 100 ? "\(Int(value))" : String(format: "%.2f", value)
             return "\(val)\(unit)"
         }
