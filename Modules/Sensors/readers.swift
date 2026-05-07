@@ -322,6 +322,12 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
     public func unknownCallback() {
         self.unknownSensorsState = Store.shared.bool(key: "Sensors_unknown", defaultValue: false)
     }
+    
+    public override func terminate() {
+        self.subscription = nil
+        self.channels = nil
+        super.terminate()
+    }
 }
 
 // MARK: - Fans

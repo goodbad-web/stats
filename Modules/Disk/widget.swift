@@ -48,7 +48,7 @@ public struct Provider: TimelineProvider {
             entry.value = load
         }
         let entries: [Disk_entry] = [entry]
-        completion(Timeline(entries: entries, policy: .atEnd))
+        completion(Timeline(entries: entries, policy: .never))
     }
 }
 

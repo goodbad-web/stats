@@ -84,7 +84,7 @@ public struct Provider: TimelineProvider {
         }
         
         let entries: [United_entry] = [entry]
-        completion(Timeline(entries: entries, policy: .atEnd))
+        completion(Timeline(entries: entries, policy: .never))
     }
 }
 

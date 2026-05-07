@@ -173,13 +173,14 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
         guard self.SMART else { return nil }
         
         var disk = IOServiceGetMatchingService(kIOMainPortDefault, IOBSDNameMatching(kIOMainPortDefault, 0, BSDName.cString(using: .utf8)))
-        guard disk != kIOReturnSuccess else { return nil }
+        guard disk != 0 else { return nil }
         defer { IOObjectRelease(disk) }
         
-        var parent = disk
         while IOObjectConformsTo(disk, kIOBlockStorageDeviceClass) == 0 {
+            var parent: io_registry_entry_t = 0
             let error = IORegistryEntryGetParentEntry(disk, kIOServicePlane, &parent)
-            if error != kIOReturnSuccess || parent == kIOReturnSuccess { return nil }
+            if error != kIOReturnSuccess || parent == 0 { return nil }
+            IOObjectRelease(disk)
             disk = parent
         }
         
@@ -427,9 +428,16 @@ public func getDeviceIOParent(_ obj: io_registry_entry_t, level: Int) -> io_regi
         return nil
     }
     
-    for _ in 1...level where IORegistryEntryGetParentEntry(parent, kIOServicePlane, &parent) != KERN_SUCCESS {
+    guard level > 0 else { return parent }
+    
+    for _ in 1...level {
+        var newParent: io_registry_entry_t = 0
+        if IORegistryEntryGetParentEntry(parent, kIOServicePlane, &newParent) != KERN_SUCCESS {
+            IOObjectRelease(parent)
+            return nil
+        }
         IOObjectRelease(parent)
-        return nil
+        parent = newParent
     }
     
     return parent
