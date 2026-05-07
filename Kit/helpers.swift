@@ -15,6 +15,10 @@ import ServiceManagement
 import UserNotifications
 import WebKit
 import Metal
+import OSLog
+
+private let kitLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "eu.exelban.Stats", category: "Kit")
+private let smcLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "eu.exelban.Stats", category: "SMCHelper")
 
 public struct LaunchAtLogin {
     public static var isEnabled: Bool {
@@ -30,7 +34,7 @@ public struct LaunchAtLogin {
                     try SMAppService.mainApp.unregister()
                 }
             } catch {
-                print("failed to \(newValue ? "enable" : "disable") launch at login: \(error.localizedDescription)")
+                kitLogger.error("Failed to \(newValue ? "enable" : "disable") launch at login: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -575,7 +579,7 @@ public func showNotification(title: String, subtitle: String? = nil, userInfo: [
     center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
     center.add(request) { (error: Error?) in
         if let err = error {
-            print(err)
+            kitLogger.error("Notification delivery failed: \(err.localizedDescription, privacy: .public)")
         }
     }
     
@@ -620,7 +624,7 @@ public func fetchIOService(_ name: String) -> [NSDictionary]? {
     
     let result = IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching(name), &iterator)
     if result != kIOReturnSuccess {
-        print("Error IOServiceGetMatchingServices(): " + (String(cString: mach_error_string(result), encoding: String.Encoding.ascii) ?? "unknown error"))
+        kitLogger.error("IOServiceGetMatchingServices failed: \(String(cString: mach_error_string(result), encoding: .ascii) ?? "unknown error", privacy: .public)")
         return nil
     }
     
@@ -656,7 +660,7 @@ internal func getIOName(_ entry: io_registry_entry_t) -> String? {
     
     let result = IORegistryEntryGetName(entry, pointer)
     if result != kIOReturnSuccess {
-        print("Error IORegistryEntryGetName(): " + (String(cString: mach_error_string(result), encoding: String.Encoding.ascii) ?? "unknown error"))
+        kitLogger.error("IORegistryEntryGetName failed: \(String(cString: mach_error_string(result), encoding: .ascii) ?? "unknown error", privacy: .public)")
         return nil
     }
     
@@ -768,7 +772,8 @@ public func sysctlByName(_ name: String) -> Int64 {
     var size = MemoryLayout<Int64>.size
     
     if sysctlbyname(name, &num, &size, nil, 0) != 0 {
-        print(POSIXError.Code(rawValue: errno).map { POSIXError($0) } ?? CocoaError(.fileReadUnknown))
+        let posix = POSIXError.Code(rawValue: errno).map { POSIXError($0).localizedDescription } ?? "Unknown POSIX error"
+        kitLogger.error("sysctlbyname failed: \(posix, privacy: .public)")
     }
     
     return num
@@ -831,7 +836,7 @@ public func process(path: String, arguments: [String]) -> String? {
     do {
         try task.run()
     } catch let error {
-        debug("system_profiler SPMemoryDataType: \(error.localizedDescription)")
+        kitLogger.debug("system_profiler SPMemoryDataType: \(error.localizedDescription, privacy: .public)")
         return nil
     }
     
@@ -872,7 +877,7 @@ public class SMCHelper {
             }
             helper.setFanSpeed(id: id, value: speed) { result in
                 if let result, !result.isEmpty {
-                    NSLog("set fan speed: \(result)")
+                    smcLogger.info("set fan speed: \(result, privacy: .public)")
                 }
                 continuation.resume()
             }
@@ -887,7 +892,7 @@ public class SMCHelper {
             }
             helper.setFanMode(id: id, mode: mode) { result in
                 if let result, !result.isEmpty {
-                    NSLog("set fan mode: \(result)")
+                    smcLogger.info("set fan mode: \(result, privacy: .public)")
                 }
                 continuation.resume()
             }
@@ -926,11 +931,11 @@ public class SMCHelper {
         
         helper.version { installedVersion in
             guard installedVersion != bundledVersion else { return }
-            print("SMC helper update detected: \(installedVersion) -> \(bundledVersion)")
+            smcLogger.info("SMC helper update detected: \(installedVersion, privacy: .public) -> \(bundledVersion, privacy: .public)")
             self.uninstall(silent: true)
             self.install { installed in
                 if installed {
-                    print("SMC helper updated successfully")
+                    smcLogger.info("SMC helper updated successfully")
                 }
             }
         }
@@ -942,14 +947,14 @@ public class SMCHelper {
             try service.register()
             self.waitForHelper(attempts: 0, completion: completion)
         } catch {
-            print("Error while installing the Helper: \(error.localizedDescription)")
+            smcLogger.error("Error while installing the Helper: \(error.localizedDescription, privacy: .public)")
             completion(false)
         }
     }
     
     private func waitForHelper(attempts: Int, completion: @escaping (Bool) -> Void) {
         guard attempts < 10 else {
-            print("Error: SMC helper connection timeout")
+            smcLogger.error("SMC helper connection timeout")
             completion(false)
             return
         }
@@ -965,7 +970,7 @@ public class SMCHelper {
             
             helper.ping {
                 DispatchQueue.main.async {
-                    print("SMC helper is successfully connected")
+                    smcLogger.info("SMC helper is successfully connected")
                     completion(true)
                 }
             }
@@ -996,7 +1001,7 @@ public class SMCHelper {
     private func helperProxy() -> HelperProtocol? {
         guard let connection = self.helperConnection() else { return nil }
         return connection.remoteObjectProxyWithErrorHandler({ error in
-            NSLog("SMC Helper XPC error: \(error.localizedDescription)")
+            smcLogger.error("SMC Helper XPC error: \(error.localizedDescription, privacy: .public)")
         }) as? HelperProtocol
     }
     
@@ -1024,6 +1029,7 @@ public class SMCHelper {
         
         // システム登録を解除
         try? SMAppService.daemon(plistName: "eu.exelban.Stats.SMC.Helper.plist").unregister()
+        smcLogger.info("SMC helper unregistered")
         
         if !silent {
             NotificationCenter.default.post(name: .fanHelperState, object: nil, userInfo: ["state": false])
