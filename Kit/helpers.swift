@@ -905,9 +905,13 @@ public class SMCHelper {
     }
     
     public func install(completion: @escaping (_ installed: Bool) -> Void) {
+        let service = SMAppService.daemon(plistName: "eu.exelban.Stats.SMC.Helper.plist")
         do {
-            try SMAppService.daemon(plistName: "eu.exelban.Stats.SMC.Helper.plist").register()
-            completion(true)
+            try service.register()
+            
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
+                completion(service.status == .enabled)
+            }
         } catch {
             print("Error while installing the Helper: \(error.localizedDescription)")
             completion(false)
@@ -958,8 +962,12 @@ public class SMCHelper {
                 self.setFanMode(i, mode: 0)
             }
         }
-        guard let helper = self.helper(nil) else { return }
-        helper.uninstall()
+        
+        try? SMAppService.daemon(plistName: "eu.exelban.Stats.SMC.Helper.plist").unregister()
+        if let helper = self.helper(nil) {
+            helper.uninstall()
+        }
+        
         if !silent {
             NotificationCenter.default.post(name: .fanHelperState, object: nil, userInfo: ["state": false])
         }
