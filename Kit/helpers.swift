@@ -963,10 +963,10 @@ public class SMCHelper {
             }
         }
         
+        self.connection?.invalidate()
+        self.connection = nil
+        
         try? SMAppService.daemon(plistName: "eu.exelban.Stats.SMC.Helper.plist").unregister()
-        if let helper = self.helper(nil) {
-            helper.uninstall()
-        }
         
         if !silent {
             NotificationCenter.default.post(name: .fanHelperState, object: nil, userInfo: ["state": false])
