@@ -91,6 +91,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
     }
     
     func applicationWillTerminate(_ aNotification: Notification) {
+        SMCHelper.shared.resetFanControl()
         modules.forEach{ $0.terminate() }
         Remote.shared.terminate()
     }

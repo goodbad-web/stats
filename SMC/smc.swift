@@ -161,6 +161,7 @@ public class SMC {
     public static let shared = SMC()
     private var conn: io_connect_t = 0
     private var _fanModeKeyIsLower: Bool?
+    private let queue = DispatchQueue(label: "eu.exelban.Stats.SMC", qos: .userInteractive)
     
     public init() {
         var result: kern_return_t
@@ -200,18 +201,50 @@ public class SMC {
         return IOServiceClose(conn)
     }
     
+    private static func isZeroAllowed(_ key: String) -> Bool {
+        key == "FS! " || key == "Ftst" || key.range(of: #"^F\d"#, options: .regularExpression) != nil
+    }
+    
+    /// Lock-free getValue for use inside queue.sync blocks (avoids recursive lock)
+    private func _getValueUnsafe(_ key: String) -> Double? {
+        var val: SMCVal_t = SMCVal_t(key)
+        let result = read(&val)
+        if result != kIOReturnSuccess { return nil }
+        guard val.dataSize > 0 else { return nil }
+        if val.bytes.first(where: { $0 != 0 }) == nil && !Self.isZeroAllowed(val.key) { return nil }
+        switch val.dataType {
+        case SMCDataType.UI8.rawValue: return Double(val.bytes[0])
+        case SMCDataType.UI16.rawValue: return Double(UInt16(val.bytes[0]) << 8 | UInt16(val.bytes[1]))
+        case SMCDataType.UI32.rawValue: return Double(UInt32(val.bytes[0]) << 24 | UInt32(val.bytes[1]) << 16 | UInt32(val.bytes[2]) << 8 | UInt32(val.bytes[3]))
+        case SMCDataType.SP1E.rawValue: return Double(Int(val.bytes[0]) * 256 + Int(val.bytes[1])) / 16384
+        case SMCDataType.SP2E.rawValue: return Double(Int(val.bytes[0]) * 256 + Int(val.bytes[1])) / 8192
+        case SMCDataType.SP3E.rawValue: return Double(Int(val.bytes[0]) * 256 + Int(val.bytes[1])) / 4096
+        case SMCDataType.SP4E.rawValue: return Double(Int(val.bytes[0]) * 256 + Int(val.bytes[1])) / 2048
+        case SMCDataType.SP5E.rawValue: return Double(Int(val.bytes[0]) * 256 + Int(val.bytes[1])) / 1024
+        case SMCDataType.SP69.rawValue: return Double(Int(val.bytes[0]) * 256 + Int(val.bytes[1])) / 512
+        case SMCDataType.SP78.rawValue: return Double(Int(val.bytes[0]) * 256 + Int(val.bytes[1])) / 256
+        case SMCDataType.SP87.rawValue: return Double(Int(val.bytes[0]) * 256 + Int(val.bytes[1])) / 128
+        case SMCDataType.SP96.rawValue: return Double(Int(val.bytes[0]) * 256 + Int(val.bytes[1])) / 64
+        case SMCDataType.SPB4.rawValue: return Double(Int(val.bytes[0]) * 256 + Int(val.bytes[1])) / 16
+        case SMCDataType.SPF0.rawValue: return Double(Int(val.bytes[0]) * 256 + Int(val.bytes[1]))
+        case SMCDataType.FLT.rawValue: return Float(val.bytes).map { Double($0) }
+        case SMCDataType.FPE2.rawValue: return Double(Int(fromFPE2: (val.bytes[0], val.bytes[1])))
+        default: return nil
+        }
+    }
+    
     public func getValue(_ key: String) -> Double? {
+        return queue.sync {
         var result: kern_return_t = 0
         var val: SMCVal_t = SMCVal_t(key)
         
         result = read(&val)
         if result != kIOReturnSuccess {
-            print("Error read(\(key)): " + (String(cString: mach_error_string(result), encoding: String.Encoding.ascii) ?? "unknown error"))
             return nil
         }
         
         if val.dataSize > 0 {
-            if val.bytes.first(where: { $0 != 0 }) == nil && val.key != "FS! " && !val.key.hasPrefix("F") {
+            if val.bytes.first(where: { $0 != 0 }) == nil && !Self.isZeroAllowed(val.key) {
                 return nil
             }
             
@@ -269,15 +302,16 @@ public class SMC {
         }
         
         return nil
+        } // queue.sync
     }
     
     public func getStringValue(_ key: String) -> String? {
+        return queue.sync {
         var result: kern_return_t = 0
         var val: SMCVal_t = SMCVal_t(key)
         
         result = read(&val)
         if result != kIOReturnSuccess {
-            print("Error read(): " + (String(cString: mach_error_string(result), encoding: String.Encoding.ascii) ?? "unknown error"))
             return nil
         }
         
@@ -303,28 +337,26 @@ public class SMC {
                 
                 return (c1 + c2 + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + c11 + c12).trimmingCharacters(in: .whitespaces)
             default:
-                print("unsupported data type \(val.dataType) for key: \(key)")
                 return nil
             }
         }
         
         return nil
+        } // queue.sync
     }
     
     public func getAllKeys() -> [String] {
+        return queue.sync {
         var list: [String] = []
         
-        let keysNum: Double? = self.getValue("#KEY")
-        if keysNum == nil {
-            print("ERROR no keys count found")
-            return list
-        }
+        let keysNum: Double? = self._getValueUnsafe("#KEY")
+        guard let keysNum else { return list }
         
         var result: kern_return_t = 0
         var input: SMCKeyData_t = SMCKeyData_t()
         var output: SMCKeyData_t = SMCKeyData_t()
         
-        for i in 0...Int(keysNum!) {
+        for i in 0...Int(keysNum) {
             input = SMCKeyData_t()
             output = SMCKeyData_t()
             
@@ -340,6 +372,7 @@ public class SMC {
         }
         
         return list
+        } // queue.sync
     }
     
     public func write(_ key: String, _ newValue: Int) -> kern_return_t {
@@ -366,6 +399,7 @@ public class SMC {
     }
 
     public func setFanMode(_ id: Int, mode: FanMode) {
+        queue.sync {
         if mode == .forced {
             if !unlockFanControl(fanId: id) { return }
         } else {
@@ -397,18 +431,30 @@ public class SMC {
             // Reset Ftst if all fans are now automatic
             self.resetFtstIfAllAuto()
         }
+        } // queue.sync
     }
     
     public func setFanSpeed(_ id: Int, speed: Int) {
-        if let maxSpeed = self.getValue("F\(id)Mx"),
+        queue.sync {
+        if let maxSpeed = self._getValueUnsafe("F\(id)Mx"),
            speed > Int(maxSpeed) {
-            return setFanSpeed(id, speed: Int(maxSpeed))
+            self._setFanSpeedUnsafe(id, speed: Int(maxSpeed))
+            return
         }
-        
+        if speed != 0, let minSpeed = self._getValueUnsafe("F\(id)Mn"),
+           speed < Int(minSpeed) {
+            self._setFanSpeedUnsafe(id, speed: Int(minSpeed))
+            return
+        }
+        self._setFanSpeedUnsafe(id, speed: speed)
+        } // queue.sync
+    }
+    
+    private func _setFanSpeedUnsafe(_ id: Int, speed: Int) {
         var modeVal = SMCVal_t(fanModeKey(id))
         let modeResult = read(&modeVal)
         guard modeResult == kIOReturnSuccess else {
-            print("Error read fan mode: " + (String(cString: mach_error_string(modeResult), encoding: String.Encoding.ascii) ?? "unknown error"))
+            print(smcError("read", key: fanModeKey(id), result: modeResult))
             return
         }
         if modeVal.bytes[0] != 1 {
@@ -420,7 +466,7 @@ public class SMC {
         
         result = read(&value)
         if result != kIOReturnSuccess {
-            print("Error read fan value: " + (String(cString: mach_error_string(result), encoding: String.Encoding.ascii) ?? "unknown error"))
+            print(smcError("read", key: "F\(id)Tg", result: result))
             return
         }
         
@@ -439,22 +485,6 @@ public class SMC {
         
         if !self.writeWithRetry(value) {
             return
-        }
-    }
-    
-    public func resetFans() {
-        var value = SMCVal_t("FS! ")
-        if read(&value) != kIOReturnSuccess {
-            return
-        }
-        
-        for i in 0..<Int(value.dataSize) {
-            value.bytes[i] = 0
-        }
-        
-        let result = self.write(value)
-        if result != kIOReturnSuccess {
-            print("Error write: " + (String(cString: mach_error_string(result), encoding: String.Encoding.ascii) ?? "unknown error"))
         }
     }
     
@@ -529,6 +559,15 @@ public class SMC {
     }
     
     public func resetFanControl() -> Bool {
+        return queue.sync {
+        // Reset FS! (Intel legacy)
+        var fsValue = SMCVal_t("FS! ")
+        if read(&fsValue) == kIOReturnSuccess && fsValue.dataSize > 0 {
+            for i in 0..<Int(fsValue.dataSize) { fsValue.bytes[i] = 0 }
+            _ = self.write(fsValue)
+        }
+        
+        // Reset Ftst (Apple Silicon)
         var ftstPresent = false
         var value = SMCVal_t("Ftst")
         let result = read(&value)
@@ -540,9 +579,9 @@ public class SMC {
             }
         }
 
-        // Also reset individual fan modes and target speeds
-        guard let count = getValue("FNum") else {
-            return ftstPresent // Ftst-only reset succeeded
+        // Reset individual fan modes and target speeds
+        guard let count = _getValueUnsafe("FNum") else {
+            return ftstPresent
         }
         var success = true
         for i in 0..<Int(count) {
@@ -554,7 +593,6 @@ public class SMC {
                 if !self.writeWithRetry(modeVal) { success = false }
             }
             
-            // Clear target speed
             let targetKey = "F\(i)Tg"
             var targetVal = SMCVal_t(targetKey)
             if read(&targetVal) == kIOReturnSuccess && targetVal.dataSize > 0 {
@@ -567,6 +605,7 @@ public class SMC {
             }
         }
         return success
+        } // queue.sync
     }
     
     /// Reset Ftst if all fans are in automatic mode
