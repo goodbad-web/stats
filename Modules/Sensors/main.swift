@@ -80,6 +80,8 @@ public class Sensors: Module {
             self?.sensorsReader?.read()
         }
         
+        NotificationCenter.default.addObserver(self, selector: #selector(self.fanControlOverrideCallback), name: .fanControlOverride, object: nil)
+        
         self.setReaders([self.sensorsReader])
     }
     
@@ -93,6 +95,20 @@ public class Sensors: Module {
                 }
             }
         }
+    }
+    
+    @objc private func fanControlOverrideCallback(_ notification: Notification) {
+        guard let reason = notification.userInfo?["reason"] as? String else { return }
+        let title = localizedString("Fan control override")
+        var subtitle = ""
+        
+        if reason == "high_temp" {
+            subtitle = localizedString("Fans set to Auto due to high temperature")
+        } else if reason == "battery" {
+            subtitle = localizedString("Fans set to Auto on battery power")
+        }
+        
+        self.notificationsView.newNotification(id: "fan_override", title: title, subtitle: subtitle)
     }
     
     private func usageCallback(_ raw: Sensors_List?) {

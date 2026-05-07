@@ -235,6 +235,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                 if hottest > 95 {
                     if updatedSensors.filter({ $0 is Fan }).contains(where: { ($0 as? Fan)?.mode == .forced }) {
                         SMCHelper.shared.resetFanControl()
+                        NotificationCenter.default.post(name: .fanControlOverride, object: nil, userInfo: ["reason": "high_temp"])
                     }
                 }
             }
@@ -243,6 +244,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
             if batteryAutoState && !self.isAC() {
                 if updatedSensors.filter({ $0 is Fan }).contains(where: { ($0 as? Fan)?.mode == .forced }) {
                     SMCHelper.shared.resetFanControl()
+                    NotificationCenter.default.post(name: .fanControlOverride, object: nil, userInfo: ["reason": "battery"])
                 }
             }
             if let (cpu, gpu, ane, ram, pci) = self.IOSensors() {
