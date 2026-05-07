@@ -29,6 +29,10 @@ internal enum SMCDataType: String {
     case SPF0 = "spf0"
     case FLT = "flt "
     case FPE2 = "fpe2"
+    case SP2E = "sp2e"
+    case SP3E = "sp3e"
+    case SP4E = "sp4e"
+    case SP5E = "sp5e"
     case FP2E = "fp2e"
     case FDS = "{fds"
 }
