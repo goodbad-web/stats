@@ -123,7 +123,7 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
                     }
                     usage.voltage = self.getVoltage() ?? 0
                     usage.temperature = self.getTemperature() ?? 0
-                    usage.systemPower = SMC.shared.getValue("PSTR") ?? 0
+                    usage.systemPower = SMC.shared.getValue("PSTR") ?? abs(usage.voltage * Double(usage.amperage) / 1000.0)
                     
                     var ACwatts: Int = 0
                     if let ACDetails = IOPSCopyExternalPowerAdapterDetails() {
@@ -145,11 +145,14 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
                         }
                     }
                     
-                    if let padc = SMC.shared.getValue("ID0R") {
+                    if let padc = SMC.shared.getValue("ID0R") ?? SMC.shared.getValue("PADC") {
                         usage.adapterCurrent = Int(abs(padc) * 1000)
                     }
-                    if let padv = SMC.shared.getValue("VD0R") {
+                    if let padv = SMC.shared.getValue("VD0R") ?? SMC.shared.getValue("PADV") {
                         usage.adapterVoltage = Int(abs(padv) * 1000)
+                    }
+                    if let pdtr = SMC.shared.getValue("PDTR") {
+                        usage.adapterPower = abs(pdtr)
                     }
                     
                     if let chargerData = self.getChargerData() {
@@ -259,20 +262,20 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
                 return
             }
             
-            let output = String(data: outputData.advanced(by: outputData.count/2), encoding: .utf8)
-            guard let output, !output.isEmpty else { return }
+            let outputString = String(data: outputData, encoding: .utf8)
+            guard let outputString, !outputString.isEmpty else { return }
+            
+            // Find the last occurrence of the header to get the second (latest) sample
+            let samples = outputString.components(separatedBy: "PID")
+            guard samples.count >= 2, let lastSample = samples.last else { return }
             
             var processes: [TopProcess] = []
-            output.enumerateLines { (line, _) in
-                if line.matches("^\\d+ *[^(\\d)]*\\d+\\.*\\d* *$") {
-                    let str = line.trimmingCharacters(in: .whitespaces)
-                    let pidFind = str.findAndCrop(pattern: "^\\d+")
-                    let usageFind = pidFind.remain.findAndCrop(pattern: " +[0-9]+.*[0-9]*$")
-                    let command = usageFind.remain.trimmingCharacters(in: .whitespaces)
-                    let pid = Int(pidFind.cropped) ?? 0
-                    guard let usage = Double(usageFind.cropped.filter("01234567890.".contains)) else {
-                        return
-                    }
+            lastSample.enumerateLines { (line, _) in
+                let parts = line.trimmingCharacters(in: .whitespaces).components(separatedBy: " ").filter{ !$0.isEmpty }
+                if parts.count >= 3 {
+                    let pid = Int(parts[0]) ?? 0
+                    guard let usage = Double(parts.last!.filter("0123456789.".contains)) else { return }
+                    let command = parts[1..<(parts.count - 1)].joined(separator: " ")
                     
                     var name: String = command
                     if let app = NSRunningApplication(processIdentifier: pid_t(pid)), let n = app.localizedName {

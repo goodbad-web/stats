@@ -314,13 +314,17 @@ internal class Popup: PopupWrapper {
                 self.chargingCurrentField?.stringValue = notConnected
                 self.chargingVoltageField?.stringValue = notConnected
             } else {
-                let chargingPower = Double(value.chargingCurrent * value.chargingVoltage) / 1000000.0
-                self.powerField?.stringValue = "\(chargingPower.roundTo(decimalPlaces: 2)) / \(value.ACwatts) W"
+                let currentVal = value.adapterCurrent != 0 ? value.adapterCurrent : value.chargingCurrent
+                let voltageVal = value.adapterVoltage != 0 ? value.adapterVoltage : value.chargingVoltage
+                let calculatedPower = Double(currentVal * voltageVal) / 1000000.0
+                let power = value.adapterPower != 0 ? value.adapterPower : calculatedPower
                 
-                let current = value.adapterMaxCurrent != 0 ? "\(value.chargingCurrent) / \(value.adapterMaxCurrent) mA" : "\(value.chargingCurrent) mA"
+                self.powerField?.stringValue = "\(power.roundTo(decimalPlaces: 2)) / \(value.ACwatts) W"
+                
+                let current = value.adapterMaxCurrent != 0 ? "\(String(format: "%.2f", Double(currentVal) / 1000.0)) / \(String(format: "%.2f", Double(value.adapterMaxCurrent) / 1000.0)) A" : "\(String(format: "%.2f", Double(currentVal) / 1000.0)) A"
                 self.chargingCurrentField?.stringValue = current
                 
-                let voltage = value.adapterMaxVoltage != 0 ? "\(value.chargingVoltage) / \(value.adapterMaxVoltage) mV" : "\(value.chargingVoltage) mV"
+                let voltage = value.adapterMaxVoltage != 0 ? "\(String(format: "%.2f", Double(voltageVal) / 1000.0)) / \(String(format: "%.2f", Double(value.adapterMaxVoltage) / 1000.0)) V" : "\(String(format: "%.2f", Double(voltageVal) / 1000.0)) V"
                 self.chargingVoltageField?.stringValue = voltage
             }
             self.chargingStateField?.stringValue = value.isCharging ? localizedString("Yes") : localizedString("No")

@@ -38,6 +38,7 @@ struct Battery_Usage: Codable {
     var adapterMaxVoltage: Int = 0
     var adapterCurrent: Int = 0
     var adapterVoltage: Int = 0
+    var adapterPower: Double = 0
     var chargingCurrent: Int = 0
     var chargingVoltage: Int = 0
     

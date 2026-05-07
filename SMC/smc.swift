@@ -209,7 +209,7 @@ public class SMC {
     }
     
     private static func isZeroAllowed(_ key: String) -> Bool {
-        key == "Ftst" || key.range(of: #"^F\d"#, options: .regularExpression) != nil
+        key == "Ftst" || key == "ID0R" || key == "VD0R" || key == "PADC" || key == "PADV" || key == "PSTR" || key.range(of: #"^F\d"#, options: .regularExpression) != nil
     }
     
     fileprivate func _getValueUnsafe(_ key: String) -> Double? {
@@ -218,12 +218,30 @@ public class SMC {
         if result != kIOReturnSuccess { return nil }
         guard val.dataSize > 0 else { return nil }
         if val.bytes.first(where: { $0 != 0 }) == nil && !Self.isZeroAllowed(val.key) { return nil }
+        
+        let getInt16 = { (bytes: [UInt8]) -> Int16 in
+            return Int16(bitPattern: UInt16(bytes[0]) << 8 | UInt16(bytes[1]))
+        }
+        
         switch val.dataType {
         case SMCDataType.UI8.rawValue: return Double(val.bytes[0])
         case SMCDataType.UI16.rawValue: return Double(UInt16(val.bytes[0]) << 8 | UInt16(val.bytes[1]))
         case SMCDataType.UI32.rawValue: return Double(UInt32(val.bytes[0]) << 24 | UInt32(val.bytes[1]) << 16 | UInt32(val.bytes[2]) << 8 | UInt32(val.bytes[3]))
         case SMCDataType.FLT.rawValue: return Float(val.bytes).map { Double($0) }
-        case SMCDataType.SP78.rawValue: return Double(Int(val.bytes[0]) * 256 + Int(val.bytes[1])) / 256
+        case SMCDataType.SP1E.rawValue, SMCDataType.SP2E.rawValue, SMCDataType.SP3E.rawValue, SMCDataType.SP4E.rawValue, SMCDataType.SP5E.rawValue:
+            return Double(getInt16(val.bytes)) / 16384
+        case SMCDataType.SP3C.rawValue: return Double(getInt16(val.bytes)) / 4096
+        case SMCDataType.SP4B.rawValue: return Double(getInt16(val.bytes)) / 2048
+        case SMCDataType.SP5A.rawValue: return Double(getInt16(val.bytes)) / 1024
+        case SMCDataType.SPA5.rawValue: return Double(getInt16(val.bytes)) / 32
+        case SMCDataType.SP69.rawValue: return Double(getInt16(val.bytes)) / 512
+        case SMCDataType.SP78.rawValue: return Double(getInt16(val.bytes)) / 256
+        case SMCDataType.SP87.rawValue: return Double(getInt16(val.bytes)) / 128
+        case SMCDataType.SP96.rawValue: return Double(getInt16(val.bytes)) / 64
+        case SMCDataType.SPB4.rawValue: return Double(getInt16(val.bytes)) / 16
+        case SMCDataType.SPF0.rawValue: return Double(getInt16(val.bytes))
+        case SMCDataType.FP2E.rawValue: return Double(UInt16(val.bytes[0]) << 8 | UInt16(val.bytes[1])) / 16384
+        case SMCDataType.FPE2.rawValue: return Double(UInt16(val.bytes[0]) << 8 | UInt16(val.bytes[1])) / 4
         default: return nil
         }
     }
