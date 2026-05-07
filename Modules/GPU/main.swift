@@ -41,7 +41,11 @@ public struct GPU_Info: Codable {
     public var renderUtilization: Double? = nil
     public var tilerUtilization: Double? = nil
     public var aneUtilization: Double? = nil
+    public var vramTotal: Int64? = nil
+    public var vramUsed: Double? = nil
+    public var gpuPower: Double? = nil
     public var fps: Double? = nil
+    public var topProcesses: [TopProcess] = []
     
     init(id: String, type: GPU_type, IOClass: String, vendor: String? = nil, model: String, cores: Int?, utilization: Double? = nil, render: Double? = nil, tiler: Double? = nil) {
         self.id = id
@@ -60,7 +64,7 @@ public struct GPU_Info: Codable {
         if self.id.isEmpty {
             id = "0"
         }
-        return "\(id),1,\(self.utilization ?? 0),\(self.renderUtilization ?? 0),\(self.tilerUtilization ?? 0),,"
+        return "\(id),1,\(self.utilization ?? 0),\(self.renderUtilization ?? 0),\(self.tilerUtilization ?? 0),\(self.vramUsed ?? 0),\(self.gpuPower ?? 0)"
     }
 }
 
@@ -164,6 +168,7 @@ public class GPU: Module {
             self?.infoReader?.setInterval(value)
         }
         self.settingsView.callback = { [weak self] in
+            self?.popupView.numberOfProcessesUpdated()
             self?.infoReader?.read()
         }
         

@@ -52,6 +52,12 @@ internal class Popup: PopupWrapper {
         }
     }
     
+    public func numberOfProcessesUpdated() {
+        self.arrangedSubviews.filter({ $0 is GPUView }).map({ $0 as! GPUView }).forEach { view in
+            view.numberOfProcessesUpdated()
+        }
+    }
+    
     // MARK: - Settings
     
     public override func settings() -> NSView? {
@@ -83,7 +89,14 @@ private class GPUView: NSStackView {
     private var renderUtilizationChart: LineChartView? = nil
     private var tilerUtilizationChart: LineChartView? = nil
     private var aneUtilizationChart: LineChartView? = nil
+    private var vramUtilizationChart: LineChartView? = nil
+    private var gpuPowerChart: LineChartView? = nil
+    private var gpuFrequencyChart: LineChartView? = nil
     
+    private var maxPower: Double = 0
+    private var maxFreq: Double = 0
+    
+    private var processes: ProcessesView? = nil
     public var sizeCallback: (() -> Void)
     
     open override var intrinsicContentSize: CGSize {
@@ -106,11 +119,33 @@ private class GPUView: NSStackView {
         
         self.addArrangedSubview(self.title())
         self.addArrangedSubview(self.stats())
+        self.addArrangedSubview(self.initProcesses())
         self.addArrangedSubview(NSView())
         
         let h = self.arrangedSubviews.map({ $0.bounds.height }).reduce(0, +)
         self.setFrameSize(NSSize(width: self.frame.width, height: h))
         self.sizeCallback()
+    }
+    
+    private func initProcesses() -> NSView {
+        let numberOfProcesses = Store.shared.int(key: "GPU_processes", defaultValue: 5)
+        if numberOfProcesses == 0 { return NSView() }
+        
+        let h: CGFloat = 22
+        let height = (h*CGFloat(numberOfProcesses)) + Constants.Popup.separatorHeight + 22
+        let view: NSView = NSView(frame: NSRect(x: 0, y: 0, width: self.frame.width, height: height))
+        let separator = separatorView(localizedString("Top processes"), origin: NSPoint(x: 0, y: height-Constants.Popup.separatorHeight), width: self.frame.width)
+        let container: ProcessesView = ProcessesView(
+            frame: NSRect(x: 0, y: 0, width: self.frame.width, height: separator.frame.origin.y),
+            values: [(localizedString("Usage"), nil)],
+            n: numberOfProcesses
+        )
+        self.processes = container
+        
+        view.addSubview(separator)
+        view.addSubview(container)
+        
+        return view
     }
     
     required init?(coder: NSCoder) {
@@ -182,6 +217,9 @@ private class GPUView: NSStackView {
         self.addStats(id: "Render utilization", self.value.renderUtilization)
         self.addStats(id: "Tiler utilization", self.value.tilerUtilization)
         self.addStats(id: "ANE utilization", self.value.aneUtilization)
+        self.addStats(id: "VRAM utilization", self.value.vramUsed)
+        self.addStats(id: "GPU power", self.value.gpuPower)
+        self.addStats(id: "GPU frequency", self.value.coreClock != nil ? Double(self.value.coreClock!) : nil)
         
         container.addArrangedSubview(circles)
         container.addArrangedSubview(charts)
@@ -282,6 +320,34 @@ private class GPUView: NSStackView {
             if self.aneUtilizationChart == nil {
                 self.aneUtilizationChart = chart
             }
+        } else if id == "VRAM utilization" {
+            circle.setValue(value)
+            circle.setText("\(Int(value.isFinite ? value*100 : 0))%")
+            circle.toolTip = "\(localizedString(id)): \(Int(value.isFinite ? value*100 : 0))%"
+            
+            if self.vramUtilizationChart == nil {
+                self.vramUtilizationChart = chart
+            }
+        } else if id == "GPU power" {
+            if value > self.maxPower { self.maxPower = value }
+            circle.setValue(self.maxPower > 0 ? value / self.maxPower : 0)
+            circle.setText(String(format: "%.1fW", value))
+            circle.toolTip = "\(localizedString(id)): \(String(format: "%.2fW", value))"
+            chart.setSuffix("W")
+            
+            if self.gpuPowerChart == nil {
+                self.gpuPowerChart = chart
+            }
+        } else if id == "GPU frequency" {
+            if value > self.maxFreq { self.maxFreq = value }
+            circle.setValue(self.maxFreq > 0 ? value / self.maxFreq : 0)
+            circle.setText(value >= 1000 ? String(format: "%.1fG", value/1000) : "\(Int(value))M")
+            circle.toolTip = "\(localizedString(id)): \(Int(value)) MHz"
+            chart.setSuffix("MHz")
+            
+            if self.gpuFrequencyChart == nil {
+                self.gpuFrequencyChart = chart
+            }
         }
     }
     
@@ -297,6 +363,14 @@ private class GPUView: NSStackView {
             self.addStats(id: "Render utilization", gpu.renderUtilization)
             self.addStats(id: "Tiler utilization", gpu.tilerUtilization)
             self.addStats(id: "ANE utilization", gpu.aneUtilization)
+            self.addStats(id: "VRAM utilization", gpu.vramUsed)
+            self.addStats(id: "GPU power", gpu.gpuPower)
+            self.addStats(id: "GPU frequency", gpu.coreClock != nil ? Double(gpu.coreClock!) : nil)
+            
+            for i in 0..<gpu.topProcesses.count where i < (self.processes?.count ?? 0) {
+                let process = gpu.topProcesses[i]
+                self.processes?.set(i, process, ["\(Int(process.usage))%"])
+            }
         }
         
         if let value = gpu.temperature {
@@ -318,6 +392,18 @@ private class GPUView: NSStackView {
         if let value = gpu.aneUtilization {
             self.aneUtilizationChart?.addValue(value)
         }
+        if let value = gpu.vramUsed {
+            self.vramUtilizationChart?.addValue(value)
+        }
+        if let value = gpu.gpuPower {
+            if value > self.maxPower { self.maxPower = value }
+            self.gpuPowerChart?.addValue(self.maxPower > 0 ? value / self.maxPower : 0)
+        }
+        if let value = gpu.coreClock {
+            let v = Double(value)
+            if v > self.maxFreq { self.maxFreq = v }
+            self.gpuFrequencyChart?.addValue(self.maxFreq > 0 ? v / self.maxFreq : 0)
+        }
     }
     
     @objc private func showDetails() {
@@ -331,6 +417,19 @@ private class GPUView: NSStackView {
             width: self.frame.width,
             height: self.arrangedSubviews.map({ $0.bounds.height + self.spacing }).reduce(0, +)
         ))
+        self.sizeCallback()
+    }
+    
+    public func numberOfProcessesUpdated() {
+        self.arrangedSubviews.forEach { v in
+            if v.subviews.contains(where: { $0 is ProcessesView }) {
+                v.removeFromSuperview()
+            }
+        }
+        self.insertArrangedSubview(self.initProcesses(), at: 2)
+        
+        let h = self.arrangedSubviews.map({ $0.bounds.height }).reduce(0, +)
+        self.setFrameSize(NSSize(width: self.frame.width, height: h))
         self.sizeCallback()
     }
 }

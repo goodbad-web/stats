@@ -43,7 +43,7 @@ public class PieChart: WidgetWrapper {
             height: Constants.Widget.height - (Constants.Widget.margin.y*2)
         ))
         
-        self.canDrawConcurrently = true
+        self.canDrawConcurrently = false
         
         if preview {
             if self.title == "CPU" {

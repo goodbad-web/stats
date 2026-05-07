@@ -20,6 +20,8 @@ struct GPUSettingsView: View {
     @AppStorage("GPU_mini_sensor") private var selectedMiniSensor: String = "Utilization"
     @AppStorage("GPU_stack_sensor") private var selectedStackSensor: String = "Utilization/Render"
     
+    @AppStorage("GPU_processes") private var numberOfProcesses = 5
+    
     var widgets: [widget_t]
     var gpuList: [KeyValue_t]
     var callback: () -> Void
@@ -96,6 +98,21 @@ struct GPUSettingsView: View {
                         .onChange(of: selectedStackSensor) { _, _ in callback() }
                     }
                     .disabled(!widgets.contains(.stack))
+                    
+                    HStack {
+                        Text(localizedString("Number of top processes"))
+                        Spacer()
+                        Picker("", selection: $numberOfProcesses) {
+                            ForEach([0, 3, 5, 8, 10, 15], id: \.self) { item in
+                                Text("\(item)").tag(item)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        .onChange(of: numberOfProcesses) { _, _ in
+                            callback()
+                        }
+                    }
                 }
                 .padding(10)
                 .background(Color.gray.opacity(0.1))

@@ -44,10 +44,10 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
     private nonisolated(unsafe) var displays: [gpu_s] = []
     private nonisolated(unsafe) var devices: [device] = []
 
-    private nonisolated(unsafe) var aneChannels: CFMutableDictionary? = nil
-    private nonisolated(unsafe) var aneSubscription: IOReportSubscriptionRef? = nil
-    private nonisolated(unsafe) var previousANEEnergy: Double = 0
-    private nonisolated(unsafe) var previousANERead: Date? = nil
+    private nonisolated(unsafe) var powerChannels: CFMutableDictionary? = nil
+    private nonisolated(unsafe) var powerSubscription: IOReportSubscriptionRef? = nil
+    private nonisolated(unsafe) var previousPowerEnergy: [String: Double] = [:]
+    private nonisolated(unsafe) var previousPowerRead: Date? = nil
     private nonisolated(unsafe) var aneMaxPower: Double = 8.0
 
     private nonisolated(unsafe) var framesChannels: CFMutableDictionary? = nil
@@ -66,7 +66,7 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
         let devices = PCIdevices.filter{ $0.object(forKey: "IOName") as? String == "display" }
         
         self.aneMaxPower = maxANEPower(for: SystemKit.shared.device.platform)
-        self.setupANE()
+        self.setupPower()
         self.setupFrames()
 
         devices.forEach { (dict: NSDictionary) in
@@ -97,8 +97,8 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
     }
     
     @MainActor public override func terminate() {
-        self.aneChannels = nil
-        self.aneSubscription = nil
+        self.powerChannels = nil
+        self.powerSubscription = nil
         self.framesChannels = nil
         self.framesSubscription = nil
     }
@@ -109,6 +109,8 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
                 guard let accelerators = fetchIOService(kIOAcceleratorClassName) else {
                     return self.gpus
                 }
+                
+                let vramTotal = Int64(ProcessInfo.processInfo.physicalMemory)
                 
                 for (index, accelerator) in accelerators.enumerated() {
                     guard let IOClass = accelerator.object(forKey: "IOClass") as? String else {
@@ -146,6 +148,18 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
                     let fanSpeed: Int? = stats["Fan Speed(%)"] as? Int ?? nil
                     let coreClock: Int? = stats["Core Clock(MHz)"] as? Int ?? nil
                     let memoryClock: Int? = stats["Memory Clock(MHz)"] as? Int ?? nil
+                    
+                    let vramUsed: Int64? = stats["In use system memory"] as? Int64 ?? stats["vramUsedBytes"] as? Int64 ?? nil
+                    
+                    var topProcesses: [TopProcess] = []
+                    if let clients = accelerator["Clients"] as? [[String: Any]] {
+                        for client in clients {
+                            guard let pid = client["ProcessID"] as? Int, let name = client["ProcessName"] as? String else { continue }
+                            let usage = (client["PerformanceStatistics"] as? [String: Any])?["Device Utilization %"] as? Double ?? 0
+                            topProcesses.append(TopProcess(pid: pid, name: name, usage: usage))
+                        }
+                    }
+                    topProcesses.sort { $0.usage > $1.usage }
                     
                     if ioClass == "nvaccelerator" || ioClass.contains("nvidia") { // nvidia
                         predictModel = "Nvidia Graphics"
@@ -191,10 +205,18 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
                             model: model,
                             cores: cores
                         ))
+                        if self.gpus.list.last?.id == id {
+                            self.gpus.list[self.gpus.list.count - 1].vramTotal = vramTotal
+                        }
                     }
                     guard let idx = self.gpus.list.firstIndex(where: { $0.id == id }) else {
                         continue
                     }
+                    
+                    if let value = vramUsed, let total = self.gpus.list[idx].vramTotal, total != 0 {
+                        self.gpus.list[idx].vramUsed = Double(value) / Double(total)
+                    }
+                    self.gpus.list[idx].topProcesses = topProcesses
                     
                     if let agcInfo = accelerator["AGCInfo"] as? [String: Int], let state = agcInfo["poweredOffByAGC"] {
                         self.gpus.list[idx].state = state == 0
@@ -232,11 +254,15 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
                     }
                 }
                 
-                let anePower = self.readANEPower()
-                let aneUtil = anePower.map { min(1.0, max(0.0, $0 / self.aneMaxPower)) }
+                let power = self.readPower()
+                let anePower = power["ANE"] ?? 0
+                let gpuPower = power["GPU"] ?? 0
+                let aneUtil = anePower / self.aneMaxPower
                 let fpsValue = self.readFrames()
+                
                 for i in self.gpus.list.indices where self.gpus.list[i].IOClass.lowercased().contains("agx") {
-                    self.gpus.list[i].aneUtilization = aneUtil ?? 0
+                    self.gpus.list[i].aneUtilization = min(1, max(0, aneUtil))
+                    self.gpus.list[i].gpuPower = gpuPower
                     self.gpus.list[i].fps = fpsValue
                 }
                 
@@ -304,42 +330,46 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
         return Double(delta) / elapsed
     }
     
-    // MARK: - ANE power
+    // MARK: - Power
     
-    private func setupANE() {
+    private func setupPower() {
         guard let channel = IOReportCopyChannelsInGroup("Energy Model" as CFString, nil, 0, 0, 0)?.takeRetainedValue() else { return }
         
         let size = CFDictionaryGetCount(channel)
         guard let mutable = CFDictionaryCreateMutableCopy(kCFAllocatorDefault, size, channel),
               let dict = (mutable as AnyObject) as? [String: Any], dict["IOReportChannels"] != nil else { return }
         
-        self.aneChannels = mutable
+        self.powerChannels = mutable
         var sub: Unmanaged<CFMutableDictionary>?
-        self.aneSubscription = IOReportCreateSubscription(nil, mutable, &sub, 0, nil)
+        self.powerSubscription = IOReportCreateSubscription(nil, mutable, &sub, 0, nil)
         sub?.release()
     }
     
-    nonisolated private func readANEPower() -> Double? {
-        guard let subscription = self.aneSubscription,
-              let channels = self.aneChannels,
+    nonisolated private func readPower() -> [String: Double] {
+        guard let subscription = self.powerSubscription,
+              let channels = self.powerChannels,
               let reportSample = IOReportCreateSamples(subscription, channels, nil)?.takeRetainedValue(),
-              let dict = (reportSample as AnyObject) as? [String: Any] else {
-            return nil
-        }
-        guard let items = dict["IOReportChannels"] as? NSArray else {
-            return nil
+              let dict = (reportSample as AnyObject) as? [String: Any],
+              let items = dict["IOReportChannels"] as? NSArray else {
+            return [:]
         }
         
-        var currentEnergy: Double = 0
-        var found = false
-        
+        var energies: [String: Double] = [:]
         for i in 0..<items.count {
             let item = items[i] as! CFDictionary
             
             guard let group = IOReportChannelGetGroup(item)?.takeUnretainedValue() as? String,
                   group == "Energy Model",
-                  let channel = IOReportChannelGetChannelName(item)?.takeUnretainedValue() as? String,
-                  channel.starts(with: "ANE") else { continue }
+                  let channel = IOReportChannelGetChannelName(item)?.takeUnretainedValue() as? String else { continue }
+            
+            let key: String
+            if channel.starts(with: "ANE") {
+                key = "ANE"
+            } else if channel.starts(with: "GPU") {
+                key = "GPU"
+            } else {
+                continue
+            }
             
             let raw = Double(IOReportSimpleGetIntegerValue(item, 0))
             let unit = (IOReportChannelGetUnitLabel(item)?.takeUnretainedValue() as? String)?
@@ -354,21 +384,27 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
             default:         joules = raw / 1e9
             }
             
-            currentEnergy += joules
-            found = true
+            energies[key] = (energies[key] ?? 0) + joules
         }
-        
-        guard found else { return nil }
         
         let now = Date()
         defer {
-            self.previousANEEnergy = currentEnergy
-            self.previousANERead = now
+            for (k, v) in energies {
+                self.previousPowerEnergy[k] = v
+            }
+            self.previousPowerRead = now
         }
         
-        guard let previousRead = self.previousANERead else { return 0 }
+        guard let previousRead = self.previousPowerRead else { return [:] }
         let elapsed = now.timeIntervalSince(previousRead)
-        guard elapsed > 0 else { return 0 }
-        return (currentEnergy - self.previousANEEnergy) / elapsed
+        guard elapsed > 0 else { return [:] }
+        
+        var result: [String: Double] = [:]
+        for (k, v) in energies {
+            if let prev = self.previousPowerEnergy[k] {
+                result[k] = (v - prev) / elapsed
+            }
+        }
+        return result
     }
 }

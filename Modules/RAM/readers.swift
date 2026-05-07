@@ -17,22 +17,14 @@ internal class UsageReader: Reader<RAM_Usage>, @unchecked Sendable {
     private nonisolated(unsafe) var totalSize: Double = 0
     
     public override func setup() {
-        var stats = host_basic_info()
-        var count = UInt32(MemoryLayout<host_basic_info_data_t>.size / MemoryLayout<integer_t>.size)
-        
-        let kerr: kern_return_t = withUnsafeMutablePointer(to: &stats) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                host_statistics(mach_host_self(), HOST_BASIC_INFO, $0, &count)
-            }
-        }
-        
-        if kerr == KERN_SUCCESS {
-            self.totalSize = Double(stats.max_mem)
+        var size: UInt64 = 0
+        var sizeLen: Int = MemoryLayout<UInt64>.size
+        if sysctlbyname("hw.memsize", &size, &sizeLen, nil, 0) == 0 {
+            self.totalSize = Double(size)
             return
         }
         
         self.totalSize = 0
-        error("host_info(): \(String(cString: mach_error_string(kerr), encoding: String.Encoding.ascii) ?? "unknown error")", log: self.log)
     }
     
     nonisolated public override func read() {
