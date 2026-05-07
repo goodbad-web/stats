@@ -76,6 +76,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
         }
         self.defaultValues()
         self.icon()
+        self.setupMainMenu()
         
         NotificationCenter.default.addObserver(self, selector: #selector(listenForAppPause), name: .pause, object: nil)
         self.globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
@@ -143,5 +144,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
         }
         
         completionHandler()
+    }
+    
+    private func setupMainMenu() {
+        let mainMenu = NSMenu()
+        
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "About Stats", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(withTitle: "Quit Stats", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let appMenuItem = NSMenuItem()
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+        
+        let editMenu = NSMenu(title: localizedString("Edit"))
+        editMenu.addItem(withTitle: localizedString("Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: localizedString("Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: localizedString("Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: localizedString("Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        let editMenuItem = NSMenuItem()
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+        
+        let windowMenu = NSMenu(title: localizedString("Window"))
+        let windowMenuItem = NSMenuItem()
+        windowMenuItem.submenu = windowMenu
+        mainMenu.addItem(windowMenuItem)
+        
+        NSApp.mainMenu = mainMenu
     }
 }
