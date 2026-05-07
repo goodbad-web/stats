@@ -852,7 +852,7 @@ public class SMCHelper {
     public static let shared = SMCHelper()
     
     public var isInstalled: Bool {
-        syncShell("ls /Library/PrivilegedHelperTools/").contains("eu.exelban.Stats.SMC.Helper")
+        return SMAppService.daemon(plistName: "eu.exelban.Stats.SMC.Helper.plist").status == .enabled
     }
     
     private var connection: NSXPCConnection? = nil

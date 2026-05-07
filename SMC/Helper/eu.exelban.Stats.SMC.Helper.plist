@@ -4,6 +4,8 @@
 <dict>
 	<key>Label</key>
 	<string>eu.exelban.Stats.SMC.Helper</string>
+	<key>BundleProgram</key>
+	<string>Contents/Library/PrivilegedHelperTools/eu.exelban.Stats.SMC.Helper</string>
 	<key>MachServices</key>
 	<dict>
 		<key>eu.exelban.Stats.SMC.Helper</key>
