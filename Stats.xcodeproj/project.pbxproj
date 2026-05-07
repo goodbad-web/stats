@@ -94,6 +94,7 @@
 		5CFE494429265421000F2856 /* changelog.py in Resources */ = {isa = PBXBuildFile; fileRef = 5CFE494329265421000F2856 /* changelog.py */; };
 		5EC1B2E52E2FEAFB007042A6 /* UnitedWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EC1B2E42E2FEAFB007042A6 /* UnitedWidget.swift */; };
 		5EE8037F29C36BDD0063D37D /* portal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EE8037E29C36BDD0063D37D /* portal.swift */; };
+		68CEDC982FAD5AA10049008C /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 68CEDC972FAD5AA10049008C /* Sentry */; };
 		9A045EB72594F8D100ED58F2 /* Dashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A045EB62594F8D100ED58F2 /* Dashboard.swift */; };
 		9A11AAD6266FD77F000C1C05 /* Bluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9A11AACF266FD77F000C1C05 /* Bluetooth.framework */; };
 		9A11AAD7266FD77F000C1C05 /* Bluetooth.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9A11AACF266FD77F000C1C05 /* Bluetooth.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -136,8 +137,6 @@
 		9A2848212666AB3600EC1F6D /* helpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A28481D2666AB3600EC1F6D /* helpers.swift */; };
 		9A2848892666AC0100EC1F6D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9A2848882666AC0100EC1F6D /* Assets.xcassets */; };
 		9A302614286A2A3B00B41D57 /* Repeater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A302613286A2A3B00B41D57 /* Repeater.swift */; };
-		9A34353B243E278D006B19F9 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A34353A243E278D006B19F9 /* main.swift */; };
-		9A34353C243E27E8006B19F9 /* LaunchAtLogin.app in Copy Files */ = {isa = PBXBuildFile; fileRef = 9A343527243E26A0006B19F9 /* LaunchAtLogin.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		9A3E17D3247A94AF00449CD1 /* Net.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9A3E17CC247A94AF00449CD1 /* Net.framework */; };
 		9A3E17D4247A94AF00449CD1 /* Net.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9A3E17CC247A94AF00449CD1 /* Net.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		9A3E17D9247A94B500449CD1 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A3E17D8247A94B500449CD1 /* main.swift */; };
@@ -491,7 +490,6 @@
 			dstPath = Contents/Library/LoginItems;
 			dstSubfolderSpec = 1;
 			files = (
-				9A34353C243E27E8006B19F9 /* LaunchAtLogin.app in Copy Files */,
 			);
 			name = "Copy Files";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -648,10 +646,6 @@
 		9A2848882666AC0100EC1F6D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9A28493E2666AD2A00EC1F6D /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		9A302613286A2A3B00B41D57 /* Repeater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Repeater.swift; sourceTree = "<group>"; };
-		9A343527243E26A0006B19F9 /* LaunchAtLogin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LaunchAtLogin.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		9A343535243E26A0006B19F9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		9A343536243E26A0006B19F9 /* LaunchAtLogin.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LaunchAtLogin.entitlements; sourceTree = "<group>"; };
-		9A34353A243E278D006B19F9 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		9A3616E82613C3D400D657B6 /* bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bridge.h; sourceTree = "<group>"; };
 		9A39DAD32896A3CA0013A3B6 /* sv */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = sv; path = sv.lproj/Localizable.strings; sourceTree = "<group>"; };
 		9A3E17CC247A94AF00449CD1 /* Net.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Net.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -688,7 +682,6 @@
 		9A90E1A224EAD66600471E9A /* reader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = reader.swift; sourceTree = "<group>"; };
 		9A94B81E26822DE0001F4F2B /* popup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = popup.swift; sourceTree = "<group>"; };
 		9A953A1324B9D22D0038EF4B /* settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = settings.swift; sourceTree = "<group>"; };
-		9A97CE2A25371B2300742D8F /* IntelPowerGadget.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IntelPowerGadget.framework; path = ../../../Library/Frameworks/IntelPowerGadget.framework; sourceTree = "<group>"; };
 		9A97CECA2537331B00742D8F /* CPU.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = CPU.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		9A97CECD2537331B00742D8F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		9A97CEE82537338600742D8F /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
@@ -795,6 +788,7 @@
 				9AE29ADC249A50350071B02D /* Sensors.framework in Frameworks */,
 				9ABFF8FD248BEBCB00C9041A /* Battery.framework in Frameworks */,
 				9A11AAD6266FD77F000C1C05 /* Bluetooth.framework in Frameworks */,
+				68CEDC982FAD5AA10049008C /* Sentry in Frameworks */,
 				9A2846FE2666A9CC00EC1F6D /* Kit.framework in Frameworks */,
 				9A81C75D2449A41400825D92 /* RAM.framework in Frameworks */,
 				9A3E17D3247A94AF00449CD1 /* Net.framework in Frameworks */,
@@ -808,13 +802,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				5C4E8BC42B6EF65E00F148B6 /* libleveldb.a in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		9A343524243E26A0006B19F9 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -990,7 +977,6 @@
 			isa = PBXGroup;
 			children = (
 				9A1410F7229E721100D29793 /* Stats */,
-				9A343528243E26A0006B19F9 /* LaunchAtLogin */,
 				9ADE6FD9265D032100D2FBA8 /* SMC */,
 				9A2846F82666A9CC00EC1F6D /* Kit */,
 				9AB14B75248CEEC600DC6731 /* Modules */,
@@ -1005,7 +991,6 @@
 			isa = PBXGroup;
 			children = (
 				9A1410F5229E721100D29793 /* Stats.app */,
-				9A343527243E26A0006B19F9 /* LaunchAtLogin.app */,
 				9A81C7562449A41400825D92 /* RAM.framework */,
 				9AF9EE0224648751005D2270 /* Disk.framework */,
 				9A3E17CC247A94AF00449CD1 /* Net.framework */,
@@ -1096,16 +1081,6 @@
 				5CF2210C2B1E7EAF006C583F /* notifications.swift */,
 			);
 			path = module;
-			sourceTree = "<group>";
-		};
-		9A343528243E26A0006B19F9 /* LaunchAtLogin */ = {
-			isa = PBXGroup;
-			children = (
-				9A34353A243E278D006B19F9 /* main.swift */,
-				9A343535243E26A0006B19F9 /* Info.plist */,
-				9A343536243E26A0006B19F9 /* LaunchAtLogin.entitlements */,
-			);
-			path = LaunchAtLogin;
 			sourceTree = "<group>";
 		};
 		9A3E17CD247A94AF00449CD1 /* Net */ = {
@@ -1220,7 +1195,6 @@
 			children = (
 				5C1E45552D11D66200525864 /* libIOReport.tbd */,
 				9ADE7005265D039300D2FBA8 /* IOKit.framework */,
-				9A97CE2A25371B2300742D8F /* IntelPowerGadget.framework */,
 				9A998CD922A199970087ADE7 /* ServiceManagement.framework */,
 				9A998CD722A199920087ADE7 /* Cocoa.framework */,
 				5CE7E78B2C318512006BC92C /* WidgetKit.framework */,
@@ -1538,6 +1512,7 @@
 			);
 			name = Stats;
 			packageProductDependencies = (
+				68CEDC972FAD5AA10049008C /* Sentry */,
 			);
 			productName = Stats;
 			productReference = 9A1410F5229E721100D29793 /* Stats.app */;
@@ -1562,23 +1537,6 @@
 			productName = Kit;
 			productReference = 9A2846F72666A9CC00EC1F6D /* Kit.framework */;
 			productType = "com.apple.product-type.framework";
-		};
-		9A343526243E26A0006B19F9 /* LaunchAtLogin */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 9A343537243E26A0006B19F9 /* Build configuration list for PBXNativeTarget "LaunchAtLogin" */;
-			buildPhases = (
-				9A343523243E26A0006B19F9 /* Sources */,
-				9A343524243E26A0006B19F9 /* Frameworks */,
-				9A343525243E26A0006B19F9 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = LaunchAtLogin;
-			productName = LaunchAtLogin;
-			productReference = 9A343527243E26A0006B19F9 /* LaunchAtLogin.app */;
-			productType = "com.apple.product-type.application";
 		};
 		9A3E17CB247A94AF00449CD1 /* Net */ = {
 			isa = PBXNativeTarget;
@@ -1785,9 +1743,6 @@
 						CreatedOnToolsVersion = 12.4;
 						LastSwiftMigration = 1240;
 					};
-					9A343526243E26A0006B19F9 = {
-						CreatedOnToolsVersion = 11.4;
-					};
 					9A3E17CB247A94AF00449CD1 = {
 						CreatedOnToolsVersion = 11.5;
 						LastSwiftMigration = 1150;
@@ -1873,13 +1828,13 @@
 			);
 			mainGroup = 9A1410EC229E721100D29793;
 			packageReferences = (
+				68CEDC962FAD5AA10049008C /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 			);
 			productRefGroup = 9A1410F6229E721100D29793 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				9A1410F4229E721100D29793 /* Stats */,
-				9A343526243E26A0006B19F9 /* LaunchAtLogin */,
 				9ADE6FD7265D032100D2FBA8 /* SMC */,
 				9A2846F62666A9CC00EC1F6D /* Kit */,
 				9A97CEC92537331B00742D8F /* CPU */,
@@ -1942,13 +1897,6 @@
 				9A2848082666AB3000EC1F6D /* updater.sh in Resources */,
 				5CFE494229265418000F2856 /* uninstall.sh in Resources */,
 				5CFE494429265421000F2856 /* changelog.py in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		9A343525243E26A0006B19F9 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2159,14 +2107,6 @@
 				9A2847662666AA2700EC1F6D /* Speed.swift in Sources */,
 				9A2847682666AA2700EC1F6D /* Stack.swift in Sources */,
 				9AEBBE4D28D773430082A6A1 /* Dot.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		9A343523243E26A0006B19F9 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				9A34353B243E278D006B19F9 /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3102,74 +3042,6 @@
 			};
 			name = Release;
 		};
-		9A343538243E26A0006B19F9 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CODE_SIGN_ENTITLEMENTS = LaunchAtLogin/LaunchAtLogin.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=macosx*]" = 76Q8Z9XK4F;
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				GCC_WARN_ID_AS_CONDITION = YES;
-				INFOPLIST_FILE = LaunchAtLogin/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = eu.exelban.Stats.LaunchAtLogin;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Debug;
-		};
-		9A343539243E26A0006B19F9 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CODE_SIGN_ENTITLEMENTS = LaunchAtLogin/LaunchAtLogin.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=macosx*]" = 76Q8Z9XK4F;
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				GCC_WARN_ID_AS_CONDITION = YES;
-				INFOPLIST_FILE = LaunchAtLogin/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = eu.exelban.Stats.LaunchAtLogin;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Release;
-		};
 		9A3E17D6247A94AF00449CD1 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -3943,15 +3815,6 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		9A343537243E26A0006B19F9 /* Build configuration list for PBXNativeTarget "LaunchAtLogin" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				9A343538243E26A0006B19F9 /* Debug */,
-				9A343539243E26A0006B19F9 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		9A3E17D5247A94AF00449CD1 /* Build configuration list for PBXNativeTarget "Net" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -4034,6 +3897,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		68CEDC962FAD5AA10049008C /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.12.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		68CEDC972FAD5AA10049008C /* Sentry */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 68CEDC962FAD5AA10049008C /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = Sentry;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 9A1410ED229E721100D29793 /* Project object */;
 }

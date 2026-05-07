@@ -71,7 +71,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
         let startingPoint = Date()
         
         SentrySDK.start { options in
-            options.dsn = "YOUR_SENTRY_DSN" // TODO: Replace with actual DSN
+            options.dsn = "https://f8c3e14f439ec5693bd80d5039ddc55b@o4511351261036544.ingest.us.sentry.io/4511351265165312"
             options.debug = false
             options.enableAppHangTracking = true
             options.enableCaptureFailedRequests = true
