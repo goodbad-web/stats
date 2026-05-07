@@ -132,10 +132,10 @@ public class ChartView: NSView {
     
     fileprivate func displayIfVisible() {
         if Thread.isMainThread {
-            self.needsDisplay = true
+            if self.window != nil { self.display() }
         } else {
             DispatchQueue.main.async { [weak self] in
-                self?.needsDisplay = true
+                if self?.window != nil { self?.display() }
             }
         }
     }

@@ -215,7 +215,9 @@ open class WidgetWrapper: NSView, widget_p {
     
     public func redraw() {
         DispatchQueue.main.async { [weak self] in
-            self?.needsDisplay = true
+            if self?.window != nil {
+                self?.display()
+            }
         }
     }
     
