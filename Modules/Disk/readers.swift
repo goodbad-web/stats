@@ -295,7 +295,7 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
                                         continue
                                     }
                                     
-                                    self.driveStats(localList, idx, d, currentInterval)
+                                    self.driveStats(localList, idx, d, max(1, currentInterval))
                                     continue
                                 }
                                 
@@ -353,8 +353,8 @@ private func driveDetails(_ disk: DADisk, removableState: Bool) -> drive? {
     
     if let diskDescription = DADiskCopyDescription(disk) {
         if let dict = diskDescription as? [String: AnyObject] {
-            if let removable = dict[kDADiskDescriptionMediaRemovableKey as String] {
-                if removable as! Bool {
+            if let removable = dict[kDADiskDescriptionMediaRemovableKey as String] as? Bool {
+                if removable {
                     if !removableState {
                         return nil
                     }
@@ -365,25 +365,25 @@ private func driveDetails(_ disk: DADisk, removableState: Bool) -> drive? {
             if let mediaUUID = dict[kDADiskDescriptionMediaUUIDKey as String] {
                 d.uuid = CFUUIDCreateString(kCFAllocatorDefault, (mediaUUID as! CFUUID)) as String
             }
-            if let mediaName = dict[kDADiskDescriptionVolumeNameKey as String] {
-                d.mediaName = mediaName as! String
+            if let mediaName = dict[kDADiskDescriptionVolumeNameKey as String] as? String {
+                d.mediaName = mediaName
                 if d.mediaName == "Recovery" {
                     return nil
                 }
             }
             if d.mediaName == "" {
-                if let mediaName = dict[kDADiskDescriptionMediaNameKey as String] {
-                    d.mediaName = mediaName as! String
+                if let mediaName = dict[kDADiskDescriptionMediaNameKey as String] as? String {
+                    d.mediaName = mediaName
                     if d.mediaName == "Recovery" {
                         return nil
                     }
                 }
             }
-            if let deviceModel = dict[kDADiskDescriptionDeviceModelKey as String] {
-                d.model = (deviceModel as! String).trimmingCharacters(in: .whitespacesAndNewlines)
+            if let deviceModel = dict[kDADiskDescriptionDeviceModelKey as String] as? String {
+                d.model = deviceModel.trimmingCharacters(in: .whitespacesAndNewlines)
             }
-            if let deviceProtocol = dict[kDADiskDescriptionDeviceProtocolKey as String] {
-                d.connectionType = deviceProtocol as! String
+            if let deviceProtocol = dict[kDADiskDescriptionDeviceProtocolKey as String] as? String {
+                d.connectionType = deviceProtocol
             }
             if let volumePath = dict[kDADiskDescriptionVolumePathKey as String] {
                 if let url = volumePath as? NSURL {
@@ -400,8 +400,8 @@ private func driveDetails(_ disk: DADisk, removableState: Bool) -> drive? {
                     }
                 }
             }
-            if let volumeKind = dict[kDADiskDescriptionVolumeKindKey as String] {
-                d.fileSystem = volumeKind as! String
+            if let volumeKind = dict[kDADiskDescriptionVolumeKindKey as String] as? String {
+                d.fileSystem = volumeKind
             }
         }
     }
@@ -414,9 +414,11 @@ private func driveDetails(_ disk: DADisk, removableState: Bool) -> drive? {
     }
     
     let partitionLevel = d.BSDName.filter { "0"..."9" ~= $0 }.count
-    if let parent = getDeviceIOParent(DADiskCopyIOMedia(disk), level: Int(partitionLevel)) {
+    let media = DADiskCopyIOMedia(disk)
+    if let parent = getDeviceIOParent(media, level: Int(partitionLevel)) {
         d.parent = parent
     }
+    IOObjectRelease(media)
     
     return d
 }
@@ -500,7 +502,8 @@ public class ProcessReader: Reader<[Disk_process]>, @unchecked Sendable {
                         let read = bytesRead - v.read
                         let write = bytesWritten - v.write
                         if read != 0 || write != 0 {
-                            processes.append(Disk_process(pid: Int(pid), name: name, read: read / currentInterval, write: write / currentInterval))
+                            let interval = max(1, currentInterval)
+                            processes.append(Disk_process(pid: Int(pid), name: name, read: read / interval, write: write / interval))
                         }
                     }
                     

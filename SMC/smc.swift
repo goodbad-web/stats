@@ -300,7 +300,7 @@ public class SMC {
         return kIOReturnSuccess
     }
     
-    fileprivate func write(_ value: SMCVal_t) -> kern_return_t {
+    internal func write(_ value: SMCVal_t) -> kern_return_t {
         var input = SMCKeyData_t()
         var output = SMCKeyData_t()
         input.key = FourCharCode(fromString: value.key)
@@ -315,6 +315,38 @@ public class SMC {
         
         let result = self.call(SMCKeys.kernelIndex.rawValue, input: &input, output: &output)
         return result != kIOReturnSuccess ? result : kern_return_t(output.result)
+    }
+    
+    
+    public func write(_ key: String, _ value: Int) -> kern_return_t {
+        return queue.sync {
+            var val: SMCVal_t = SMCVal_t(key)
+            var result = self.read(&val)
+            if result != kIOReturnSuccess { return result }
+            
+            switch val.dataType {
+            case SMCDataType.UI8.rawValue:
+                val.bytes[0] = UInt8(value)
+            case SMCDataType.UI16.rawValue:
+                let v = UInt16(value)
+                val.bytes[0] = UInt8(v >> 8)
+                val.bytes[1] = UInt8(v & 0xFF)
+            case SMCDataType.UI32.rawValue:
+                let v = UInt32(value)
+                val.bytes[0] = UInt8(v >> 24)
+                val.bytes[1] = UInt8((v >> 16) & 0xFF)
+                val.bytes[2] = UInt8((v >> 8) & 0xFF)
+                val.bytes[3] = UInt8(v & 0xFF)
+            case SMCDataType.SP78.rawValue:
+                let v = UInt16(value * 256)
+                val.bytes[0] = UInt8(v >> 8)
+                val.bytes[1] = UInt8(v & 0xFF)
+            default:
+                return kIOReturnError
+            }
+            
+            return self.write(val)
+        }
     }
     
     fileprivate func call(_ index: UInt8, input: inout SMCKeyData_t, output: inout SMCKeyData_t) -> kern_return_t {

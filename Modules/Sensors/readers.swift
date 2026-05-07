@@ -534,7 +534,9 @@ extension SensorsReader {
               let dict = (reportSample as AnyObject) as? [String: Any] else {
             return nil
         }
-        let items = dict["IOReportChannels"] as! CFArray
+        guard let items = dict["IOReportChannels"] as? NSArray else {
+            return nil
+        }
         let now = Date()
         
         let prevCPU = self.powers.CPU

@@ -14,7 +14,10 @@ import Cocoa
 import IOKit.ps
 
 internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
-    nonisolated private let service: io_connect_t = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
+    nonisolated private let service: io_connect_t = {
+        let matching = IOServiceMatching("AppleSmartBattery")
+        return IOServiceGetMatchingService(kIOMainPortDefault, matching)
+    }()
     
     private var source: CFRunLoopSource?
     private var loop: CFRunLoop?
