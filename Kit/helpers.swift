@@ -881,24 +881,30 @@ public class SMCHelper {
     }
     
     public func isActive() -> Bool {
-        return self.connection != nil
+        return self.isInstalled && self.connection != nil
     }
     
     public func checkForUpdate() {
+        guard isInstalled else { return }
+        // SMAppService は register() 時にバンドル内の最新版を自動採用するため、
+        // バージョンが異なる場合は再登録するだけで更新される
+        let service = SMAppService.daemon(plistName: "eu.exelban.Stats.SMC.Helper.plist")
+        if service.status != .enabled {
+            return
+        }
+        
         let helperURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Library/PrivilegedHelperTools/eu.exelban.Stats.SMC.Helper")
         guard let helperBundleInfo = CFBundleCopyInfoDictionaryForURL(helperURL as CFURL) as? [String: Any],
-              let helperVersion = helperBundleInfo["CFBundleShortVersionString"] as? String,
-              let helper = self.helper(nil) else { return }
+              let bundledVersion = helperBundleInfo["CFBundleShortVersionString"] as? String,
+              let helper = self.helperProxy() else { return }
         
-        helper.version { installedHelperVersion in
-            guard installedHelperVersion != helperVersion else { return }
-            print("new version of SMC helper is detected, going to update...")
+        helper.version { installedVersion in
+            guard installedVersion != bundledVersion else { return }
+            print("SMC helper update detected: \(installedVersion) -> \(bundledVersion)")
             self.uninstall(silent: true)
             self.install { installed in
                 if installed {
-                    print("the new version of SMC helper was successfully installed")
-                } else {
-                    print("error when installing a new version of the SMC helper")
+                    print("SMC helper updated successfully")
                 }
             }
         }
@@ -908,8 +914,6 @@ public class SMCHelper {
         let service = SMAppService.daemon(plistName: "eu.exelban.Stats.SMC.Helper.plist")
         do {
             try service.register()
-            
-            // ヘルパー起動を待ってからping確認（最大10回、計5秒）
             self.waitForHelper(attempts: 0, completion: completion)
         } catch {
             print("Error while installing the Helper: \(error.localizedDescription)")
@@ -925,7 +929,6 @@ public class SMCHelper {
         }
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            // 毎回接続をリセットして新規接続を試みる
             self.connection?.invalidate()
             self.connection = nil
             
@@ -967,7 +970,7 @@ public class SMCHelper {
     private func helperProxy() -> HelperProtocol? {
         guard let connection = self.helperConnection() else { return nil }
         return connection.remoteObjectProxyWithErrorHandler({ error in
-            print("XPC error: \(error)")
+            NSLog("SMC Helper XPC error: \(error.localizedDescription)")
         }) as? HelperProtocol
     }
     

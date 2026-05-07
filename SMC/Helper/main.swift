@@ -85,14 +85,6 @@ extension Helper {
             completion(nil)
         }
     }
-    
-    func setSMCPath(_ path: String) {
-        // Obsolete: Helper now uses SMC.shared directly
-    }
-    
-    func uninstall() {
-        // Obsolete: Helper is now managed by SMAppService
-    }
 }
 
 // https://github.com/duanefields/VirtualKVM/blob/master/VirtualKVM/CodesignCheck.swift
