@@ -23,6 +23,12 @@ public class Sensors: Module {
         FanValue(rawValue: Store.shared.string(key: "\(self.config.name)_fanValue", defaultValue: "percentage")) ?? .percentage
     }
     
+    private var selectedStackSensor: String {
+        Store.shared.string(key: "Sensors_stack_sensor", defaultValue: "All")
+    }
+    private var selectedBarChartSensor: String {
+        Store.shared.string(key: "Sensors_bar_chart_sensor", defaultValue: "Fans")
+    }
     private var selectedSensor: String
     
     public init() {
@@ -146,9 +152,10 @@ public class Sensors: Module {
                 }
             case let widget as StackWidget:
                 var list: [Stack_t] = []
+                let filter = self.selectedStackSensor
                 
                 value.sensors.forEach { (s: Sensor_p) in
-                    if s.state {
+                    if s.state && (filter == "All" || s.type.rawValue == filter) {
                         var value = s.formattedMiniValue
                         if let f = s as? Fan {
                             if self.fanValueState == .percentage {
@@ -162,9 +169,21 @@ public class Sensors: Module {
                 widget.setValues(list)
             case let widget as BarChart:
                 var flatList: [[ColorValue]] = []
-                value.sensors.filter{ $0 is Fan }.forEach { (s: Sensor_p) in
-                    if s.state, let f = s as? Fan {
-                        flatList.append([ColorValue(((f.value*100)/f.maxSpeed)/100)])
+                let filter = self.selectedBarChartSensor
+                
+                value.sensors.forEach { (s: Sensor_p) in
+                    if s.state && s.type.rawValue == filter {
+                        if let f = s as? Fan {
+                            flatList.append([ColorValue(((f.value*100)/f.maxSpeed)/100)])
+                        } else {
+                            var val = s.value / 100
+                            if s.type == .voltage {
+                                val = s.value / 20
+                            } else if s.type == .power {
+                                val = s.value / 150
+                            }
+                            flatList.append([ColorValue(val)])
+                        }
                     }
                 }
                 widget.setValue(flatList)

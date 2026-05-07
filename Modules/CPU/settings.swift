@@ -21,7 +21,11 @@ struct CPUSettingsView: View {
     @AppStorage("CPU_clustersGroup") private var clustersGroup: Bool = false
     @AppStorage("CPU_splitValue") private var splitValue: Bool = false
     
+    @AppStorage("CPU_mini_sensor") private var selectedMiniSensor: String = "Total"
+    @AppStorage("CPU_stack_sensor") private var selectedStackSensor: String = "Total/Free"
+    
     @State private var hasBarChart: Bool = false
+    @State var widgets: [widget_t] = []
     
     var callback: () -> Void = {}
     var callbackWhenUpdateNumberOfProcesses: () -> Void = {}
@@ -48,6 +52,26 @@ struct CPUSettingsView: View {
                     ForEach(NumbersOfProcesses, id: \.self) {
                         Text("\($0)").tag($0)
                     }
+                }
+            }
+            
+            Section {
+                if widgets.contains(where: { $0 == .mini }) {
+                    Picker("\(localizedString("Mini")): \(localizedString("Sensor to show"))", selection: $selectedMiniSensor) {
+                        ForEach(["Total", "System", "User"], id: \.self) {
+                            Text(localizedString($0)).tag($0)
+                        }
+                    }
+                    .onChange(of: selectedMiniSensor) { _, _ in callback() }
+                }
+                
+                if widgets.contains(where: { $0 == .stack }) {
+                    Picker("\(localizedString("Stack")): \(localizedString("Sensor to show"))", selection: $selectedStackSensor) {
+                        ForEach(["Total/Free", "System/User"], id: \.self) {
+                            Text(localizedString($0)).tag($0)
+                        }
+                    }
+                    .onChange(of: selectedStackSensor) { _, _ in callback() }
                 }
             }
             
@@ -117,6 +141,7 @@ class Settings: NSHostingView<CPUSettingsView>, Settings_v {
     }
     
     func load(widgets: [widget_t]) {
+        self.rootView.widgets = widgets
         self.rootView.setHasBarChart(!widgets.filter({ $0 == .barChart }).isEmpty)
     }
 }

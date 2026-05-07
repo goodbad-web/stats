@@ -53,6 +53,13 @@ public class Battery: Module {
     private var usageReader: UsageReader? = nil
     private var processReader: ProcessReader? = nil
     
+    private var selectedMiniSensor: String {
+        Store.shared.string(key: "Battery_mini_sensor", defaultValue: "Level")
+    }
+    private var selectedStackSensor: String {
+        Store.shared.string(key: "Battery_stack_sensor", defaultValue: "Level/Time")
+    }
+    
     private var lowLevelNotificationState: Bool = false
     private var highLevelNotificationState: Bool = false
     private var notificationID: String? = nil
@@ -120,8 +127,23 @@ public class Battery: Module {
             self.menuBar.widgets.filter{ $0.isActive }.forEach { (w: SWidget) in
                 switch w.item {
                 case let widget as Mini:
-                    widget.setValue(abs(value.level))
+                    var val = abs(value.level)
+                    if self.selectedMiniSensor == "Power" {
+                        val = abs(value.systemPower) / 50 // Normalized for visual
+                    }
+                    widget.setValue(val)
                     widget.setColorZones((0.15, 0.3))
+                case let widget as StackWidget:
+                    var list: [Stack_t] = []
+                    if self.selectedStackSensor == "Level/Time" {
+                        list.append(Stack_t(key: "level", value: "\(Int(value.level * 100))%", label: localizedString("Level")))
+                        let time = value.timeToEmpty == 0 && value.timeToCharge != 0 ? value.timeToCharge : value.timeToEmpty
+                        list.append(Stack_t(key: "time", value: Double(time).printSecondsToHoursMinutesSeconds(), label: localizedString("Time")))
+                    } else if self.selectedStackSensor == "Power/Voltage" {
+                        list.append(Stack_t(key: "power", value: "\(abs(value.systemPower).formatted())W", label: localizedString("Power")))
+                        list.append(Stack_t(key: "voltage", value: "\(value.voltage.formatted())V", label: localizedString("Voltage")))
+                    }
+                    widget.setValues(list)
                 case let widget as BarChart:
                     widget.setValue([[ColorValue(value.level)]])
                     widget.setColorZones((0.15, 0.3))

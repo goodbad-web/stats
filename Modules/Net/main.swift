@@ -159,6 +159,13 @@ public class Network: Module {
     private var publicIPRefreshInterval: String {
         Store.shared.string(key: "\(self.name)_publicIPRefreshInterval", defaultValue: "never")
     }
+    private var selectedMiniSensor: String {
+        Store.shared.string(key: "Net_mini_sensor", defaultValue: "Download speed")
+    }
+    private var selectedStackSensor: String {
+        Store.shared.string(key: "Net_stack_sensor", defaultValue: "Speed")
+    }
+    
     private var textValue: String {
         Store.shared.string(key: "\(self.name)_textWidgetValue", defaultValue: "$addr.public - $status")
     }
@@ -258,7 +265,25 @@ public class Network: Module {
         
         self.menuBar.widgets.filter{ $0.isActive }.forEach { (w: SWidget) in
             switch w.item {
+            case let widget as Mini:
+                var val: Double = 0
+                if self.selectedMiniSensor == "Download speed" {
+                    val = Double(download) / 1024 / 1024 / 100 // Normalized for visual
+                } else if self.selectedMiniSensor == "Upload speed" {
+                    val = Double(upload) / 1024 / 1024 / 100 // Normalized for visual
+                }
+                widget.setValue(val)
             case let widget as SpeedWidget: widget.setValue(input: download, output: upload)
+            case let widget as StackWidget:
+                var list: [Stack_t] = []
+                if self.selectedStackSensor == "Speed" {
+                    list.append(Stack_t(key: "download", value: Units(bytes: download).getReadableSpeed(), label: localizedString("Download")))
+                    list.append(Stack_t(key: "upload", value: Units(bytes: upload).getReadableSpeed(), label: localizedString("Upload")))
+                } else if self.selectedStackSensor == "IP" {
+                    list.append(Stack_t(key: "public", value: value.raddr.v4 ?? value.raddr.v6 ?? "-", label: localizedString("Public IP")))
+                    list.append(Stack_t(key: "private", value: value.laddr.v4 ?? value.laddr.v6 ?? "-", label: localizedString("Local IP")))
+                }
+                widget.setValues(list)
             case let widget as NetworkChart: widget.setValue(upload: Double(upload), download: Double(download))
             case let widget as TextWidget:
                 var text = self.textValue

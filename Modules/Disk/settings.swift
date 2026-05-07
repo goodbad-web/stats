@@ -41,6 +41,9 @@ struct DiskSettingsView: View {
     @AppStorage("Disk_SMART") private var smartData = true
     @AppStorage("Disk_textWidgetValue") private var textValue = "$capacity.free/$capacity.total"
     
+    @AppStorage("Disk_mini_sensor") private var selectedMiniSensor: String = "Percentage"
+    @AppStorage("Disk_stack_sensor") private var selectedStackSensor: String = "Capacity"
+    
     var disks: [String]
     var widgets: [widget_t]
     
@@ -49,6 +52,7 @@ struct DiskSettingsView: View {
     var onSelectedDiskChange: (String) -> Void
     var onRemovableDisksChange: () -> Void
     var onSMARTDataChange: () -> Void
+    var callback: () -> Void
     
     var body: some View {
         Form {
@@ -69,6 +73,26 @@ struct DiskSettingsView: View {
                 }
                 .onChange(of: numberOfProcesses) { _, _ in
                     onNumberOfProcessesChange()
+                }
+            }
+            
+            Section {
+                if widgets.contains(where: { $0 == .mini }) {
+                    Picker("\(localizedString("Mini")): \(localizedString("Sensor to show"))", selection: $selectedMiniSensor) {
+                        ForEach(["Percentage", "Read speed", "Write speed"], id: \.self) {
+                            Text(localizedString($0)).tag($0)
+                        }
+                    }
+                    .onChange(of: selectedMiniSensor) { _, _ in callback() }
+                }
+                
+                if widgets.contains(where: { $0 == .stack }) {
+                    Picker("\(localizedString("Stack")): \(localizedString("Sensor to show"))", selection: $selectedStackSensor) {
+                        ForEach(["Capacity", "Speed"], id: \.self) {
+                            Text(localizedString($0)).tag($0)
+                        }
+                    }
+                    .onChange(of: selectedStackSensor) { _, _ in callback() }
                 }
             }
             
@@ -133,7 +157,8 @@ internal class Settings: NSHostingView<DiskSettingsView>, Settings_v {
             onNumberOfProcessesChange: {},
             onSelectedDiskChange: { _ in },
             onRemovableDisksChange: {},
-            onSMARTDataChange: {}
+            onSMARTDataChange: {},
+            callback: {}
         ))
     }
     
@@ -163,7 +188,8 @@ internal class Settings: NSHostingView<DiskSettingsView>, Settings_v {
             onNumberOfProcessesChange: { [weak self] in self?.callbackWhenUpdateNumberOfProcesses() },
             onSelectedDiskChange: { [weak self] val in self?.selectedDiskHandler(val) },
             onRemovableDisksChange: { [weak self] in self?.callback() },
-            onSMARTDataChange: { [weak self] in self?.callback() }
+            onSMARTDataChange: { [weak self] in self?.callback() },
+            callback: { [weak self] in self?.callback() }
         )
     }
 }

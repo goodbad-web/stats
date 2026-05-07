@@ -51,6 +51,9 @@ struct RAMSettingsView: View {
     @AppStorage("RAM_combinedProcesses") private var combinedProcesses = false
     @AppStorage("RAM_textWidgetValue") private var textWidgetValue = "$mem.used/$mem.total ($pressure.value)"
     
+    @AppStorage("RAM_mini_sensor") private var selectedMiniSensor: String = "Usage"
+    @AppStorage("RAM_stack_sensor") private var selectedStackSensor: String = "Used/Free"
+    
     var widgets: [widget_t]
     var callback: () -> Void
     var callbackWhenUpdateNumberOfProcesses: () -> Void
@@ -92,6 +95,41 @@ struct RAMSettingsView: View {
                             setTopInterval(newValue)
                         }
                     }
+                }
+                .padding(10)
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(5)
+            }
+            
+            Section {
+                VStack(spacing: 8) {
+                    HStack {
+                        Text(localizedString("Mini") + ": " + localizedString("Sensor to show"))
+                        Spacer()
+                        Picker("", selection: $selectedMiniSensor) {
+                            ForEach(["Usage", "Used", "Free"], id: \.self) {
+                                Text(localizedString($0)).tag($0)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        .onChange(of: selectedMiniSensor) { _, _ in callback() }
+                    }
+                    .disabled(!widgets.contains(.mini))
+                    
+                    HStack {
+                        Text(localizedString("Stack") + ": " + localizedString("Sensor to show"))
+                        Spacer()
+                        Picker("", selection: $selectedStackSensor) {
+                            ForEach(["Used/Free", "Active/Inactive", "App/Cache"], id: \.self) {
+                                Text(localizedString($0)).tag($0)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        .onChange(of: selectedStackSensor) { _, _ in callback() }
+                    }
+                    .disabled(!widgets.contains(.stack))
                 }
                 .padding(10)
                 .background(Color.gray.opacity(0.1))

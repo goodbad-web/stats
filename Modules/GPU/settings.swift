@@ -17,7 +17,12 @@ struct GPUSettingsView: View {
     @AppStorage("GPU_updateInterval") private var updateInterval = 1
     @AppStorage("GPU_gpu") private var selectedGPU = "automatic"
     
+    @AppStorage("GPU_mini_sensor") private var selectedMiniSensor: String = "Utilization"
+    @AppStorage("GPU_stack_sensor") private var selectedStackSensor: String = "Utilization/Render"
+    
+    var widgets: [widget_t]
     var gpuList: [KeyValue_t]
+    var callback: () -> Void
     var setInterval: (Int) -> Void
     var selectedGPUHandler: (String) -> Void
     
@@ -44,23 +49,53 @@ struct GPUSettingsView: View {
             }
             
             Section {
-                HStack {
-                    Text(localizedString("GPU to show"))
-                    Spacer()
-                    Picker("", selection: $selectedGPU) {
-                        ForEach(gpuList, id: \.key) { item in
-                            if item.key == "separator" {
-                                Divider()
-                            } else {
-                                Text(localizedString(item.value)).tag(item.key)
+                VStack(spacing: 8) {
+                    HStack {
+                        Text(localizedString("GPU to show"))
+                        Spacer()
+                        Picker("", selection: $selectedGPU) {
+                            ForEach(gpuList, id: \.key) { item in
+                                if item.key == "separator" {
+                                    Divider()
+                                } else {
+                                    Text(localizedString(item.value)).tag(item.key)
+                                }
                             }
                         }
+                        .labelsHidden()
+                        .fixedSize()
+                        .onChange(of: selectedGPU) { _, newValue in
+                            selectedGPUHandler(newValue)
+                        }
                     }
-                    .labelsHidden()
-                    .fixedSize()
-                    .onChange(of: selectedGPU) { _, newValue in
-                        selectedGPUHandler(newValue)
+                    
+                    HStack {
+                        Text(localizedString("Mini") + ": " + localizedString("Sensor to show"))
+                        Spacer()
+                        Picker("", selection: $selectedMiniSensor) {
+                            ForEach(["Utilization", "Render", "Tiler"], id: \.self) {
+                                Text(localizedString($0)).tag($0)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        .onChange(of: selectedMiniSensor) { _, _ in callback() }
                     }
+                    .disabled(!widgets.contains(.mini))
+                    
+                    HStack {
+                        Text(localizedString("Stack") + ": " + localizedString("Sensor to show"))
+                        Spacer()
+                        Picker("", selection: $selectedStackSensor) {
+                            ForEach(["Utilization/Render", "Render/Tiler", "Utilization/ANE"], id: \.self) {
+                                Text(localizedString($0)).tag($0)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        .onChange(of: selectedStackSensor) { _, _ in callback() }
+                    }
+                    .disabled(!widgets.contains(.stack))
                 }
                 .padding(10)
                 .background(Color.gray.opacity(0.1))
@@ -80,10 +115,13 @@ internal class Settings: NSHostingView<GPUSettingsView>, Settings_v {
         KeyValue_t(key: "automatic", value: "Automatic"),
         KeyValue_t(key: "separator", value: "separator")
     ]
+    private var widgets: [widget_t] = []
     
     public init(_ module: ModuleType) {
         super.init(rootView: GPUSettingsView(
+            widgets: [],
             gpuList: [],
+            callback: {},
             setInterval: { _ in },
             selectedGPUHandler: { _ in }
         ))
@@ -98,6 +136,7 @@ internal class Settings: NSHostingView<GPUSettingsView>, Settings_v {
     }
     
     public func load(widgets: [widget_t]) {
+        self.widgets = widgets
         self.updateView()
     }
     
@@ -113,7 +152,9 @@ internal class Settings: NSHostingView<GPUSettingsView>, Settings_v {
     
     private func updateView() {
         self.rootView = GPUSettingsView(
+            widgets: self.widgets,
             gpuList: self.gpuList,
+            callback: self.callback,
             setInterval: self.setInterval,
             selectedGPUHandler: self.selectedGPUHandler
         )

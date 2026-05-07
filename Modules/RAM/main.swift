@@ -91,6 +91,13 @@ public class RAM: Module {
         return color.additional as! NSColor
     }
     
+    private var selectedMiniSensor: String {
+        Store.shared.string(key: "RAM_mini_sensor", defaultValue: "Usage")
+    }
+    private var selectedStackSensor: String {
+        Store.shared.string(key: "RAM_stack_sensor", defaultValue: "Used/Free")
+    }
+    
     private var textValue: String {
         Store.shared.string(key: "\(self.name)_textWidgetValue", defaultValue: "$mem.used/$mem.total ($pressure.value)")
     }
@@ -159,11 +166,30 @@ public class RAM: Module {
         self.menuBar.widgets.filter{ $0.isActive }.forEach { (w: SWidget) in
             switch w.item {
             case let widget as Mini:
-                widget.setValue(value.usage)
+                var val = value.usage
+                if self.selectedMiniSensor == "Used" {
+                    val = value.used / total
+                } else if self.selectedMiniSensor == "Free" {
+                    val = value.free / total
+                }
+                widget.setValue(val)
                 widget.setPressure(value.pressure.value)
             case let widget as LineChart:
                 widget.setValue(value.usage)
                 widget.setPressure(value.pressure.value)
+            case let widget as StackWidget:
+                var list: [Stack_t] = []
+                if self.selectedStackSensor == "Used/Free" {
+                    list.append(Stack_t(key: "used", value: Units(bytes: Int64(value.used)).getReadableMemory(style: .memory), label: localizedString("Used")))
+                    list.append(Stack_t(key: "free", value: Units(bytes: Int64(value.free)).getReadableMemory(style: .memory), label: localizedString("Free")))
+                } else if self.selectedStackSensor == "Active/Inactive" {
+                    list.append(Stack_t(key: "active", value: Units(bytes: Int64(value.active)).getReadableMemory(style: .memory), label: localizedString("Active")))
+                    list.append(Stack_t(key: "inactive", value: Units(bytes: Int64(value.inactive)).getReadableMemory(style: .memory), label: localizedString("Inactive")))
+                } else if self.selectedStackSensor == "App/Cache" {
+                    list.append(Stack_t(key: "app", value: Units(bytes: Int64(value.app)).getReadableMemory(style: .memory), label: localizedString("App")))
+                    list.append(Stack_t(key: "cache", value: Units(bytes: Int64(value.cache)).getReadableMemory(style: .memory), label: localizedString("Cache")))
+                }
+                widget.setValues(list)
             case let widget as BarChart:
                 if self.splitValueState {
                     widget.setValue([[

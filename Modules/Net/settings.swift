@@ -32,6 +32,10 @@ struct NetSettingsView: View {
     @AppStorage("Net_textWidgetValue") private var textValue: String = "$addr.public - $status"
     @AppStorage("Net_interface") private var selectedInterface: String = ""
     
+    @AppStorage("Net_mini_sensor") private var selectedMiniSensor: String = "Download speed"
+    @AppStorage("Net_stack_sensor") private var selectedStackSensor: String = "Speed"
+    
+    @State var widgets: [widget_t] = []
     @State private var interfaces: [Network_interface] = []
     
     var callback: () -> Void = {}
@@ -47,6 +51,26 @@ struct NetSettingsView: View {
                     ForEach(NumbersOfProcesses, id: \.self) {
                         Text("\($0)").tag($0)
                     }
+                }
+            }
+            
+            Section {
+                if widgets.contains(where: { $0 == .mini }) {
+                    Picker("\(localizedString("Mini")): \(localizedString("Sensor to show"))", selection: $selectedMiniSensor) {
+                        ForEach(["Download speed", "Upload speed"], id: \.self) {
+                            Text(localizedString($0)).tag($0)
+                        }
+                    }
+                    .onChange(of: selectedMiniSensor) { _, _ in callback() }
+                }
+                
+                if widgets.contains(where: { $0 == .stack }) {
+                    Picker("\(localizedString("Stack")): \(localizedString("Sensor to show"))", selection: $selectedStackSensor) {
+                        ForEach(["Speed", "IP"], id: \.self) {
+                            Text(localizedString($0)).tag($0)
+                        }
+                    }
+                    .onChange(of: selectedStackSensor) { _, _ in callback() }
                 }
             }
             
@@ -189,6 +213,6 @@ class Settings: NSHostingView<NetSettingsView>, Settings_v {
     }
     
     func load(widgets: [widget_t]) {
-        // widgets dependent logic can be added here if needed
+        self.rootView.widgets = widgets
     }
 }

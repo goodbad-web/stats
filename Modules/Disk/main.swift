@@ -219,6 +219,13 @@ public class Disk: Module {
     private var activityReader: ActivityReader?
     private var processReader: ProcessReader?
     
+    private var selectedMiniSensor: String {
+        Store.shared.string(key: "Disk_mini_sensor", defaultValue: "Percentage")
+    }
+    private var selectedStackSensor: String {
+        Store.shared.string(key: "Disk_stack_sensor", defaultValue: "Capacity")
+    }
+    
     private var selectedDisk: String = ""
     
     private var textValue: String {
@@ -302,7 +309,24 @@ public class Disk: Module {
             
             self.menuBar.widgets.filter{ $0.isActive }.forEach { (w: SWidget) in
                 switch w.item {
-                case let widget as Mini: widget.setValue(d.percentage)
+                case let widget as Mini:
+                    var val = d.percentage
+                    if self.selectedMiniSensor == "Read speed" {
+                        val = Double(d.activity.read) / 1024 / 1024 / 100 // Normalized for visual
+                    } else if self.selectedMiniSensor == "Write speed" {
+                        val = Double(d.activity.write) / 1024 / 1024 / 100 // Normalized for visual
+                    }
+                    widget.setValue(val)
+                case let widget as StackWidget:
+                    var list: [Stack_t] = []
+                    if self.selectedStackSensor == "Capacity" {
+                        list.append(Stack_t(key: "used", value: DiskSize(d.size - d.free).getReadableMemory(), label: localizedString("Used")))
+                        list.append(Stack_t(key: "free", value: DiskSize(d.free).getReadableMemory(), label: localizedString("Free")))
+                    } else if self.selectedStackSensor == "Speed" {
+                        list.append(Stack_t(key: "read", value: Units(bytes: d.activity.read).getReadableSpeed(), label: localizedString("Read")))
+                        list.append(Stack_t(key: "write", value: Units(bytes: d.activity.write).getReadableSpeed(), label: localizedString("Write")))
+                    }
+                    widget.setValues(list)
                 case let widget as BarChart: widget.setValue([[ColorValue(d.percentage)]])
                 case let widget as MemoryWidget:
                     widget.setValue((DiskSize(d.free).getReadableMemory(), DiskSize(d.size - d.free).getReadableMemory()), usedPercentage: d.percentage)

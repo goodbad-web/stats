@@ -119,6 +119,13 @@ public class CPU: Module {
         return color.additional as! NSColor
     }
     
+    private var selectedMiniSensor: String {
+        Store.shared.string(key: "CPU_mini_sensor", defaultValue: "Total")
+    }
+    private var selectedStackSensor: String {
+        Store.shared.string(key: "CPU_stack_sensor", defaultValue: "Total/Free")
+    }
+    
     private var systemWidgetsUpdatesState: Bool {
         self.userDefaults?.bool(forKey: "systemWidgetsUpdates_state") ?? false
     }
@@ -195,8 +202,25 @@ public class CPU: Module {
         
         self.menuBar.widgets.filter{ $0.isActive }.forEach { [self] (w: SWidget) in
             switch w.item {
-            case let widget as Mini: widget.setValue(value.totalUsage)
+            case let widget as Mini:
+                var val = value.totalUsage
+                if self.selectedMiniSensor == "System" {
+                    val = value.systemLoad
+                } else if self.selectedMiniSensor == "User" {
+                    val = value.userLoad
+                }
+                widget.setValue(val)
             case let widget as LineChart: widget.setValue(value.totalUsage)
+            case let widget as StackWidget:
+                var list: [Stack_t] = []
+                if self.selectedStackSensor == "Total/Free" {
+                    list.append(Stack_t(key: "total", value: "\(Int(value.totalUsage * 100))%", label: localizedString("Total")))
+                    list.append(Stack_t(key: "idle", value: "\(Int(value.idleLoad * 100))%", label: localizedString("Idle")))
+                } else if self.selectedStackSensor == "System/User" {
+                    list.append(Stack_t(key: "system", value: "\(Int(value.systemLoad * 100))%", label: localizedString("System")))
+                    list.append(Stack_t(key: "user", value: "\(Int(value.userLoad * 100))%", label: localizedString("User")))
+                }
+                widget.setValues(list)
             case let widget as BarChart:
                 var val: [[ColorValue]] = [[ColorValue(value.totalUsage)]]
                 let cores = SystemKit.shared.device.info.cpu?.cores ?? []

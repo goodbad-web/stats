@@ -115,6 +115,13 @@ public class GPU: Module {
     
     private var infoReader: InfoReader? = nil
     
+    private var selectedMiniSensor: String {
+        Store.shared.string(key: "GPU_mini_sensor", defaultValue: "Utilization")
+    }
+    private var selectedStackSensor: String {
+        Store.shared.string(key: "GPU_stack_sensor", defaultValue: "Utilization/Render")
+    }
+    
     private var selectedGPU: String = ""
     private var notificationLevelState: Bool = false
     private var notificationID: String? = nil
@@ -140,7 +147,7 @@ public class GPU: Module {
             settings: self.settingsView,
             portal: self.portalView,
             notifications: self.notificationsView,
-            preview: self.previewView,
+            preview: self.previewView
         )
         guard self.available else { return }
         
@@ -187,9 +194,28 @@ public class GPU: Module {
         self.menuBar.widgets.filter{ $0.isActive }.forEach { (w: SWidget) in
             switch w.item {
             case let widget as Mini:
-                widget.setValue(utilization)
+                var val = utilization
+                if self.selectedMiniSensor == "Render" {
+                    val = selectedGPU.renderUtilization ?? 0
+                } else if self.selectedMiniSensor == "Tiler" {
+                    val = selectedGPU.tilerUtilization ?? 0
+                }
+                widget.setValue(val)
                 widget.setTitle(self.showType ? "\(selectedGPU.type)GPU" : nil)
             case let widget as LineChart: widget.setValue(utilization)
+            case let widget as StackWidget:
+                var list: [Stack_t] = []
+                if self.selectedStackSensor == "Utilization/Render" {
+                    list.append(Stack_t(key: "utilization", value: "\(Int(utilization * 100))%", label: localizedString("Utilization")))
+                    list.append(Stack_t(key: "render", value: "\(Int((selectedGPU.renderUtilization ?? 0) * 100))%", label: localizedString("Render")))
+                } else if self.selectedStackSensor == "Render/Tiler" {
+                    list.append(Stack_t(key: "render", value: "\(Int((selectedGPU.renderUtilization ?? 0) * 100))%", label: localizedString("Render")))
+                    list.append(Stack_t(key: "tiler", value: "\(Int((selectedGPU.tilerUtilization ?? 0) * 100))%", label: localizedString("Tiler")))
+                } else if self.selectedStackSensor == "Utilization/ANE" {
+                    list.append(Stack_t(key: "utilization", value: "\(Int(utilization * 100))%", label: localizedString("Utilization")))
+                    list.append(Stack_t(key: "ane", value: "\(Int((selectedGPU.aneUtilization ?? 0) * 100))%", label: localizedString("ANE")))
+                }
+                widget.setValues(list)
             case let widget as BarChart: widget.setValue([[ColorValue(utilization)]])
             case let widget as Tachometer:
                 widget.setValue([

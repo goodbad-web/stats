@@ -74,6 +74,8 @@ struct SensorsSettingsView: View {
     @AppStorage("Sensors_fanValue") private var fanValueState: String = "percentage"
     @AppStorage("Sensors_sensor") private var selectedSensor: String = "Average System Total"
     @AppStorage("Sensors_fanSafety") private var fanSafetyState: Bool = true
+    @AppStorage("Sensors_stack_sensor") private var selectedStackSensor: String = "All"
+    @AppStorage("Sensors_bar_chart_sensor") private var selectedBarChartSensor: String = "Fans"
     @AppStorage("Sensors_fanBatteryAuto") private var fanBatteryAutoState: Bool = false
     
     var allSensors: [Sensor_p] = []
@@ -158,6 +160,27 @@ struct SensorsSettingsView: View {
                     .onChange(of: selectedSensor) { _, newValue in
                         onSelectedHandler(newValue)
                     }
+                }
+                
+                if widgets.contains(where: { $0 == .stack }) {
+                    Picker("\(localizedString("Stack")): \(localizedString("Sensor to show"))", selection: $selectedStackSensor) {
+                        Text(localizedString("All")).tag("All")
+                        ForEach(sensorTypes, id: \.self) { type in
+                            Text(localizedString(type.rawValue)).tag(type.rawValue)
+                        }
+                    }
+                    .onChange(of: selectedStackSensor) { _, _ in
+                        onCallback()
+                    }
+                }
+                
+                if widgets.contains(where: { $0 == .barChart }) {
+                    Picker("\(localizedString("Bar chart")): \(localizedString("Sensor to show"))", selection: $selectedBarChartSensor) {
+                        ForEach(["Fans", "Temp"], id: \.self) {
+                            Text(localizedString($0)).tag($0)
+                        }
+                    }
+                    .onChange(of: selectedBarChartSensor) { _, _ in onCallback() }
                 }
             }
             

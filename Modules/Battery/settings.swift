@@ -34,6 +34,9 @@ internal class Settings: NSStackView, Settings_v {
             },
             onTimeFormatChange: { [weak self] in
                 self?.callback()
+            },
+            callback: { [weak self] in
+                self?.callback()
             }
         )
         let hostingView = NSHostingView(rootView: settingsView)
@@ -61,10 +64,14 @@ struct BatterySettingsView: View {
     @AppStorage("Battery_processes") private var numberOfProcesses: Int = 8
     @AppStorage("Battery_timeFormat") private var timeFormat: String = "short"
     
+    @AppStorage("Battery_mini_sensor") private var selectedMiniSensor: String = "Level"
+    @AppStorage("Battery_stack_sensor") private var selectedStackSensor: String = "Level/Time"
+    
     @State var widgets: [widget_t] = []
     
     var onNumberOfProcessesChange: () -> Void = {}
     var onTimeFormatChange: () -> Void = {}
+    var callback: () -> Void = {}
     
     var body: some View {
         Form {
@@ -76,6 +83,26 @@ struct BatterySettingsView: View {
                 }
                 .onChange(of: numberOfProcesses) { _, _ in
                     onNumberOfProcessesChange()
+                }
+            }
+            
+            Section {
+                if widgets.contains(where: { $0 == .mini }) {
+                    Picker("\(localizedString("Mini")): \(localizedString("Sensor to show"))", selection: $selectedMiniSensor) {
+                        ForEach(["Level", "Power"], id: \.self) {
+                            Text(localizedString($0)).tag($0)
+                        }
+                    }
+                    .onChange(of: selectedMiniSensor) { _, _ in callback() }
+                }
+                
+                if widgets.contains(where: { $0 == .stack }) {
+                    Picker("\(localizedString("Stack")): \(localizedString("Sensor to show"))", selection: $selectedStackSensor) {
+                        ForEach(["Level/Time", "Power/Voltage"], id: \.self) {
+                            Text(localizedString($0)).tag($0)
+                        }
+                    }
+                    .onChange(of: selectedStackSensor) { _, _ in callback() }
                 }
             }
             
