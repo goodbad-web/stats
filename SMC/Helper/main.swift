@@ -114,100 +114,33 @@ extension Helper {
     func version(completion: @escaping (String) -> Void) {
         completion(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0")
     }
+    func setFanMode(id: Int, mode: Int, completion: @escaping (String?) -> Void) {
+        smcQueue.sync {
+            SMC.shared.setFanMode(id, mode: mode == 1 ? .forced : .automatic)
+            completion(nil)
+        }
+    }
+    
+    func setFanSpeed(id: Int, value: Int, completion: @escaping (String?) -> Void) {
+        smcQueue.sync {
+            SMC.shared.setFanSpeed(id, speed: value)
+            completion(nil)
+        }
+    }
+    
+    func resetFanControl(completion: @escaping (String?) -> Void) {
+        smcQueue.sync {
+            _ = SMC.shared.resetFanControl()
+            completion(nil)
+        }
+    }
+    
     func setSMCPath(_ path: String) {
-        self.smc = path
-    }
-    
-    func setFanMode(id: Int, mode: Int, completion: (String?) -> Void) {
-        smcQueue.sync {
-            guard let smc = self.smc else {
-                completion("missing smc tool")
-                return
-            }
-            let result = syncShell("\(smc) fan \(id) -m \(mode)")
-            
-            if let error = result.error, !error.isEmpty {
-                NSLog("error set fan mode: \(error)")
-                completion(nil)
-                return
-            }
-            
-            completion(result.output)
-        }
-    }
-    
-    func setFanSpeed(id: Int, value: Int, completion: (String?) -> Void) {
-        smcQueue.sync {
-            guard let smc = self.smc else {
-                completion("missing smc tool")
-                return
-            }
-            
-            let result = syncShell("\(smc) fan \(id) -v \(value)")
-            
-            if let error = result.error, !error.isEmpty {
-                NSLog("error set fan speed: \(error)")
-                completion(nil)
-                return
-            }
-            
-            completion(result.output)
-        }
-    }
-    
-    func resetFanControl(completion: (String?) -> Void) {
-        smcQueue.sync {
-            guard let smc = self.smc else {
-                completion("missing smc tool")
-                return
-            }
-            let result = syncShell("\(smc) reset")
-            if let error = result.error, !error.isEmpty {
-                NSLog("error reset fan control: \(error)")
-                completion(nil)
-                return
-            }
-            completion(result.output)
-        }
-    }
-    
-    public func syncShell(_ args: String) -> (output: String?, error: String?) {
-        let task = Process()
-        task.launchPath = "/bin/sh"
-        task.arguments = ["-c", args]
-        
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        
-        defer {
-            outputPipe.fileHandleForReading.closeFile()
-            errorPipe.fileHandleForReading.closeFile()
-        }
-        
-        task.standardOutput = outputPipe
-        task.standardError = errorPipe
-        
-        do {
-            try task.run()
-        } catch let err {
-            return (nil, "syncShell: \(err.localizedDescription)")
-        }
-        
-        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: outputData, encoding: .utf8)
-        let error = String(data: errorData, encoding: .utf8)
-        
-        return (output, error)
+        // Obsolete: Helper now uses SMC.shared directly
     }
     
     func uninstall() {
-        let process = Process()
-        process.launchPath = "/Library/PrivilegedHelperTools/eu.exelban.Stats.SMC.Helper"
-        process.qualityOfService = QualityOfService.userInitiated
-        process.arguments = ["uninstall", String(getpid())]
-        process.launch()
-        exit(0)
+        // Obsolete: Helper is now managed by SMAppService
     }
 }
 

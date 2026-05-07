@@ -144,6 +144,7 @@
 		9A46BF8A266D7D00001A1117 /* smc in CopyFiles */ = {isa = PBXBuildFile; fileRef = 9ADE6FD8265D032100D2FBA8 /* smc */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		9A46C05F266D85F8001A1117 /* smc.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ADE7038265D059000D2FBA8 /* smc.swift */; };
 		9A46C06B266D8602001A1117 /* smc.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ADE7038265D059000D2FBA8 /* smc.swift */; };
+		5CFE493F2926513E000F2856 /* smc.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ADE7038265D059000D2FBA8 /* smc.swift */; };
 		9A53EBF924EAFA5200648841 /* settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A53EBF824EAFA5200648841 /* settings.swift */; };
 		9A53EBFB24EB041E00648841 /* popup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A53EBFA24EB041E00648841 /* popup.swift */; };
 		9A58DE9E24B363D800716A9F /* popup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A58DE9D24B363D800716A9F /* popup.swift */; };
@@ -2076,6 +2077,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5CFE493F2926513E000F2856 /* smc.swift in Sources */,
 				5CFE492A29264DF1000F2856 /* main.swift in Sources */,
 				5CFE493929265055000F2856 /* protocol.swift in Sources */,
 			);
