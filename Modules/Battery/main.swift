@@ -36,6 +36,8 @@ struct Battery_Usage: Codable {
     var chargingCurrent: Int = 0
     var chargingVoltage: Int = 0
     
+    var systemPower: Double = 0
+    
     var timeToEmpty: Int = 0
     var timeToCharge: Int = 0
     var timeOnACPower: Date? = nil

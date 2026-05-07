@@ -40,6 +40,7 @@ internal class Popup: PopupWrapper {
     private var batteryPowerField: NSTextField? = nil
     private var temperatureField: NSTextField? = nil
     
+    private var totalPowerField: NSTextField? = nil
     private var powerField: NSTextField? = nil
     private var chargingStateField: NSTextField? = nil
     private var chargingCurrentField: NSTextField? = nil
@@ -148,7 +149,8 @@ internal class Popup: PopupWrapper {
         self.cyclesField = popupRow(container, title: "\(localizedString("Cycles")):", value: "").1
         
         self.temperatureField = popupRow(container, title: "\(localizedString("Temperature")):", value: "").1
-        self.batteryPowerField = popupRow(container, title: "\(localizedString("Power")):", value: "").1
+        self.totalPowerField = popupRow(container, title: "\(localizedString("Total consumption")):", value: "").1
+        self.batteryPowerField = popupRow(container, title: "\(localizedString("Battery power")):", value: "").1
         self.amperageField = popupRow(container, title: "\(localizedString("Current")):", value: "").1
         self.voltageField = popupRow(container, title: "\(localizedString("Voltage")):", value: "").1
         
@@ -300,6 +302,7 @@ internal class Popup: PopupWrapper {
                 batteryPowerString += " (\(localizedString("Charge")))"
             }
             self.batteryPowerField?.stringValue = batteryPowerString
+            self.totalPowerField?.stringValue = value.systemPower == 0 ? localizedString("Unknown") : "\(value.systemPower.roundTo(decimalPlaces: 2)) W"
             self.temperatureField?.stringValue = temperature(value.temperature)
             
             self.powerField?.stringValue = value.isBatteryPowered ? localizedString("Not connected") : "\(value.ACwatts) W (\(localizedString("Rating")))"

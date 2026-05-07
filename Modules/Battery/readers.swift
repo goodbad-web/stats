@@ -105,6 +105,7 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
                     usage.amperage = self.getIntValue("Amperage" as CFString) ?? self.getIntValue("InstantAmperage" as CFString) ?? 0
                     usage.voltage = self.getVoltage() ?? 0
                     usage.temperature = self.getTemperature() ?? 0
+                    usage.systemPower = SMC.shared.getValue("PSTR") ?? 0
                     
                     var ACwatts: Int = 0
                     if let ACDetails = IOPSCopyExternalPowerAdapterDetails() {
