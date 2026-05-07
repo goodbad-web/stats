@@ -10,7 +10,7 @@ import Cocoa
 import Kit
 import WidgetKit
 
-public struct CPU_Load: Codable, RemoteType {
+public struct CPU_Load: Codable, Equatable, RemoteType {
     public var totalUsage: Double = 0
     var usagePerCore: [Double] = []
     var usageECores: Double? = nil
@@ -29,13 +29,30 @@ public struct CPU_Load: Codable, RemoteType {
         string += "$"
         return string.data(using: .utf8)
     }
+
+    public static func == (lhs: CPU_Load, rhs: CPU_Load) -> Bool {
+        return abs(lhs.totalUsage - rhs.totalUsage) < 0.01 &&
+            lhs.usagePerCore.count == rhs.usagePerCore.count &&
+            lhs.usageECores == rhs.usageECores &&
+            lhs.usagePCores == rhs.usagePCores &&
+            lhs.usageSCores == rhs.usageSCores &&
+            abs(lhs.systemLoad - rhs.systemLoad) < 0.01 &&
+            abs(lhs.userLoad - rhs.userLoad) < 0.01
+    }
 }
 
-public struct CPU_Frequency: Codable {
+public struct CPU_Frequency: Codable, Equatable {
     var value: Double? = nil
     var eCore: Double? = nil
     var pCore: Double? = nil
     var sCore: Double? = nil
+
+    public static func == (lhs: CPU_Frequency, rhs: CPU_Frequency) -> Bool {
+        return lhs.value == rhs.value &&
+            lhs.eCore == rhs.eCore &&
+            lhs.pCore == rhs.pCore &&
+            lhs.sCore == rhs.sCore
+    }
 }
 
 public struct CPU_Limit: Codable {
@@ -44,7 +61,7 @@ public struct CPU_Limit: Codable {
     var speed: Int = 0
 }
 
-public struct CPU_AverageLoad: Codable, RemoteType {
+public struct CPU_AverageLoad: Codable, Equatable, RemoteType {
     var load1: Double = 0
     var load5: Double = 0
     var load15: Double = 0
@@ -52,6 +69,12 @@ public struct CPU_AverageLoad: Codable, RemoteType {
     public func remote() -> Data? {
         let string = "1,1,\(self.load1),\(self.load5),\(self.load15)$"
         return string.data(using: .utf8)
+    }
+
+    public static func == (lhs: CPU_AverageLoad, rhs: CPU_AverageLoad) -> Bool {
+        return abs(lhs.load1 - rhs.load1) < 0.01 &&
+            abs(lhs.load5 - rhs.load5) < 0.01 &&
+            abs(lhs.load15 - rhs.load15) < 0.01
     }
 }
 

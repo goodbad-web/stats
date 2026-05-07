@@ -21,21 +21,35 @@ public enum Network_t: String, Codable {
     case other
 }
 
-public struct Network_interface: Codable {
+public struct Network_interface: Codable, Equatable {
     var status: Bool = false
     var displayName: String = ""
     var BSDName: String = ""
     var address: String = ""
     var transmitRate: Double = 0
+
+    public static func == (lhs: Network_interface, rhs: Network_interface) -> Bool {
+        return lhs.status == rhs.status &&
+            lhs.displayName == rhs.displayName &&
+            lhs.BSDName == rhs.BSDName &&
+            lhs.address == rhs.address &&
+            lhs.transmitRate == rhs.transmitRate
+    }
 }
 
-public struct Network_addr: Codable {
+public struct Network_addr: Codable, Equatable {
     var v4: String? = nil
     var v6: String? = nil
     var countryCode: String? = nil
+
+    public static func == (lhs: Network_addr, rhs: Network_addr) -> Bool {
+        return lhs.v4 == rhs.v4 &&
+            lhs.v6 == rhs.v6 &&
+            lhs.countryCode == rhs.countryCode
+    }
 }
 
-public struct Network_wifi: Codable {
+public struct Network_wifi: Codable, Equatable {
     var countryCode: String? = nil
     var ssid: String? = nil
     var bssid: String? = nil
@@ -61,14 +75,30 @@ public struct Network_wifi: Codable {
         self.security = nil
         self.channel = nil
     }
+
+    public static func == (lhs: Network_wifi, rhs: Network_wifi) -> Bool {
+        return lhs.ssid == rhs.ssid &&
+            lhs.bssid == rhs.bssid &&
+            lhs.RSSI == rhs.RSSI &&
+            lhs.noise == rhs.noise &&
+            lhs.standard == rhs.standard &&
+            lhs.mode == rhs.mode &&
+            lhs.security == rhs.security &&
+            lhs.channel == rhs.channel
+    }
 }
 
-public struct Bandwidth: Codable {
+public struct Bandwidth: Codable, Equatable {
     var upload: Int64 = 0
     var download: Int64 = 0
+
+    public static func == (lhs: Bandwidth, rhs: Bandwidth) -> Bool {
+        return lhs.upload == rhs.upload &&
+            lhs.download == rhs.download
+    }
 }
 
-public struct Network_Usage: Codable, RemoteType {
+public struct Network_Usage: Codable, Equatable, RemoteType {
     var bandwidth: Bandwidth = Bandwidth()
     var total: Bandwidth = Bandwidth()
     
@@ -102,15 +132,33 @@ public struct Network_Usage: Codable, RemoteType {
         let string = "1,\(self.interface?.BSDName ?? ""),1,\(self.bandwidth.download),\(self.bandwidth.upload),\(addr)$"
         return string.data(using: .utf8)
     }
+
+    public static func == (lhs: Network_Usage, rhs: Network_Usage) -> Bool {
+        return lhs.bandwidth == rhs.bandwidth &&
+            lhs.total == rhs.total &&
+            lhs.laddr == rhs.laddr &&
+            lhs.raddr == rhs.raddr &&
+            lhs.dns == rhs.dns &&
+            lhs.interface == rhs.interface &&
+            lhs.connectionType == rhs.connectionType &&
+            lhs.status == rhs.status &&
+            lhs.wifiDetails == rhs.wifiDetails
+    }
 }
 
-public struct Network_Connectivity: Codable {
+public struct Network_Connectivity: Codable, Equatable {
     var status: Bool = false
     var latency: Double = 0
     var jitter: Double = 0
+
+    public static func == (lhs: Network_Connectivity, rhs: Network_Connectivity) -> Bool {
+        return lhs.status == rhs.status &&
+            abs(lhs.latency - rhs.latency) < 1 &&
+            abs(lhs.jitter - rhs.jitter) < 1
+    }
 }
 
-public struct Network_Process: Codable, Process_p, Sendable {
+public struct Network_Process: Codable, Process_p, Sendable, Equatable {
     public var pid: Int
     public var name: String
     public var time: Date

@@ -201,7 +201,13 @@ internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBP
                 ))
             }
             
-            self.callback(self.devices.filter({ $0.RSSI != nil }))
+            let result = self.devices.filter({ $0.RSSI != nil })
+            if let old = self.value, old == result {
+                self.readLock.withLock { $0 = false }
+                return
+            }
+            
+            self.callback(result)
             self.readLock.withLock { $0 = false }
         }
     }

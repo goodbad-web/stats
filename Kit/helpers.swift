@@ -41,7 +41,7 @@ public protocol KeyValue_p {
     var value: String { get }
 }
 
-public struct KeyValue_t: KeyValue_p, Codable {
+public struct KeyValue_t: KeyValue_p, Codable, Equatable {
     public let key: String
     public let value: String
     public let additional: Any?
@@ -67,6 +67,10 @@ public struct KeyValue_t: KeyValue_p, Codable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(key, forKey: .key)
         try container.encode(value, forKey: .value)
+    }
+
+    public static func == (lhs: KeyValue_t, rhs: KeyValue_t) -> Bool {
+        return lhs.key == rhs.key && lhs.value == rhs.value
     }
 }
 
@@ -583,7 +587,7 @@ public func removeNotification(_ id: String) {
     center.removeDeliveredNotifications(withIdentifiers: [id])
 }
 
-public struct TopProcess: Codable, Process_p {
+public struct TopProcess: Codable, Process_p, Equatable {
     public var pid: Int
     public var name: String
     public var usage: Double
@@ -600,6 +604,12 @@ public struct TopProcess: Codable, Process_p {
         self.pid = pid
         self.name = name
         self.usage = usage
+    }
+
+    public static func == (lhs: TopProcess, rhs: TopProcess) -> Bool {
+        return lhs.pid == rhs.pid &&
+            lhs.name == rhs.name &&
+            abs(lhs.usage - rhs.usage) < 0.1
     }
 }
 

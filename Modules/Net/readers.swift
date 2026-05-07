@@ -13,6 +13,7 @@ import Cocoa
 @preconcurrency import Kit
 import SystemConfiguration
 import CoreWLAN
+import os
 
 struct ipResponse: Decodable {
     var ip: String
@@ -190,7 +191,13 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
         self.stopListeningForWifiEvents()
     }
     
+    private let readLock = OSAllocatedUnfairLock(initialState: false)
+    
     nonisolated public override func read() {
+        let isReading = self.readLock.withLock { $0 }
+        guard !isReading else { return }
+        self.readLock.withLock { $0 = true }
+        
         Task { @MainActor in
             await self.updateDetails()
             
@@ -225,7 +232,13 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
                 self.usage.bandwidth.download /= 2
             }
             
+            if let old = self.value, old == self.usage {
+                self.readLock.withLock { $0 = false }
+                return
+            }
+            
             self.callback(self.usage)
+            self.readLock.withLock { $0 = false }
             
             self.usage.bandwidth.upload = currentBandwidth.upload
             self.usage.bandwidth.download = currentBandwidth.download
@@ -445,10 +458,17 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
 
 public class ProcessReader: Reader<[Network_Process]>, @unchecked Sendable {
     public override func setup() {
-        self.setInterval(Store.shared.int(key: "Net_updateInterval", defaultValue: 1))
+        self.defaultInterval = 5
+        self.setInterval(Store.shared.int(key: "Net_updateInterval", defaultValue: 5))
     }
     
+    private let processLock = OSAllocatedUnfairLock(initialState: false)
+    
     nonisolated public override func read() {
+        let isReading = self.processLock.withLock { $0 }
+        guard !isReading else { return }
+        self.processLock.withLock { $0 = true }
+        
         Task { @MainActor in
             let processes = await Task.detached(priority: .background) {
                 var list: [Network_Process] = []
@@ -470,7 +490,13 @@ public class ProcessReader: Reader<[Network_Process]>, @unchecked Sendable {
                 }
                 return list.sorted { ($0.download + $0.upload) > ($1.download + $1.upload) }
             }.value
+            if let old = self.value, old == processes {
+                self.processLock.withLock { $0 = false }
+                return
+            }
+            
             self.callback(processes)
+            self.processLock.withLock { $0 = false }
         }
     }
 }
@@ -530,7 +556,13 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
         }
     }
     
+    private let connLock = OSAllocatedUnfairLock(initialState: false)
+    
     nonisolated public override func read() {
+        let isReading = self.connLock.withLock { $0 }
+        guard !isReading else { return }
+        self.connLock.withLock { $0 = true }
+        
         Task { @MainActor in
             if self.connectivityMode == "http" {
                 self.httpCheck()
@@ -545,7 +577,13 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
             self.wrapper.status = !self.isPinging && self.latency != nil
             if let l = self.latency { self.wrapper.latency = l }
             if let j = self.jitter { self.wrapper.jitter = j }
+            if let old = self.value, old == self.wrapper {
+                self.connLock.withLock { $0 = false }
+                return
+            }
+            
             self.callback(self.wrapper)
+            self.connLock.withLock { $0 = false }
         }
     }
     

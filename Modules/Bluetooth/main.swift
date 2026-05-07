@@ -13,7 +13,7 @@ import Foundation
 import Kit
 import CoreBluetooth
 
-public struct BLEDevice: Codable {
+public struct BLEDevice: Codable, Equatable {
     let address: String
     var name: String
     var uuid: UUID?
@@ -81,6 +81,15 @@ public struct BLEDevice: Codable {
         try container.encode(isPaired, forKey: .isPaired)
         try container.encode(vendorId, forKey: .vendorId)
         try container.encode(productId, forKey: .productId)
+    }
+
+    public static func == (lhs: BLEDevice, rhs: BLEDevice) -> Bool {
+        return lhs.address == rhs.address &&
+            lhs.name == rhs.name &&
+            lhs.RSSI == rhs.RSSI &&
+            lhs.batteryLevel == rhs.batteryLevel &&
+            lhs.isConnected == rhs.isConnected &&
+            lhs.isPaired == rhs.isPaired
     }
 }
 

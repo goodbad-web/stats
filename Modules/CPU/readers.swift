@@ -167,6 +167,9 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
                 }
             }.value
             
+            if let old = self.value, old == updatedResponse {
+                return
+            }
             self.callback(updatedResponse)
         }
     }
@@ -208,7 +211,8 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
     
     public override func setup() {
         self.popup = true
-        self.setInterval(Store.shared.int(key: "\(self.title)_updateTopInterval", defaultValue: 1))
+        self.defaultInterval = 5
+        self.setInterval(Store.shared.int(key: "\(self.title)_updateTopInterval", defaultValue: 5))
     }
     
     nonisolated public override func read() {
@@ -253,6 +257,11 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
                 }
                 return list
             }.value
+            
+            if let old = self.value, old == processes {
+                self.readLock.withLock { $0 = false }
+                return
+            }
             
             self.callback(processes)
             self.readLock.withLock { $0 = false }
@@ -438,6 +447,10 @@ public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
                 
                 let result = CPU_Frequency(value: value, eCore: eFreq, pCore: pFreq, sCore: sFreq)
                 await MainActor.run {
+                    if let old = self.value, old == result {
+                        self.freqLock.withLock { $0.isReading = false }
+                        return
+                    }
                     self.callback(result)
                     self.freqLock.withLock { $0.isReading = false }
                 }
@@ -595,10 +608,12 @@ public class AverageLoadReader: Reader<CPU_AverageLoad>, @unchecked Sendable {
             }.value
             
             if let list = result, list.count == 3 {
-                self.loadLock.withLock { load in
-                    load.load1 = list[0]
-                    load.load5 = list[1]
-                    load.load15 = list[2]
+                let load = CPU_AverageLoad(load1: list[0], load5: list[1], load15: list[2])
+                if let old = self.value, old == load {
+                    return
+                }
+                self.loadLock.withLock { state in
+                    state = load
                     self.callback(load)
                 }
             }

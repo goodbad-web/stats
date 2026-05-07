@@ -52,7 +52,7 @@ public protocol Sensor_p {
     var formattedPopupValue: String { get }
 }
 
-public class Sensors_List: Codable {
+public class Sensors_List: Codable, Equatable {
     private var queue: DispatchQueue = DispatchQueue(label: "eu.exelban.Stats.Sensors.SynchronizedArray", attributes: .concurrent)
     
     private var list: [Sensor_p] = []
@@ -83,6 +83,19 @@ public class Sensors_List: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let wrappers = try container.decode([Sensor_w].self, forKey: .sensors)
         self.sensors = wrappers.map { $0.sensor }
+    }
+
+    public static func == (lhs: Sensors_List, rhs: Sensors_List) -> Bool {
+        let l = lhs.sensors
+        let r = rhs.sensors
+        if l.count != r.count { return false }
+        for i in 0..<l.count {
+            if l[i].key != r[i].key { return false }
+            let diff = abs(l[i].value - r[i].value)
+            let threshold: Double = l[i].type == .temperature ? 0.5 : 0.1
+            if diff > threshold { return false }
+        }
+        return true
     }
 }
 

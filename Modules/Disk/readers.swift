@@ -13,6 +13,7 @@ import Cocoa
 @preconcurrency import Kit
 import IOKit.storage
 import CoreServices
+import os
 
 let kIONVMeSMARTUserClientTypeID = CFUUIDGetConstantUUIDWithBytes(nil,
                                                                   0xAA, 0x0F, 0xA6, 0xF9,
@@ -42,7 +43,13 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
     private nonisolated(unsafe) var purgableSpace: [URL: (Date, Int64)] = [:]
     private let session: DASession? = DASessionCreate(kCFAllocatorDefault)
     
+    private let readLock = OSAllocatedUnfairLock(initialState: false)
+    
     nonisolated public override func read() {
+        let isReading = self.readLock.withLock { $0 }
+        guard !isReading else { return }
+        self.readLock.withLock { $0 = true }
+        
         Task { @MainActor in
             let keys: [URLResourceKey] = [.volumeNameKey]
             let removableState = Store.shared.bool(key: "Disk_removable", defaultValue: false)
@@ -101,8 +108,14 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
                 return localList
             }.value
             
+            if let old = self.value, old == updatedList {
+                self.readLock.withLock { $0 = false }
+                return
+            }
+            
             self.list = updatedList
             self.callback(self.list)
+            self.readLock.withLock { $0 = false }
         }
     }
     
@@ -266,7 +279,13 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
         self.setInterval(Store.shared.int(key: "Disk_updateInterval", defaultValue: self.defaultInterval))
     }
     
+    private let activityLock = OSAllocatedUnfairLock(initialState: false)
+    
     nonisolated public override func read() {
+        let isReading = self.activityLock.withLock { $0 }
+        guard !isReading else { return }
+        self.activityLock.withLock { $0 = true }
+        
         Task { @MainActor in
             let keys: [URLResourceKey] = [.volumeNameKey]
             let removableState = Store.shared.bool(key: "Disk_removable", defaultValue: false)
@@ -316,8 +335,14 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
                 return localList
             }.value
             
+            if let old = self.value, old == updatedList {
+                self.activityLock.withLock { $0 = false }
+                return
+            }
+            
             self.list = updatedList
             self.callback(self.list)
+            self.activityLock.withLock { $0 = false }
         }
     }
     
@@ -458,12 +483,19 @@ public class ProcessReader: Reader<[Disk_process]>, @unchecked Sendable {
         Store.shared.int(key: "\(ModuleType.disk.stringValue)_processes", defaultValue: 5)
     }
     
-    @MainActor public override func setup() {
+    public override func setup() {
         self.popup = true
-        self.setInterval(Store.shared.int(key: "Disk_updateTopInterval", defaultValue: 1))
+        self.defaultInterval = 5
+        self.setInterval(Store.shared.int(key: "Disk_updateTopInterval", defaultValue: 5))
     }
     
+    private let processLock = OSAllocatedUnfairLock(initialState: false)
+    
     nonisolated public override func read() {
+        let isReading = self.processLock.withLock { $0 }
+        guard !isReading else { return }
+        self.processLock.withLock { $0 = true }
+        
         Task { @MainActor in
             let limit = self.numberOfProcesses
             if limit == 0 {
@@ -484,8 +516,8 @@ public class ProcessReader: Reader<[Disk_process]>, @unchecked Sendable {
                     let name = pidFind.remain.findAndCrop(pattern: "^[^ ]+").cropped
                     
                     var usage = rusage_info_current()
-                    let result = withUnsafeMutablePointer(to: &usage) {
-                        $0.withMemoryRebound(to: (rusage_info_t?.self), capacity: 1) {
+                    let result = withUnsafeMutablePointer(to: &usage) { (ptr: UnsafeMutablePointer<rusage_info_current>) in
+                        ptr.withMemoryRebound(to: (rusage_info_t?.self), capacity: 1) {
                             proc_pid_rusage(pid, RUSAGE_INFO_CURRENT, $0)
                         }
                     }
@@ -528,6 +560,7 @@ public class ProcessReader: Reader<[Disk_process]>, @unchecked Sendable {
             
             self._list = updatedList
             self.callback(result)
+            self.processLock.withLock { $0 = false }
         }
     }
 }

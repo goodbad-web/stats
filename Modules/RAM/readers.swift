@@ -99,6 +99,9 @@ internal class UsageReader: Reader<RAM_Usage>, @unchecked Sendable {
             }.value
             
             if let usage = usage {
+                if let old = self.value, old == usage {
+                    return
+                }
                 self.callback(usage)
             }
         }
@@ -121,7 +124,8 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
     
     public override func setup() {
         self.popup = true
-        self.setInterval(Store.shared.int(key: "\(self.title)_updateTopInterval", defaultValue: 1))
+        self.defaultInterval = 5
+        self.setInterval(Store.shared.int(key: "\(self.title)_updateTopInterval", defaultValue: 5))
     }
     
     nonisolated public override func read() {
@@ -217,6 +221,11 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
                 result.sort { $0.usage > $1.usage }
                 return Array(result.prefix(limit))
             }.value
+            
+            if let old = self.value, old == finalResult {
+                self.readLock.withLock { $0 = false }
+                return
+            }
             
             self.callback(finalResult)
             self.readLock.withLock { $0 = false }

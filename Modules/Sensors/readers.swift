@@ -12,6 +12,7 @@
 import Cocoa
 @preconcurrency import Kit
 import IOKit.ps
+import os
 
 internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
     nonisolated static let HIDtypes: [SensorType] = [.temperature, .voltage]
@@ -158,7 +159,13 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
         return (raw, corrected, voltage)
     }
     
+    private let readLock = OSAllocatedUnfairLock(initialState: false)
+    
     nonisolated public override func read() {
+        let isReading = self.readLock.withLock { $0 }
+        guard !isReading else { return }
+        self.readLock.withLock { $0 = true }
+        
         Task { @MainActor in
             let localUnknownSensorsState = self.unknownSensorsState
             let localHidState = self.hidState
@@ -308,7 +315,17 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                     self.list.sensors[idx].value = pci
                 }
             }
+            let newList = Sensors_List()
+            newList.sensors = updatedSensors
+            
+            if let old = self.value, old == newList {
+                self.readLock.withLock { $0 = false }
+                return
+            }
+            
+            self.list.sensors = updatedSensors
             self.callback(self.list)
+            self.readLock.withLock { $0 = false }
         }
     }
     

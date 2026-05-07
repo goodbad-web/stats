@@ -13,7 +13,7 @@ import Cocoa
 import Kit
 import WidgetKit
 
-public struct RAM_Usage: Codable, RemoteType {
+public struct RAM_Usage: Codable, Equatable, RemoteType {
     var total: Double
     var used: Double
     var free: Double
@@ -40,17 +40,43 @@ public struct RAM_Usage: Codable, RemoteType {
         let string = "\(self.total),\(self.used),\(self.pressure.level),\(self.swap.used)$"
         return string.data(using: .utf8)
     }
+
+    public static func == (lhs: RAM_Usage, rhs: RAM_Usage) -> Bool {
+        return lhs.total == rhs.total &&
+            abs(lhs.used - rhs.used) < 1024 * 1024 && // 1MB threshold
+            lhs.active == rhs.active &&
+            lhs.inactive == rhs.inactive &&
+            lhs.wired == rhs.wired &&
+            lhs.compressed == rhs.compressed &&
+            lhs.app == rhs.app &&
+            lhs.cache == rhs.cache &&
+            lhs.swap == rhs.swap &&
+            lhs.pressure == rhs.pressure &&
+            lhs.swapins == rhs.swapins &&
+            lhs.swapouts == rhs.swapouts
+    }
 }
 
-public struct Swap: Codable {
+public struct Swap: Codable, Equatable {
     var total: Double
     var used: Double
     var free: Double
+
+    public static func == (lhs: Swap, rhs: Swap) -> Bool {
+        return lhs.total == rhs.total &&
+            abs(lhs.used - rhs.used) < 1024 * 1024 &&
+            lhs.free == rhs.free
+    }
 }
 
-public struct Pressure: Codable {
+public struct Pressure: Codable, Equatable {
     let level: Int
     let value: RAMPressure
+
+    public static func == (lhs: Pressure, rhs: Pressure) -> Bool {
+        return lhs.level == rhs.level &&
+            lhs.value == rhs.value
+    }
 }
 
 public class RAM: Module {

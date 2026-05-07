@@ -22,7 +22,7 @@ public enum GPU_types: GPU_type {
     case discrete = "d"
 }
 
-public struct GPU_Info: Codable {
+public struct GPU_Info: Codable, Equatable {
     public let id: String
     public let type: GPU_type
     
@@ -66,9 +66,21 @@ public struct GPU_Info: Codable {
         }
         return "\(id),1,\(self.utilization ?? 0),\(self.renderUtilization ?? 0),\(self.tilerUtilization ?? 0),\(self.vramUsed ?? 0),\(self.gpuPower ?? 0)"
     }
+
+    public static func == (lhs: GPU_Info, rhs: GPU_Info) -> Bool {
+        return lhs.id == rhs.id &&
+            lhs.state == rhs.state &&
+            abs((lhs.utilization ?? 0) - (rhs.utilization ?? 0)) < 0.01 &&
+            abs((lhs.renderUtilization ?? 0) - (rhs.renderUtilization ?? 0)) < 0.01 &&
+            abs((lhs.tilerUtilization ?? 0) - (rhs.tilerUtilization ?? 0)) < 0.01 &&
+            abs((lhs.aneUtilization ?? 0) - (rhs.aneUtilization ?? 0)) < 0.01 &&
+            lhs.temperature == rhs.temperature &&
+            lhs.vramUsed == rhs.vramUsed &&
+            lhs.gpuPower == rhs.gpuPower
+    }
 }
 
-public class GPUs: Codable, RemoteType {
+public class GPUs: Codable, Equatable, RemoteType {
     private var queue: DispatchQueue = DispatchQueue(label: "eu.exelban.Stats.GPU.SynchronizedArray")
     
     private var _list: [GPU_Info] = []
@@ -107,6 +119,10 @@ public class GPUs: Codable, RemoteType {
         }
         string += "$"
         return string.data(using: .utf8)
+    }
+
+    public static func == (lhs: GPUs, rhs: GPUs) -> Bool {
+        return lhs.list == rhs.list
     }
 }
 

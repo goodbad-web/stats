@@ -13,24 +13,40 @@ import Cocoa
 @preconcurrency import Kit
 import WidgetKit
 
-public struct stats: Codable {
+public struct stats: Codable, Equatable {
     var read: Int64 = 0
     var write: Int64 = 0
     
     var readBytes: Int64 = 0
     var writeBytes: Int64 = 0
+
+    public static func == (lhs: stats, rhs: stats) -> Bool {
+        return lhs.read == rhs.read &&
+            lhs.write == rhs.write &&
+            lhs.readBytes == rhs.readBytes &&
+            lhs.writeBytes == rhs.writeBytes
+    }
 }
 
-public struct smart_t: Codable {
+public struct smart_t: Codable, Equatable {
     var temperature: Int = 0
     var life: Int = 0
     var totalRead: Int64 = 0
     var totalWritten: Int64 = 0
     var powerCycles: Int = 0
     var powerOnHours: Int = 0
+
+    public static func == (lhs: smart_t, rhs: smart_t) -> Bool {
+        return lhs.temperature == rhs.temperature &&
+            lhs.life == rhs.life &&
+            lhs.totalRead == rhs.totalRead &&
+            lhs.totalWritten == rhs.totalWritten &&
+            lhs.powerCycles == rhs.powerCycles &&
+            lhs.powerOnHours == rhs.powerOnHours
+    }
 }
 
-public struct drive: Codable {
+public struct drive: Codable, Equatable {
     var parent: io_object_t = 0
     
     var uuid: String = ""
@@ -71,9 +87,17 @@ public struct drive: Codable {
     public func remote() -> String {
         return "\(self.uuid),\(self.size),\(self.size-self.free),\(self.free),\(self.activity.read),\(self.activity.write)"
     }
+
+    public static func == (lhs: drive, rhs: drive) -> Bool {
+        return lhs.uuid == rhs.uuid &&
+            lhs.size == rhs.size &&
+            lhs.free == rhs.free &&
+            lhs.activity == rhs.activity &&
+            lhs.smart == rhs.smart
+    }
 }
 
-public class Disks: Codable, RemoteType, @unchecked Sendable {
+public class Disks: Codable, Equatable, RemoteType, @unchecked Sendable {
     private nonisolated(unsafe) var _array: [drive] = []
     public var array: [drive] {
         get { self._array }
@@ -175,9 +199,13 @@ public class Disks: Codable, RemoteType, @unchecked Sendable {
         string += "$"
         return string.data(using: .utf8)
     }
+
+    public static func == (lhs: Disks, rhs: Disks) -> Bool {
+        return lhs.array == rhs.array
+    }
 }
 
-public struct Disk_process: Process_p, Codable, Sendable {
+public struct Disk_process: Process_p, Codable, Sendable, Equatable {
     public var base: DataSizeBase {
         DataSizeBase(rawValue: Store.shared.string(key: "\(ModuleType.disk.stringValue)_base", defaultValue: "byte")) ?? .byte
     }

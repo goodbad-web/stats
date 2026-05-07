@@ -11,6 +11,7 @@
 
 import Cocoa
 @preconcurrency import Kit
+import os
 
 public struct device {
     public let vendor: String?
@@ -103,7 +104,13 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
         self.framesSubscription = nil
     }
     
+    private let readLock = OSAllocatedUnfairLock(initialState: false)
+    
     nonisolated public override func read() {
+        let isReading = self.readLock.withLock { $0 }
+        guard !isReading else { return }
+        self.readLock.withLock { $0 = true }
+        
         Task { @MainActor in
             let updatedGPUs = await Task.detached(priority: .userInitiated) {
                 guard let accelerators = fetchIOService(kIOAcceleratorClassName) else {
@@ -281,7 +288,13 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
                 return self.gpus
             }.value
             
+            if let old = self.value, old == updatedGPUs {
+                self.readLock.withLock { $0 = false }
+                return
+            }
+            
             self.callback(updatedGPUs)
+            self.readLock.withLock { $0 = false }
         }
     }
     
