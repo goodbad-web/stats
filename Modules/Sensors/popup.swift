@@ -903,7 +903,7 @@ internal class FanView: NSStackView {
     }
     
     @objc private func syncFanSpeed(_ notification: Notification) {
-        guard self.syncState else { return }
+        guard self.syncState, self.fan.mode == .forced else { return }
         var speed = notification.userInfo?["speed"] as? Int
         if let percentage = notification.userInfo?["percentage"] as? Int {
             speed = ((Int(self.fan.maxSpeed - self.fan.minSpeed)*percentage)/100) + Int(self.fan.minSpeed)

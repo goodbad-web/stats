@@ -127,13 +127,18 @@ struct SensorsSettingsView: View {
                 
                 Toggle(localizedString("Save the fan speed"), isOn: $fanSpeedState)
                     .onChange(of: fanSpeedState) { _, _ in
+                        Store.shared.set(key: "Sensors_speed", value: fanSpeedState)
                         onCallback()
                     }
                 
                 Toggle(localizedString("Synchronize fan's control"), isOn: $fansSyncState)
+                    .onChange(of: fansSyncState) { _, _ in
+                        Store.shared.set(key: "Sensors_fansSync", value: fansSyncState)
+                    }
                 
                 Toggle(localizedString("Show unknown sensors"), isOn: $unknownSensorsState)
                     .onChange(of: unknownSensorsState) { _, _ in
+                        Store.shared.set(key: "Sensors_unknown", value: unknownSensorsState)
                         onUnknownCallback()
                     }
                 
