@@ -316,6 +316,15 @@ internal class SensorView: NSStackView {
             self?.open()
         })
         self.chartView = ChartSensorView(width: width, suffix: sensor.unit)
+        self.chartView.setToolTipFunc { [weak sensor] (v: DoubleValue) -> String in
+            guard let s = sensor else { return "" }
+            let value = v.value * 100
+            if s.type == .current && value < 0.1 {
+                return "\(Int(value * 1000)) mA"
+            }
+            let val = value >= 100 ? "\(Int(value))" : String(format: "%.2f", value)
+            return "\(val)\(s.unit)"
+        }
         
         self.addArrangedSubview(self.valueView)
         
@@ -463,6 +472,10 @@ internal class ChartSensorView: NSStackView {
             chart.setSuffix(suffix)
         }
         chart.addValue(value/100)
+    }
+    
+    public func setToolTipFunc(_ callback: @escaping (DoubleValue) -> String) {
+        self.chart?.setToolTipFunc(callback)
     }
 }
 
