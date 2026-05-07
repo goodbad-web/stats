@@ -79,7 +79,7 @@ public class GPUs: Codable, RemoteType {
     
     required public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.list = try container.decode(Array<GPU_Info>.self, forKey: CodingKeys.list)
+        self.list = try container.decode([GPU_Info].self, forKey: CodingKeys.list)
     }
     
     public func encode(to encoder: Encoder) throws {

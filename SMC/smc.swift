@@ -103,13 +103,13 @@ internal struct SMCKeyData_t {
                              UInt8(0), UInt8(0))
 }
 
-internal struct SMCVal_t {
-    var key: String
-    var dataSize: UInt32 = 0
-    var dataType: String = ""
-    var bytes: [UInt8] = Array(repeating: 0, count: 32)
+public struct SMCVal_t {
+    public var key: String
+    public var dataSize: UInt32 = 0
+    public var dataType: String = ""
+    public var bytes: [UInt8] = Array(repeating: 0, count: 32)
     
-    init(_ key: String) {
+    public init(_ key: String) {
         self.key = key
     }
 }
@@ -305,7 +305,7 @@ public class SMC {
         return kIOReturnSuccess
     }
     
-    internal func write(_ value: SMCVal_t) -> kern_return_t {
+    public func write(_ value: SMCVal_t) -> kern_return_t {
         var input = SMCKeyData_t()
         var output = SMCKeyData_t()
         input.key = FourCharCode(fromString: value.key)
@@ -322,11 +322,10 @@ public class SMC {
         return result != kIOReturnSuccess ? result : kern_return_t(output.result)
     }
     
-    
     public func write(_ key: String, _ value: Int) -> kern_return_t {
         return queue.sync {
             var val: SMCVal_t = SMCVal_t(key)
-            var result = self.read(&val)
+            let result = self.read(&val)
             if result != kIOReturnSuccess { return result }
             
             switch val.dataType {

@@ -86,7 +86,7 @@ public class Disks: Codable, RemoteType, @unchecked Sendable {
     
     required public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.array = try container.decode(Array<drive>.self, forKey: CodingKeys.array)
+        self.array = try container.decode([drive].self, forKey: CodingKeys.array)
     }
     
     public func encode(to encoder: Encoder) throws {

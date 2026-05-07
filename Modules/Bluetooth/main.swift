@@ -63,7 +63,7 @@ public struct BLEDevice: Codable {
         self.name = try container.decode(String.self, forKey: .name)
         self.uuid = try? container.decode(UUID.self, forKey: .uuid)
         self.RSSI = try? container.decode(Int.self, forKey: .RSSI)
-        self.batteryLevel = try container.decode(Array<KeyValue_t>.self, forKey: .batteryLevel)
+        self.batteryLevel = try container.decode([KeyValue_t].self, forKey: .batteryLevel)
         self.isConnected = try container.decode(Bool.self, forKey: .isConnected)
         self.isPaired = try container.decode(Bool.self, forKey: .isPaired)
         self.vendorId = try? container.decode(Int.self, forKey: .vendorId)

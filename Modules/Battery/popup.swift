@@ -294,12 +294,18 @@ internal class Popup: PopupWrapper {
             
             self.amperageField?.stringValue = "\(abs(value.amperage)) mA"
             self.voltageField?.stringValue = "\(value.voltage.roundTo(decimalPlaces: 2)) V"
-            let batteryPower = value.voltage * (Double(abs(value.amperage))/1000)
+            var batteryPower = value.voltage * (Double(abs(value.amperage))/1000)
+            if !value.isBatteryPowered && !value.isCharging {
+                batteryPower = 0
+            }
+            
             var batteryPowerString = "\(batteryPower.roundTo(decimalPlaces: 2)) W"
-            if value.amperage < 0 {
-                batteryPowerString += " (\(localizedString("Discharge")))"
-            } else if value.amperage > 0 {
-                batteryPowerString += " (\(localizedString("Charge")))"
+            if batteryPower > 0 {
+                if value.amperage < 0 {
+                    batteryPowerString += " (\(localizedString("Discharge")))"
+                } else if value.amperage > 0 {
+                    batteryPowerString += " (\(localizedString("Charge")))"
+                }
             }
             self.batteryPowerField?.stringValue = batteryPowerString
             self.totalPowerField?.stringValue = value.systemPower == 0 ? localizedString("Unknown") : "\(value.systemPower.roundTo(decimalPlaces: 2)) W"

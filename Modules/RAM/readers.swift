@@ -11,6 +11,7 @@
 
 import Cocoa
 @preconcurrency import Kit
+import os
 
 internal class UsageReader: Reader<RAM_Usage>, @unchecked Sendable {
     private nonisolated(unsafe) var totalSize: Double = 0
@@ -114,6 +115,7 @@ internal class UsageReader: Reader<RAM_Usage>, @unchecked Sendable {
 
 public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
     private let title: String = "RAM"
+    private let readLock = OSAllocatedUnfairLock(initialState: false)
     
     private var numberOfProcesses: Int {
         get { Store.shared.int(key: "\(self.title)_processes", defaultValue: 8) }
@@ -131,6 +133,10 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
     }
     
     nonisolated public override func read() {
+        let isReading = self.readLock.withLock { $0 }
+        guard !isReading else { return }
+        self.readLock.withLock { $0 = true }
+        
         Task { @MainActor in
             if self.numberOfProcesses == 0 {
                 return
@@ -221,6 +227,7 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
             }.value
             
             self.callback(finalResult)
+            self.readLock.withLock { $0 = false }
         }
     }
     
