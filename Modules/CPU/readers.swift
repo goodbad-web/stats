@@ -612,4 +612,3 @@ public class AverageLoadReader: Reader<CPU_AverageLoad>, @unchecked Sendable {
         }
     }
 }
-

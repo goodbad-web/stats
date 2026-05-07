@@ -221,4 +221,3 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
         NSWorkspace.shared.open(URL(string: "https://github.com/exelban/stats")!)
     }
 }
-
