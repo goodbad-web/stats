@@ -909,8 +909,33 @@ public class SMCHelper {
         do {
             try service.register()
             
+            var attempts = 0
+            func checkConnection() {
+                self.connection?.invalidate()
+                self.connection = nil
+                
+                if let helper = self.helper({ _ in
+                    print("SMC helper is successfully connected")
+                    completion(true)
+                }) {
+                    helper.ping {
+                        // callback is handled in helper(_:)
+                    }
+                } else {
+                    attempts += 1
+                    if attempts < 10 {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            checkConnection()
+                        }
+                    } else {
+                        print("Error: SMC helper connection timeout")
+                        completion(false)
+                    }
+                }
+            }
+            
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                completion(service.status == .enabled)
+                checkConnection()
             }
         } catch {
             print("Error while installing the Helper: \(error.localizedDescription)")

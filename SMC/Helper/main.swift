@@ -108,7 +108,10 @@ class Helper: NSObject, NSXPCListenerDelegate, HelperProtocol {
 }
 
 extension Helper {
-    func version(completion: (String) -> Void) {
+    func ping(completion: @escaping () -> Void) {
+        completion()
+    }
+    func version(completion: @escaping (String) -> Void) {
         completion(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0")
     }
     func setSMCPath(_ path: String) {

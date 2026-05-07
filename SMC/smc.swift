@@ -161,13 +161,25 @@ extension Float {
     }
 }
 
+internal protocol SMCProvider {
+    func setFanMode(_ id: Int, mode: FanMode)
+    func resetFanControl() -> Bool
+}
+
 public class SMC {
     public static let shared = SMC()
     private var conn: io_connect_t = 0
     private var _fanModeKeyIsLower: Bool?
     private let queue = DispatchQueue(label: "eu.exelban.Stats.SMC", qos: .userInteractive)
+    private var provider: SMCProvider!
     
     public init() {
+        #if arch(arm64)
+        self.provider = AppleSiliconSMC(self)
+        #else
+        self.provider = IntelSMC(self)
+        #endif
+        
         var result: kern_return_t
         var iterator: io_iterator_t = 0
         let device: io_object_t
@@ -210,7 +222,7 @@ public class SMC {
     }
     
     /// Lock-free getValue for use inside queue.sync blocks (avoids recursive lock)
-    private func _getValueUnsafe(_ key: String) -> Double? {
+    fileprivate func _getValueUnsafe(_ key: String) -> Double? {
         var val: SMCVal_t = SMCVal_t(key)
         let result = read(&val)
         if result != kIOReturnSuccess { return nil }
@@ -239,74 +251,8 @@ public class SMC {
     
     public func getValue(_ key: String) -> Double? {
         return queue.sync {
-        var result: kern_return_t = 0
-        var val: SMCVal_t = SMCVal_t(key)
-        
-        result = read(&val)
-        if result != kIOReturnSuccess {
-            return nil
+            return self._getValueUnsafe(key)
         }
-        
-        if val.dataSize > 0 {
-            if val.bytes.first(where: { $0 != 0 }) == nil && !Self.isZeroAllowed(val.key) {
-                return nil
-            }
-            
-            switch val.dataType {
-            case SMCDataType.UI8.rawValue:
-                return Double(val.bytes[0])
-            case SMCDataType.UI16.rawValue:
-                return Double(UInt16(bytes: (val.bytes[0], val.bytes[1])))
-            case SMCDataType.UI32.rawValue:
-                return Double(UInt32(bytes: (val.bytes[0], val.bytes[1], val.bytes[2], val.bytes[3])))
-            case SMCDataType.SP1E.rawValue:
-                let result: Double = Double(UInt16(val.bytes[0]) * 256 + UInt16(val.bytes[1]))
-                return Double(result / 16384)
-            case SMCDataType.SP3C.rawValue:
-                let result: Double = Double(UInt16(val.bytes[0]) * 256 + UInt16(val.bytes[1]))
-                return Double(result / 4096)
-            case SMCDataType.SP4B.rawValue:
-                let result: Double = Double(UInt16(val.bytes[0]) * 256 + UInt16(val.bytes[1]))
-                return Double(result / 2048)
-            case SMCDataType.SP5A.rawValue:
-                let result: Double = Double(UInt16(val.bytes[0]) * 256 + UInt16(val.bytes[1]))
-                return Double(result / 1024)
-            case SMCDataType.SP69.rawValue:
-                let result: Double = Double(UInt16(val.bytes[0]) * 256 + UInt16(val.bytes[1]))
-                return Double(result / 512)
-            case SMCDataType.SP78.rawValue:
-                let intValue: Double = Double(Int(val.bytes[0]) * 256 + Int(val.bytes[1]))
-                return Double(intValue / 256)
-            case SMCDataType.SP87.rawValue:
-                let intValue: Double = Double(Int(val.bytes[0]) * 256 + Int(val.bytes[1]))
-                return Double(intValue / 128)
-            case SMCDataType.SP96.rawValue:
-                let intValue: Double = Double(Int(val.bytes[0]) * 256 + Int(val.bytes[1]))
-                return Double(intValue / 64)
-            case SMCDataType.SPA5.rawValue:
-                let result: Double = Double(UInt16(val.bytes[0]) * 256 + UInt16(val.bytes[1]))
-                return Double(result / 32)
-            case SMCDataType.SPB4.rawValue:
-                let intValue: Double = Double(Int(val.bytes[0]) * 256 + Int(val.bytes[1]))
-                return Double(intValue / 16)
-            case SMCDataType.SPF0.rawValue:
-                let intValue: Double = Double(Int(val.bytes[0]) * 256 + Int(val.bytes[1]))
-                return intValue
-            case SMCDataType.FLT.rawValue:
-                let value: Float? = Float(val.bytes)
-                if value != nil {
-                    return Double(value!)
-                }
-                return nil
-            case SMCDataType.FPE2.rawValue:
-                return Double(Int(fromFPE2: (val.bytes[0], val.bytes[1])))
-            default:
-                return nil
-            }
-        }
-        
-        return nil
-        } // queue.sync
     }
     
     public func getStringValue(_ key: String) -> String? {
@@ -404,65 +350,21 @@ public class SMC {
 
     public func setFanMode(_ id: Int, mode: FanMode) {
         queue.sync {
-        if mode == .forced {
-            if !unlockFanControl(fanId: id) { return }
-        } else {
-            let modeKey = fanModeKey(id)
-            let targetKey = "F\(id)Tg"
-            
-            // Reset fan mode to automatic
-            var modeVal = SMCVal_t(modeKey)
-            let readResult = read(&modeVal)
-            if readResult == kIOReturnSuccess && modeVal.dataSize > 0 {
-                if modeVal.bytes[0] != 0 {
-                    modeVal.bytes[0] = 0
-                    _ = self.writeWithRetry(modeVal)
-                }
-            }
-            
-            // Clear target speed
-            var targetValue = SMCVal_t(targetKey)
-            let result = read(&targetValue)
-            if result == kIOReturnSuccess && targetValue.dataSize > 0 {
-                let bytes = Float(0).bytes
-                targetValue.bytes[0] = bytes[0]
-                targetValue.bytes[1] = bytes[1]
-                targetValue.bytes[2] = bytes[2]
-                targetValue.bytes[3] = bytes[3]
-                _ = self.writeWithRetry(targetValue)
-            }
-            
-            // Reset Ftst if all fans are now automatic
-            self.resetFtstIfAllAuto()
+            self.provider.setFanMode(id, mode: mode)
         }
-        } // queue.sync
     }
     
     public func setFanSpeed(_ id: Int, speed: Int) {
         queue.sync {
-        if let maxSpeed = self._getValueUnsafe("F\(id)Mx"),
-           speed > Int(maxSpeed) {
-            self._setFanSpeedUnsafe(id, speed: Int(maxSpeed))
-            return
+            self._setFanSpeedUnsafe(id, speed: speed)
         }
-        if speed != 0, let minSpeed = self._getValueUnsafe("F\(id)Mn"),
-           speed < Int(minSpeed) {
-            self._setFanSpeedUnsafe(id, speed: Int(minSpeed))
-            return
-        }
-        self._setFanSpeedUnsafe(id, speed: speed)
-        } // queue.sync
     }
     
-    private func _setFanSpeedUnsafe(_ id: Int, speed: Int) {
+    fileprivate func _setFanSpeedUnsafe(_ id: Int, speed: Int) {
         var modeVal = SMCVal_t(fanModeKey(id))
         let modeResult = read(&modeVal)
         guard modeResult == kIOReturnSuccess else {
-            print(smcError("read", key: fanModeKey(id), result: modeResult))
             return
-        }
-        if modeVal.bytes[0] != 1 {
-            if !unlockFanControl(fanId: id) { return }
         }
         
         var result: kern_return_t = 0
@@ -470,7 +372,6 @@ public class SMC {
         
         result = read(&value)
         if result != kIOReturnSuccess {
-            print(smcError("read", key: "F\(id)Tg", result: result))
             return
         }
         
@@ -487,151 +388,31 @@ public class SMC {
             value.bytes[3] = UInt8(0)
         }
         
-        if !self.writeWithRetry(value) {
-            return
-        }
+        _ = self.writeWithRetry(value)
     }
     
-    /// Format SMC error for logging with context
-    private func smcError(_ operation: String, key: String, result: kern_return_t) -> String {
-        let errorDesc = String(cString: mach_error_string(result), encoding: String.Encoding.ascii) ?? "unknown error"
-        return "[\(key)] \(operation) failed: \(errorDesc) (0x\(String(result, radix: 16)))"
-    }
-    
-    private func writeWithRetry(_ value: SMCVal_t, maxAttempts: Int = 10, delayMicros: UInt32 = 50_000) -> Bool {
+    fileprivate func writeWithRetry(_ value: SMCVal_t, maxAttempts: Int = 10, delayMicros: UInt32 = 50_000) -> Bool {
         let mutableValue = value
-        var lastResult: kern_return_t = kIOReturnSuccess
         for attempt in 0..<maxAttempts {
-            lastResult = self.write(mutableValue)
-            if lastResult == kIOReturnSuccess {
+            if self.write(mutableValue) == kIOReturnSuccess {
                 return true
             }
             if attempt < maxAttempts - 1 {
                 usleep(delayMicros)
             }
         }
-        print(smcError("write", key: value.key, result: lastResult))
         return false
-    }
-    
-    private func unlockFanControl(fanId: Int) -> Bool {
-        // Try direct mode write first (works on M5+ without Ftst)
-        let modeKey = fanModeKey(fanId)
-        var modeVal = SMCVal_t(modeKey)
-        let modeRead = read(&modeVal)
-        guard modeRead == kIOReturnSuccess else {
-            print(smcError("read", key: modeKey, result: modeRead))
-            return false
-        }
-        modeVal.bytes[0] = 1
-        if self.write(modeVal) == kIOReturnSuccess {
-            return true
-        }
-
-        // Direct failed; try Ftst unlock (M1-M4)
-        var ftstVal = SMCVal_t("Ftst")
-        let ftstResult = read(&ftstVal)
-        guard ftstResult == kIOReturnSuccess, ftstVal.dataSize > 0 else {
-            return false
-        }
-
-        if ftstVal.bytes[0] == 1 {
-            return retryModeWrite(fanId: fanId, maxAttempts: 20)
-        }
-
-        ftstVal.bytes[0] = 1
-        if !self.writeWithRetry(ftstVal, maxAttempts: 100) {
-            return false
-        }
-
-        // Wait for thermalmonitord to yield control
-        usleep(3_000_000)
-
-        return retryModeWrite(fanId: fanId, maxAttempts: 300)
-    }
-    
-    private func retryModeWrite(fanId: Int, maxAttempts: Int) -> Bool {
-        let modeKey = fanModeKey(fanId)
-        var modeVal = SMCVal_t(modeKey)
-        let result = read(&modeVal)
-        guard result == kIOReturnSuccess else {
-            print(smcError("read", key: modeKey, result: result))
-            return false
-        }
-        modeVal.bytes[0] = 1
-        return self.writeWithRetry(modeVal, maxAttempts: maxAttempts, delayMicros: 100_000)
     }
     
     public func resetFanControl() -> Bool {
         return queue.sync {
-        // Reset FS! (Intel legacy)
-        var fsValue = SMCVal_t("FS! ")
-        if read(&fsValue) == kIOReturnSuccess && fsValue.dataSize > 0 {
-            for i in 0..<Int(fsValue.dataSize) { fsValue.bytes[i] = 0 }
-            _ = self.write(fsValue)
-        }
-        
-        // Reset Ftst (Apple Silicon)
-        var ftstPresent = false
-        var value = SMCVal_t("Ftst")
-        let result = read(&value)
-        if result == kIOReturnSuccess && value.dataSize > 0 {
-            ftstPresent = true
-            if value.bytes[0] != 0 {
-                value.bytes[0] = 0
-                if !self.writeWithRetry(value) { return false }
-            }
-        }
-
-        // Reset individual fan modes and target speeds
-        guard let count = _getValueUnsafe("FNum") else {
-            return ftstPresent
-        }
-        var success = true
-        for i in 0..<Int(count) {
-            let modeKey = fanModeKey(i)
-            var modeVal = SMCVal_t(modeKey)
-            let readResult = read(&modeVal)
-            if readResult == kIOReturnSuccess && modeVal.bytes[0] != 0 {
-                modeVal.bytes[0] = 0
-                if !self.writeWithRetry(modeVal) { success = false }
-            }
-            
-            let targetKey = "F\(i)Tg"
-            var targetVal = SMCVal_t(targetKey)
-            if read(&targetVal) == kIOReturnSuccess && targetVal.dataSize > 0 {
-                let bytes = Float(0).bytes
-                targetVal.bytes[0] = bytes[0]
-                targetVal.bytes[1] = bytes[1]
-                targetVal.bytes[2] = bytes[2]
-                targetVal.bytes[3] = bytes[3]
-                _ = self.writeWithRetry(targetVal)
-            }
-        }
-        return success
-        } // queue.sync
-    }
-    
-    /// Reset Ftst if all fans are in automatic mode
-    private func resetFtstIfAllAuto() {
-        guard let count = getValue("FNum") else { return }
-        for i in 0..<Int(count) {
-            var modeVal = SMCVal_t(fanModeKey(i))
-            if read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] != 0 {
-                return // At least one fan is still forced
-            }
-        }
-        // All fans automatic — reset Ftst
-        var ftstVal = SMCVal_t("Ftst")
-        if read(&ftstVal) == kIOReturnSuccess && ftstVal.dataSize > 0 && ftstVal.bytes[0] != 0 {
-            ftstVal.bytes[0] = 0
-            _ = self.writeWithRetry(ftstVal)
+            self.provider.resetFanControl()
         }
     }
     
     // MARK: - internal functions
     
-    private func read(_ value: UnsafeMutablePointer<SMCVal_t>) -> kern_return_t {
+    fileprivate func read(_ value: UnsafeMutablePointer<SMCVal_t>) -> kern_return_t {
         var result: kern_return_t = 0
         var input = SMCKeyData_t()
         var output = SMCKeyData_t()
@@ -659,7 +440,7 @@ public class SMC {
         return kIOReturnSuccess
     }
     
-    private func write(_ value: SMCVal_t) -> kern_return_t {
+    fileprivate func write(_ value: SMCVal_t) -> kern_return_t {
         var input = SMCKeyData_t()
         var output = SMCKeyData_t()
         
@@ -681,10 +462,165 @@ public class SMC {
         return kIOReturnSuccess
     }
     
-    private func call(_ index: UInt8, input: inout SMCKeyData_t, output: inout SMCKeyData_t) -> kern_return_t {
+    fileprivate func call(_ index: UInt8, input: inout SMCKeyData_t, output: inout SMCKeyData_t) -> kern_return_t {
         let inputSize = MemoryLayout<SMCKeyData_t>.stride
         var outputSize = MemoryLayout<SMCKeyData_t>.stride
         
         return IOConnectCallStructMethod(conn, UInt32(index), &input, inputSize, &output, &outputSize)
+    }
+}
+
+// MARK: - Providers
+
+internal class IntelSMC: SMCProvider {
+    private weak var parent: SMC?
+    
+    init(_ parent: SMC) {
+        self.parent = parent
+    }
+    
+    func setFanMode(_ id: Int, mode: FanMode) {
+        guard let parent = self.parent else { return }
+        
+        let modeKey = parent.fanModeKey(id)
+        let targetKey = "F\(id)Tg"
+        
+        // Reset fan mode to automatic
+        var modeVal = SMCVal_t(modeKey)
+        if parent.read(&modeVal) == kIOReturnSuccess && modeVal.dataSize > 0 {
+            if modeVal.bytes[0] != 0 {
+                modeVal.bytes[0] = 0
+                _ = parent.writeWithRetry(modeVal)
+            }
+        }
+        
+        // Clear target speed
+        var targetValue = SMCVal_t(targetKey)
+        if parent.read(&targetValue) == kIOReturnSuccess && targetValue.dataSize > 0 {
+            let bytes = Float(0).bytes
+            targetValue.bytes[0] = bytes[0]
+            targetValue.bytes[1] = bytes[1]
+            targetValue.bytes[2] = bytes[2]
+            targetValue.bytes[3] = bytes[3]
+            _ = parent.writeWithRetry(targetValue)
+        }
+        
+        // Intel legacy: Reset FS! if needed
+        var fsValue = SMCVal_t("FS! ")
+        if parent.read(&fsValue) == kIOReturnSuccess && fsValue.dataSize > 0 {
+            for i in 0..<Int(fsValue.dataSize) { fsValue.bytes[i] = 0 }
+            _ = parent.write(fsValue)
+        }
+    }
+    
+    func resetFanControl() -> Bool {
+        guard let parent = self.parent else { return false }
+        
+        // Reset FS! (Intel legacy)
+        var fsValue = SMCVal_t("FS! ")
+        if parent.read(&fsValue) == kIOReturnSuccess && fsValue.dataSize > 0 {
+            for i in 0..<Int(fsValue.dataSize) { fsValue.bytes[i] = 0 }
+            _ = parent.write(fsValue)
+        }
+        
+        // Reset individual fan modes
+        guard let count = parent._getValueUnsafe("FNum") else { return true }
+        for i in 0..<Int(count) {
+            let modeKey = parent.fanModeKey(i)
+            var modeVal = SMCVal_t(modeKey)
+            if parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] != 0 {
+                modeVal.bytes[0] = 0
+                _ = parent.writeWithRetry(modeVal)
+            }
+        }
+        return true
+    }
+}
+
+internal class AppleSiliconSMC: SMCProvider {
+    private weak var parent: SMC?
+    
+    init(_ parent: SMC) {
+        self.parent = parent
+    }
+    
+    func setFanMode(_ id: Int, mode: FanMode) {
+        guard let parent = self.parent else { return }
+        
+        if mode == .forced {
+            _ = self.unlockFanControl(fanId: id)
+        } else {
+            let modeKey = parent.fanModeKey(id)
+            var modeVal = SMCVal_t(modeKey)
+            if parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] != 0 {
+                modeVal.bytes[0] = 0
+                _ = parent.writeWithRetry(modeVal)
+            }
+            self.resetFtstIfAllAuto()
+        }
+    }
+    
+    func resetFanControl() -> Bool {
+        guard let parent = self.parent else { return false }
+        
+        // Reset Ftst
+        var ftstVal = SMCVal_t("Ftst")
+        if parent.read(&ftstVal) == kIOReturnSuccess && ftstVal.dataSize > 0 && ftstVal.bytes[0] != 0 {
+            ftstVal.bytes[0] = 0
+            _ = parent.writeWithRetry(ftstVal)
+        }
+        
+        // Reset all fans
+        guard let count = parent._getValueUnsafe("FNum") else { return true }
+        for i in 0..<Int(count) {
+            let modeKey = parent.fanModeKey(i)
+            var modeVal = SMCVal_t(modeKey)
+            if parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] != 0 {
+                modeVal.bytes[0] = 0
+                _ = parent.writeWithRetry(modeVal)
+            }
+        }
+        return true
+    }
+    
+    private func unlockFanControl(fanId: Int) -> Bool {
+        guard let parent = self.parent else { return false }
+        
+        let modeKey = parent.fanModeKey(fanId)
+        var modeVal = SMCVal_t(modeKey)
+        if parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] == 1 {
+            return true
+        }
+        
+        // Try direct write (M5+)
+        modeVal.bytes[0] = 1
+        if parent.write(modeVal) == kIOReturnSuccess {
+            return true
+        }
+        
+        // Use Ftst (M1-M4)
+        var ftstVal = SMCVal_t("Ftst")
+        if parent.read(&ftstVal) == kIOReturnSuccess && ftstVal.bytes[0] == 0 {
+            ftstVal.bytes[0] = 1
+            if !parent.writeWithRetry(ftstVal, maxAttempts: 50) { return false }
+            usleep(2_000_000) // Yield control from thermalmonitord
+        }
+        
+        return parent.writeWithRetry(modeVal, maxAttempts: 100)
+    }
+    
+    private func resetFtstIfAllAuto() {
+        guard let parent = self.parent, let count = parent._getValueUnsafe("FNum") else { return }
+        for i in 0..<Int(count) {
+            var modeVal = SMCVal_t(parent.fanModeKey(i))
+            if parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] != 0 {
+                return
+            }
+        }
+        var ftstVal = SMCVal_t("Ftst")
+        if parent.read(&ftstVal) == kIOReturnSuccess && ftstVal.bytes[0] != 0 {
+            ftstVal.bytes[0] = 0
+            _ = parent.writeWithRetry(ftstVal)
+        }
     }
 }

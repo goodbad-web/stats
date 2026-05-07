@@ -12,6 +12,7 @@
 import Foundation
 
 @objc public protocol HelperProtocol {
+    func ping(completion: @escaping () -> Void)
     func version(completion: @escaping (String) -> Void)
     func setSMCPath(_ path: String)
     
