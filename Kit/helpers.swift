@@ -906,7 +906,7 @@ public class SMCHelper {
     
     public func install(completion: @escaping (_ installed: Bool) -> Void) {
         do {
-            try SMAppService.daemon(plistName: "eu.exelban.Stats.SMC.Helper").register()
+            try SMAppService.daemon(plistName: "eu.exelban.Stats.SMC.Helper.plist").register()
             completion(true)
         } catch {
             print("Error while installing the Helper: \(error.localizedDescription)")
