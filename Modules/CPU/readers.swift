@@ -532,8 +532,7 @@ public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
         let itemSize = items.count
         var samples = [IOSample]()
         for index in 0..<itemSize {
-            let itemDict = items[index]
-            let item = unsafeBitCast(itemDict, to: CFDictionary.self)
+            let item = items[index] as! CFDictionary
             let group = IOReportChannelGetGroup(item)?.takeUnretainedValue() ?? ("" as CFString)
             let subGroup = IOReportChannelGetSubGroup(item)?.takeUnretainedValue() ?? ("" as CFString)
             let channel = IOReportChannelGetChannelName(item)?.takeUnretainedValue() ?? ("" as CFString)
