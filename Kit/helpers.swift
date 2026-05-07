@@ -26,12 +26,13 @@ public struct LaunchAtLogin {
         set {
             do {
                 if newValue {
-                    if SMAppService.mainApp.status == .enabled {
-                        try? SMAppService.mainApp.unregister()
+                    if SMAppService.mainApp.status != .enabled {
+                        try SMAppService.mainApp.register()
                     }
-                    try SMAppService.mainApp.register()
                 } else {
-                    try SMAppService.mainApp.unregister()
+                    if SMAppService.mainApp.status == .enabled {
+                        try SMAppService.mainApp.unregister()
+                    }
                 }
             } catch {
                 kitLogger.error("Failed to \(newValue ? "enable" : "disable") launch at login: \(error.localizedDescription, privacy: .public)")

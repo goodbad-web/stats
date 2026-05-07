@@ -9,6 +9,7 @@
 import Cocoa
 
 import Kit
+import Sentry
 import UserNotifications
 
 import CPU
@@ -68,6 +69,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         let startingPoint = Date()
+        
+        SentrySDK.start { options in
+            options.dsn = "YOUR_SENTRY_DSN" // TODO: Replace with actual DSN
+            options.debug = false
+            options.enableAppHangTracking = true
+            options.enableCaptureFailedRequests = true
+        }
         
         Task { @MainActor in
             self.parseArguments()
