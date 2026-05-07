@@ -19,10 +19,6 @@ class Helper: NSObject, NSXPCListenerDelegate, HelperProtocol {
     private let smcQueue = DispatchQueue(label: "eu.exelban.Stats.SMC.Helper.smcQueue")
     
     private var connections = [NSXPCConnection]()
-    private var shouldQuit = false
-    private var shouldQuitCheckInterval = 1.0
-    
-    private var smc: String? = nil
     
     override init() {
         self.listener = NSXPCListener(machServiceName: "eu.exelban.Stats.SMC.Helper")
@@ -31,22 +27,8 @@ class Helper: NSObject, NSXPCListenerDelegate, HelperProtocol {
     }
     
     public func run() {
-        let args = CommandLine.arguments.dropFirst()
-        if !args.isEmpty && args.first == "uninstall" {
-            NSLog("detected uninstall command")
-            if let val = args.last, let pid: pid_t = Int32(val) {
-                while kill(pid, 0) == 0 {
-                    usleep(50000)
-                }
-            }
-            self.uninstallHelper()
-            exit(0)
-        }
-        
         self.listener.resume()
-        while !self.shouldQuit {
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: self.shouldQuitCheckInterval))
-        }
+        RunLoop.current.run()
     }
     
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
@@ -67,43 +49,12 @@ class Helper: NSObject, NSXPCListenerDelegate, HelperProtocol {
             if let connectionIndex = self.connections.firstIndex(of: newConnection) {
                 self.connections.remove(at: connectionIndex)
             }
-            if self.connections.isEmpty {
-                self.shouldQuit = true
-            }
         }
         
         self.connections.append(newConnection)
         newConnection.resume()
         
         return true
-    }
-    
-    private func uninstallHelper() {
-        let process = Process()
-        process.launchPath = "/bin/launchctl"
-        process.qualityOfService = QualityOfService.userInitiated
-        process.arguments = ["unload", "/Library/LaunchDaemons/eu.exelban.Stats.SMC.Helper.plist"]
-        process.launch()
-        process.waitUntilExit()
-        
-        if process.terminationStatus != .zero {
-            NSLog("termination code: \(process.terminationStatus)")
-        }
-        NSLog("unloaded from launchctl")
-        
-        do {
-            try FileManager.default.removeItem(at: URL(fileURLWithPath: "/Library/LaunchDaemons/eu.exelban.Stats.SMC.Helper.plist"))
-        } catch let err {
-            NSLog("plist deletion: \(err)")
-        }
-        NSLog("property list deleted")
-        
-        do {
-            try FileManager.default.removeItem(at: URL(fileURLWithPath: "/Library/PrivilegedHelperTools/eu.exelban.Stats.SMC.Helper"))
-        } catch let err {
-            NSLog("helper deletion: \(err)")
-        }
-        NSLog("smc helper deleted")
     }
 }
 
