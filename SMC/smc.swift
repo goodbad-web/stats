@@ -160,25 +160,15 @@ extension Float {
         withUnsafeBytes(of: self, Array.init)
     }
 }
-
-internal protocol SMCProvider {
-    func setFanMode(_ id: Int, mode: FanMode)
-    func resetFanControl() -> Bool
-}
-
 public class SMC {
     public static let shared = SMC()
     private var conn: io_connect_t = 0
     private var _fanModeKeyIsLower: Bool?
     private let queue = DispatchQueue(label: "eu.exelban.Stats.SMC", qos: .userInteractive)
-    private var provider: SMCProvider!
+    private var fanController: AppleSiliconSMC!
     
     public init() {
-        #if arch(arm64)
-        self.provider = AppleSiliconSMC(self)
-        #else
-        self.provider = IntelSMC(self)
-        #endif
+        self.fanController = AppleSiliconSMC(self)
         
         var result: kern_return_t
         var iterator: io_iterator_t = 0
@@ -218,7 +208,7 @@ public class SMC {
     }
     
     private static func isZeroAllowed(_ key: String) -> Bool {
-        key == "FS! " || key == "Ftst" || key.range(of: #"^F\d"#, options: .regularExpression) != nil
+        key == "Ftst" || key.range(of: #"^F\d"#, options: .regularExpression) != nil
     }
     
     /// Lock-free getValue for use inside queue.sync blocks (avoids recursive lock)
@@ -339,7 +329,7 @@ public class SMC {
     }
     
     // MARK: - fans
-
+    
     public func fanModeKey(_ id: Int) -> String {
         if _fanModeKeyIsLower == nil {
             var probe = SMCVal_t("F0md")
@@ -347,10 +337,10 @@ public class SMC {
         }
         return _fanModeKeyIsLower! ? "F\(id)md" : "F\(id)Md"
     }
-
+    
     public func setFanMode(_ id: Int, mode: FanMode) {
         queue.sync {
-            self.provider.setFanMode(id, mode: mode)
+            self.fanController.setFanMode(id, mode: mode)
         }
     }
     
@@ -406,7 +396,7 @@ public class SMC {
     
     public func resetFanControl() -> Bool {
         return queue.sync {
-            self.provider.resetFanControl()
+            self.fanController.resetFanControl()
         }
     }
     
@@ -472,72 +462,7 @@ public class SMC {
 
 // MARK: - Providers
 
-internal class IntelSMC: SMCProvider {
-    private weak var parent: SMC?
-    
-    init(_ parent: SMC) {
-        self.parent = parent
-    }
-    
-    func setFanMode(_ id: Int, mode: FanMode) {
-        guard let parent = self.parent else { return }
-        
-        let modeKey = parent.fanModeKey(id)
-        let targetKey = "F\(id)Tg"
-        
-        // Reset fan mode to automatic
-        var modeVal = SMCVal_t(modeKey)
-        if parent.read(&modeVal) == kIOReturnSuccess && modeVal.dataSize > 0 {
-            if modeVal.bytes[0] != 0 {
-                modeVal.bytes[0] = 0
-                _ = parent.writeWithRetry(modeVal)
-            }
-        }
-        
-        // Clear target speed
-        var targetValue = SMCVal_t(targetKey)
-        if parent.read(&targetValue) == kIOReturnSuccess && targetValue.dataSize > 0 {
-            let bytes = Float(0).bytes
-            targetValue.bytes[0] = bytes[0]
-            targetValue.bytes[1] = bytes[1]
-            targetValue.bytes[2] = bytes[2]
-            targetValue.bytes[3] = bytes[3]
-            _ = parent.writeWithRetry(targetValue)
-        }
-        
-        // Intel legacy: Reset FS! if needed
-        var fsValue = SMCVal_t("FS! ")
-        if parent.read(&fsValue) == kIOReturnSuccess && fsValue.dataSize > 0 {
-            for i in 0..<Int(fsValue.dataSize) { fsValue.bytes[i] = 0 }
-            _ = parent.write(fsValue)
-        }
-    }
-    
-    func resetFanControl() -> Bool {
-        guard let parent = self.parent else { return false }
-        
-        // Reset FS! (Intel legacy)
-        var fsValue = SMCVal_t("FS! ")
-        if parent.read(&fsValue) == kIOReturnSuccess && fsValue.dataSize > 0 {
-            for i in 0..<Int(fsValue.dataSize) { fsValue.bytes[i] = 0 }
-            _ = parent.write(fsValue)
-        }
-        
-        // Reset individual fan modes
-        guard let count = parent._getValueUnsafe("FNum") else { return true }
-        for i in 0..<Int(count) {
-            let modeKey = parent.fanModeKey(i)
-            var modeVal = SMCVal_t(modeKey)
-            if parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] != 0 {
-                modeVal.bytes[0] = 0
-                _ = parent.writeWithRetry(modeVal)
-            }
-        }
-        return true
-    }
-}
-
-internal class AppleSiliconSMC: SMCProvider {
+internal class AppleSiliconSMC {
     private weak var parent: SMC?
     
     init(_ parent: SMC) {
