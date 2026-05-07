@@ -240,11 +240,15 @@ public class SWidget {
     public var isActive: Bool {
         get { self.list.contains{ $0 == self.type } }
         set {
+            var list = self.list
             if newValue {
-                self.list.append(self.type)
+                if !list.contains(self.type) {
+                    list.append(self.type)
+                }
             } else {
-                self.list.removeAll{ $0 == self.type }
+                list.removeAll{ $0 == self.type }
             }
+            self.list = list
         }
     }
     

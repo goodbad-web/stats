@@ -114,6 +114,7 @@ struct ClockSettingsView: View {
         }
         .onChange(of: list) { _, newValue in
             saveList(newValue)
+            callback()
         }
     }
     
