@@ -321,10 +321,24 @@ internal class Popup: PopupWrapper {
                 
                 self.powerField?.stringValue = "\(power.roundTo(decimalPlaces: 2)) / \(value.ACwatts) W"
                 
-                let current = value.adapterMaxCurrent != 0 ? "\(String(format: "%.2f", Double(currentVal) / 1000.0)) / \(String(format: "%.2f", Double(value.adapterMaxCurrent) / 1000.0)) A" : "\(String(format: "%.2f", Double(currentVal) / 1000.0)) A"
+                let currentValStr = String(format: "%.2f", Double(currentVal) / 1000.0)
+                let current: String
+                if value.adapterMaxCurrent != 0 {
+                    let maxCurrentStr = String(format: "%.2f", Double(value.adapterMaxCurrent) / 1000.0)
+                    current = "\(currentValStr) / \(maxCurrentStr) A"
+                } else {
+                    current = "\(currentValStr) A"
+                }
                 self.chargingCurrentField?.stringValue = current
                 
-                let voltage = value.adapterMaxVoltage != 0 ? "\(String(format: "%.2f", Double(voltageVal) / 1000.0)) / \(String(format: "%.2f", Double(value.adapterMaxVoltage) / 1000.0)) V" : "\(String(format: "%.2f", Double(voltageVal) / 1000.0)) V"
+                let voltageValStr = String(format: "%.2f", Double(voltageVal) / 1000.0)
+                let voltage: String
+                if value.adapterMaxVoltage != 0 {
+                    let maxVoltageStr = String(format: "%.2f", Double(value.adapterMaxVoltage) / 1000.0)
+                    voltage = "\(voltageValStr) / \(maxVoltageStr) V"
+                } else {
+                    voltage = "\(voltageValStr) V"
+                }
                 self.chargingVoltageField?.stringValue = voltage
             }
             self.chargingStateField?.stringValue = value.isCharging ? localizedString("Yes") : localizedString("No")

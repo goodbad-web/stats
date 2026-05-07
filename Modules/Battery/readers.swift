@@ -22,8 +22,26 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
     private var source: CFRunLoopSource?
     private var loop: CFRunLoop?
     
-    private var usage: Battery_Usage = Battery_Usage()
-    private var lastPowerSource: String? = nil
+    nonisolated private var isReading: Bool {
+        get { self.state.withLock { $0.isReading } }
+        set { self.state.withLock { $0.isReading = newValue } }
+    }
+    
+    private struct UsageState {
+        var usage: Battery_Usage = Battery_Usage()
+        var lastPowerSource: String? = nil
+        var isReading: Bool = false
+    }
+    private let state = OSAllocatedUnfairLock(initialState: UsageState())
+    
+    private var usage: Battery_Usage {
+        get { self.state.withLock { $0.usage } }
+        set { self.state.withLock { $0.usage = newValue } }
+    }
+    private var lastPowerSource: String? {
+        get { self.state.withLock { $0.lastPowerSource } }
+        set { self.state.withLock { $0.lastPowerSource = newValue } }
+    }
     
     deinit {
         IOObjectRelease(self.service)
@@ -66,7 +84,12 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
     }
     
     nonisolated public override func read() {
+        guard !self.isReading else { return }
+        self.isReading = true
+        
         Task.detached(priority: .background) {
+            defer { self.isReading = false }
+            
             let psInfo = IOPSCopyPowerSourcesInfo().takeRetainedValue()
             let psList = IOPSCopyPowerSourcesList(psInfo).takeRetainedValue() as [CFTypeRef]
             
@@ -76,7 +99,8 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
             
             for ps in psList {
                 if let list = IOPSGetPowerSourceDescription(psInfo, ps).takeUnretainedValue() as? [String: Any] {
-                    var usage = await MainActor.run { self.usage }
+                    var usage = self.usage
+                    let oldUsage = usage
                     
                     usage.powerSource = list[kIOPSPowerSourceStateKey] as? String ?? "AC Power"
                     usage.isBatteryPowered = usage.powerSource == "Battery Power"
@@ -92,10 +116,11 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
                         usage.timeToCharge = Int(time)
                     }
                     
-                    let lastPowerSource = await MainActor.run { self.lastPowerSource }
                     if usage.powerSource == "AC Power" {
-                        if lastPowerSource != "AC Power" {
+                        if self.lastPowerSource != "AC Power" {
                             usage.timeOnACPower = Date()
+                        } else {
+                            usage.timeOnACPower = oldUsage.timeOnACPower
                         }
                     } else {
                         usage.timeOnACPower = nil
@@ -160,13 +185,14 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
                         usage.chargingVoltage = chargerData["ChargingVoltage"] as? Int ?? 0
                     }
                     
-                    let powerSource = usage.powerSource
-                    let finalUsage = usage
-                    await MainActor.run {
-                        self.usage = finalUsage
-                        self.lastPowerSource = powerSource
-                        self.callback(finalUsage)
+                    if usage == oldUsage {
+                        return
                     }
+                    
+                    self.usage = usage
+                    self.lastPowerSource = usage.powerSource
+                    self.callback(usage)
+                    return // process only the first one
                 }
             }
         }
@@ -229,18 +255,25 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
     
     public override func setup() {
         self.popup = true
+        self.defaultInterval = 5
     }
     
+    private var isReading: Bool = false
     nonisolated public override func read() {
         Task { @MainActor in
+            guard !self.isReading else { return }
+            self.isReading = true
+            
             let limit = self.numberOfProcesses
             let log = self.log
             
             if limit == 0 {
+                self.isReading = false
                 return
             }
             
             Task.detached(priority: .background) { [weak self] in
+                defer { Task { @MainActor in self?.isReading = false } }
                 guard let self else { return }
                 let task = Process()
             task.launchPath = "/usr/bin/top"

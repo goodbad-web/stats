@@ -13,7 +13,7 @@ import Cocoa
 import Kit
 import IOKit.ps
 
-struct Battery_Usage: Codable {
+struct Battery_Usage: Codable, Equatable {
     var powerSource: String = ""
     var state: String? = nil
     var isCharged: Bool = false
@@ -47,6 +47,26 @@ struct Battery_Usage: Codable {
     var timeToEmpty: Int = 0
     var timeToCharge: Int = 0
     var timeOnACPower: Date? = nil
+
+    public static func == (lhs: Battery_Usage, rhs: Battery_Usage) -> Bool {
+        return lhs.powerSource == rhs.powerSource &&
+            lhs.state == rhs.state &&
+            lhs.isCharged == rhs.isCharged &&
+            lhs.isCharging == rhs.isCharging &&
+            lhs.isBatteryPowered == rhs.isBatteryPowered &&
+            lhs.optimizedChargingEngaged == rhs.optimizedChargingEngaged &&
+            lhs.level == rhs.level &&
+            lhs.cycles == rhs.cycles &&
+            lhs.health == rhs.health &&
+            lhs.maxCapacity == rhs.maxCapacity &&
+            abs(lhs.amperage - rhs.amperage) < 10 &&
+            abs(lhs.voltage - rhs.voltage) < 0.05 &&
+            abs(lhs.temperature - rhs.temperature) < 0.2 &&
+            lhs.ACwatts == rhs.ACwatts &&
+            abs(lhs.systemPower - rhs.systemPower) < 0.1 &&
+            lhs.timeToEmpty == rhs.timeToEmpty &&
+            lhs.timeToCharge == rhs.timeToCharge
+    }
 }
 
 public class Battery: Module {
