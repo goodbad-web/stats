@@ -10,6 +10,7 @@
 //
 
 import Cocoa
+import os
 @preconcurrency import Kit
 import IOKit.ps
 
@@ -23,8 +24,8 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
     private var loop: CFRunLoop?
     
     nonisolated private var isReading: Bool {
-        get { self.state.withLock { $0.isReading } }
-        set { self.state.withLock { $0.isReading = newValue } }
+        get { self.usageState.withLock { $0.isReading } }
+        set { self.usageState.withLock { $0.isReading = newValue } }
     }
     
     private struct UsageState {
@@ -32,15 +33,15 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
         var lastPowerSource: String? = nil
         var isReading: Bool = false
     }
-    private let state = OSAllocatedUnfairLock(initialState: UsageState())
+    private let usageState = OSAllocatedUnfairLock(initialState: UsageState())
     
-    private var usage: Battery_Usage {
-        get { self.state.withLock { $0.usage } }
-        set { self.state.withLock { $0.usage = newValue } }
+    nonisolated private var usage: Battery_Usage {
+        get { self.usageState.withLock { $0.usage } }
+        set { self.usageState.withLock { $0.usage = newValue } }
     }
-    private var lastPowerSource: String? {
-        get { self.state.withLock { $0.lastPowerSource } }
-        set { self.state.withLock { $0.lastPowerSource = newValue } }
+    nonisolated private var lastPowerSource: String? {
+        get { self.usageState.withLock { $0.lastPowerSource } }
+        set { self.usageState.withLock { $0.lastPowerSource = newValue } }
     }
     
     deinit {
