@@ -226,7 +226,6 @@ open class WidgetWrapper: NSView, widget_p {
             f()
             return
         }
-        super.mouseDown(with: event)
     }
 }
 
