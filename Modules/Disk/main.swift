@@ -272,6 +272,7 @@ public class Disk: Module {
         }
         self.settingsView.setInterval = { [weak self] value in
             self?.capacityReader?.setInterval(value)
+            self?.activityReader?.setInterval(value)
         }
         let processReader = self.processReader
         self.settingsView.callbackWhenUpdateNumberOfProcesses = { [weak self] in
@@ -354,9 +355,12 @@ public class Disk: Module {
             
             if self.systemWidgetsUpdatesState {
                 if isWidgetActive(self.userDefaults, [Disk_entry.kind, "UnitedWidget"]), let blobData = try? JSONEncoder().encode(d) {
-                    self.userDefaults?.set(blobData, forKey: "Disk@CapacityReader")
-                    WidgetCenter.shared.reloadTimelines(ofKind: Disk_entry.kind)
-                    WidgetCenter.shared.reloadTimelines(ofKind: "UnitedWidget")
+                    let key = "Disk@CapacityReader"
+                    if self.userDefaults?.data(forKey: key) != blobData {
+                        self.userDefaults?.set(blobData, forKey: key)
+                        WidgetCenter.shared.reloadTimelines(ofKind: Disk_entry.kind)
+                        WidgetCenter.shared.reloadTimelines(ofKind: "UnitedWidget")
+                    }
                 }
             }
         }
@@ -381,9 +385,6 @@ public class Disk: Module {
                     widget.setValue(input: d.activity.read, output: d.activity.write)
                 case let widget as NetworkChart:
                     widget.setValue(upload: Double(d.activity.write), download: Double(d.activity.read))
-                    if self.capacityReader?.interval != 1 {
-                        self.settingsView.setInterval(1)
-                    }
                 default: break
                 }
             }

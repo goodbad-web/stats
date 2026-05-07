@@ -255,9 +255,12 @@ public class CPU: Module {
         
         if self.systemWidgetsUpdatesState {
             if isWidgetActive(self.userDefaults, [CPU_entry.kind, "UnitedWidget"]), let blobData = try? JSONEncoder().encode(value) {
-                self.userDefaults?.set(blobData, forKey: "CPU@LoadReader")
-                WidgetCenter.shared.reloadTimelines(ofKind: CPU_entry.kind)
-                WidgetCenter.shared.reloadTimelines(ofKind: "UnitedWidget")
+                let key = "CPU@LoadReader"
+                if self.userDefaults?.data(forKey: key) != blobData {
+                    self.userDefaults?.set(blobData, forKey: key)
+                    WidgetCenter.shared.reloadTimelines(ofKind: CPU_entry.kind)
+                    WidgetCenter.shared.reloadTimelines(ofKind: "UnitedWidget")
+                }
             }
         }
     }

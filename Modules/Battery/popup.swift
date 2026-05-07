@@ -293,10 +293,16 @@ internal class Popup: PopupWrapper {
             self.amperageField?.stringValue = "\(abs(value.amperage)) mA"
             self.voltageField?.stringValue = "\(value.voltage.roundTo(decimalPlaces: 2)) V"
             let batteryPower = value.voltage * (Double(abs(value.amperage))/1000)
-            self.batteryPowerField?.stringValue = "\(batteryPower.roundTo(decimalPlaces: 2)) W"
+            var batteryPowerString = "\(batteryPower.roundTo(decimalPlaces: 2)) W"
+            if value.amperage < 0 {
+                batteryPowerString += " (\(localizedString("Discharge")))"
+            } else if value.amperage > 0 {
+                batteryPowerString += " (\(localizedString("Charge")))"
+            }
+            self.batteryPowerField?.stringValue = batteryPowerString
             self.temperatureField?.stringValue = temperature(value.temperature)
             
-            self.powerField?.stringValue = value.isBatteryPowered ? localizedString("Not connected") : "\(value.ACwatts) W"
+            self.powerField?.stringValue = value.isBatteryPowered ? localizedString("Not connected") : "\(value.ACwatts) W (\(localizedString("Rating")))"
             self.chargingStateField?.stringValue = value.isCharging ? localizedString("Yes") : localizedString("No")
             self.chargingCurrentField?.stringValue = value.isBatteryPowered ? localizedString("Not connected") : "\(value.chargingCurrent) mA"
             self.chargingVoltageField?.stringValue = value.isBatteryPowered ? localizedString("Not connected") : "\(value.chargingVoltage) mV"

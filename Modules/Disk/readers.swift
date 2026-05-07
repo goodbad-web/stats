@@ -263,7 +263,7 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
     private let session: DASession? = DASessionCreate(kCFAllocatorDefault)
     
     @MainActor override func setup() {
-        self.setInterval(1)
+        self.setInterval(Store.shared.int(key: "Disk_updateInterval", defaultValue: self.defaultInterval))
     }
     
     nonisolated public override func read() {
@@ -277,6 +277,7 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
             guard let session = self.session else {
                 return
             }
+            let currentInterval = Int64(self.interval ?? 1)
             
             let updatedList = await Task.detached(priority: .background) {
                 let localList = self.list
@@ -294,7 +295,7 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
                                         continue
                                     }
                                     
-                                    self.driveStats(localList, idx, d)
+                                    self.driveStats(localList, idx, d, currentInterval)
                                     continue
                                 }
                                 
@@ -320,7 +321,7 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
         }
     }
     
-    nonisolated private func driveStats(_ list: Disks, _ idx: Int, _ d: drive) {
+    nonisolated private func driveStats(_ list: Disks, _ idx: Int, _ d: drive, _ interval: Int64) {
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOBSDNameMatching(kIOMainPortDefault, 0, d.BSDName))
         if service == 0 { return }
         IOObjectRelease(service)
@@ -332,10 +333,10 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
             let writeBytes = statistics.object(forKey: "Bytes (Write)") as? Int64 ?? 0
             
             if d.activity.readBytes != 0 {
-                list.updateRead(idx, newValue: readBytes - d.activity.readBytes)
+                list.updateRead(idx, newValue: (readBytes - d.activity.readBytes) / interval)
             }
             if d.activity.writeBytes != 0 {
-                list.updateWrite(idx, newValue: writeBytes - d.activity.writeBytes)
+                list.updateWrite(idx, newValue: (writeBytes - d.activity.writeBytes) / interval)
             }
             
             list.updateReadWrite(idx, read: readBytes, write: writeBytes)
@@ -457,7 +458,7 @@ public class ProcessReader: Reader<[Disk_process]>, @unchecked Sendable {
     
     @MainActor public override func setup() {
         self.popup = true
-        self.setInterval(1)
+        self.setInterval(Store.shared.int(key: "Disk_updateTopInterval", defaultValue: 1))
     }
     
     nonisolated public override func read() {
@@ -468,6 +469,7 @@ public class ProcessReader: Reader<[Disk_process]>, @unchecked Sendable {
             }
             
             let currentList = self._list
+            let currentInterval = Int(self.interval ?? 1)
             let (updatedList, result) = await Task.detached(priority: .background) {
                 guard let output = runProcess(path: "/bin/ps", args: ["-Aceo pid,args", "-r"]) else { return (currentList, [] as [Disk_process]) }
                 
@@ -498,7 +500,7 @@ public class ProcessReader: Reader<[Disk_process]>, @unchecked Sendable {
                         let read = bytesRead - v.read
                         let write = bytesWritten - v.write
                         if read != 0 || write != 0 {
-                            processes.append(Disk_process(pid: Int(pid), name: name, read: read, write: write))
+                            processes.append(Disk_process(pid: Int(pid), name: name, read: read / currentInterval, write: write / currentInterval))
                         }
                     }
                     

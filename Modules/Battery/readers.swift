@@ -102,7 +102,7 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
                     usage.state = list[kIOPSBatteryHealthKey] as? String
                     usage.health = Int((Double(100 * usage.maxCapacity) / Double(usage.designedCapacity)).rounded(.toNearestOrEven))
                     
-                    usage.amperage = self.getIntValue("Amperage" as CFString) ?? 0
+                    usage.amperage = self.getIntValue("Amperage" as CFString) ?? self.getIntValue("InstantAmperage" as CFString) ?? 0
                     usage.voltage = self.getVoltage() ?? 0
                     usage.temperature = self.getTemperature() ?? 0
                     
@@ -147,23 +147,28 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
         return nil
     }
     
-    nonisolated private func getDoubleValue(_ identifier: CFString) -> Double? {
+    nonisolated private func getNumberValue(_ identifier: CFString) -> Double? {
         if let value = IORegistryEntryCreateCFProperty(self.service, identifier, kCFAllocatorDefault, 0) {
-            return value.takeRetainedValue() as? Double
+            let unwrapped = value.takeRetainedValue()
+            if let double = unwrapped as? Double {
+                return double
+            } else if let int = unwrapped as? Int {
+                return Double(int)
+            }
         }
         return nil
     }
     
     nonisolated private func getVoltage() -> Double? {
-        if let value = self.getDoubleValue("Voltage" as CFString) {
+        if let value = self.getNumberValue("Voltage" as CFString) {
             return value / 1000.0
         }
         return nil
     }
     
     nonisolated private func getTemperature() -> Double? {
-        if let value = IORegistryEntryCreateCFProperty(self.service, "Temperature" as CFString, kCFAllocatorDefault, 0) {
-            return value.takeRetainedValue() as! Double / 100.0
+        if let value = self.getNumberValue("Temperature" as CFString) {
+            return value / 100.0
         }
         return nil
     }
