@@ -909,37 +909,37 @@ public class SMCHelper {
         do {
             try service.register()
             
-            var attempts = 0
-            func checkConnection() {
-                self.connection?.invalidate()
-                self.connection = nil
-                
-                if let helper = self.helper({ _ in
-                    print("SMC helper is successfully connected")
-                    completion(true)
-                }) {
-                    helper.ping {
-                        // callback is handled in helper(_:)
-                    }
-                } else {
-                    attempts += 1
-                    if attempts < 10 {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            checkConnection()
-                        }
-                    } else {
-                        print("Error: SMC helper connection timeout")
-                        completion(false)
-                    }
-                }
-            }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                checkConnection()
-            }
+            // ヘルパー起動を待ってからping確認（最大10回、計5秒）
+            self.waitForHelper(attempts: 0, completion: completion)
         } catch {
             print("Error while installing the Helper: \(error.localizedDescription)")
             completion(false)
+        }
+    }
+    
+    private func waitForHelper(attempts: Int, completion: @escaping (Bool) -> Void) {
+        guard attempts < 10 else {
+            print("Error: SMC helper connection timeout")
+            completion(false)
+            return
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            // 毎回接続をリセットして新規接続を試みる
+            self.connection?.invalidate()
+            self.connection = nil
+            
+            guard let helper = self.helperProxy() else {
+                self.waitForHelper(attempts: attempts + 1, completion: completion)
+                return
+            }
+            
+            helper.ping {
+                DispatchQueue.main.async {
+                    print("SMC helper is successfully connected")
+                    completion(true)
+                }
+            }
         }
     }
     
@@ -964,33 +964,34 @@ public class SMCHelper {
         return self.connection
     }
     
+    private func helperProxy() -> HelperProtocol? {
+        guard let connection = self.helperConnection() else { return nil }
+        return connection.remoteObjectProxyWithErrorHandler({ error in
+            print("XPC error: \(error)")
+        }) as? HelperProtocol
+    }
+    
     private func helper(_ completion: ((Bool) -> Void)?) -> HelperProtocol? {
-        guard let helper = self.helperConnection() else {
+        guard let service = self.helperProxy() else {
             completion?(false)
             return nil
         }
-        guard let service = helper.remoteObjectProxyWithErrorHandler({ error in
-            print(error)
-        }) as? HelperProtocol else {
-            completion?(false)
-            return nil
-        }
-        
-        service.setSMCPath(Bundle.main.path(forResource: "smc", ofType: nil)!)
-        
         return service
     }
     
     public func uninstall(silent: Bool = false) {
+        // ファンをオートモードに戻す（直接SMCを叩く、XPC不要）
         if let count = SMC.shared.getValue("FNum") {
             for i in 0..<Int(count) {
-                self.setFanMode(i, mode: 0)
+                SMC.shared.setFanMode(i, mode: .automatic)
             }
         }
         
+        // XPC接続を先に切断
         self.connection?.invalidate()
         self.connection = nil
         
+        // システム登録を解除
         try? SMAppService.daemon(plistName: "eu.exelban.Stats.SMC.Helper.plist").unregister()
         
         if !silent {
