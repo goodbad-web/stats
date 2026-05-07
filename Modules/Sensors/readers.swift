@@ -122,6 +122,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
         results += self.initIOSensors()
         results += self.initCalculatedSensors(results)
         results.append(Sensor(key: "battery_amperage", name: "Battery", group: .sensor, type: .current, platforms: Platform.all))
+        results.append(Sensor(key: "battery_power", name: "Battery", group: .sensor, type: .power, platforms: Platform.all))
         
         return results
     }
@@ -172,9 +173,13 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                     if !localUnknownSensorsState && sensors[i].group == .unknown { continue }
                     
                     var newValue: Double = 0
-                    if sensors[i].key == "battery_amperage" {
+                    if sensors[i].key == "battery_amperage" || sensors[i].key == "battery_power" {
                         let batteryData = self.getBatteryData()
-                        newValue = Double(abs(batteryData.corrected)) / 1000.0
+                        if sensors[i].key == "battery_amperage" {
+                            newValue = Double(abs(batteryData.corrected)) / 1000.0
+                        } else if sensors[i].key == "battery_power" {
+                            newValue = (Double(abs(batteryData.corrected)) / 1000.0) * (Double(batteryData.voltage) / 1000.0)
+                        }
                     } else {
                         newValue = SMC.shared.getValue(sensors[i].key) ?? 0
                     }

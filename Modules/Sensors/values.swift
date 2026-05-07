@@ -570,6 +570,7 @@ internal let SensorsList: [Sensor] = [
     Sensor(key: "PPBR", name: "Battery Power Bus", group: .sensor, type: .power, platforms: Platform.all),
     Sensor(key: "PBRS", name: "Battery", group: .sensor, type: .power, platforms: Platform.all),
     Sensor(key: "PB0R", name: "Battery", group: .sensor, type: .power, platforms: Platform.all),
+    Sensor(key: "battery_power", name: "Battery", group: .sensor, type: .power, platforms: Platform.all),
     Sensor(key: "PDTR", name: "DC In", group: .sensor, type: .power, platforms: Platform.all),
     Sensor(key: "PMTR", name: "Memory Total", group: .sensor, type: .power, platforms: Platform.all),
     Sensor(key: "PSTR", name: "System Total", group: .sensor, type: .power, platforms: Platform.all),
