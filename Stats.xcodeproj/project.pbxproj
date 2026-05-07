@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5CFE493B292650F8000F2857 /* eu.exelban.Stats.SMC.Helper.plist in Copy Files */ = {isa = PBXBuildFile; fileRef = 5CFE493B292650F8000F2856 /* eu.exelban.Stats.SMC.Helper.plist */; };
 		5C038CF62D86EE8A00516809 /* Remote.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C038CF52D86EE8700516809 /* Remote.swift */; };
 		5C044F7A2B3DE6F3005F6951 /* portal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C044F792B3DE6F3005F6951 /* portal.swift */; };
 		5C0A2A8A292A5B4D009B4C1F /* SMJobBlessUtil.py in Resources */ = {isa = PBXBuildFile; fileRef = 5C0A2A89292A5B4D009B4C1F /* SMJobBlessUtil.py */; };
@@ -432,10 +433,21 @@
 		5CFE493C29265130000F2856 /* Copy Files */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = Contents/Library/LaunchServices;
+			dstPath = Contents/Library/PrivilegedHelperTools;
 			dstSubfolderSpec = 1;
 			files = (
 				5CFE493D2926513E000F2856 /* eu.exelban.Stats.SMC.Helper in Copy Files */,
+			);
+			name = "Copy Files";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5CFE493C29265130000F2857 /* Copy Files */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Library/LaunchDaemons;
+			dstSubfolderSpec = 1;
+			files = (
+				5CFE493B292650F8000F2857 /* eu.exelban.Stats.SMC.Helper.plist in Copy Files */,
 			);
 			name = "Copy Files";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -580,7 +592,7 @@
 		5CFE492929264DF1000F2856 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		5CFE493829265055000F2856 /* protocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = protocol.swift; sourceTree = "<group>"; };
 		5CFE493A292650BD000F2856 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		5CFE493B292650F8000F2856 /* Launchd.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Launchd.plist; sourceTree = "<group>"; };
+		5CFE493B292650F8000F2856 /* eu.exelban.Stats.SMC.Helper.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = eu.exelban.Stats.SMC.Helper.plist; sourceTree = "<group>"; };
 		5CFE494129265418000F2856 /* uninstall.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = uninstall.sh; sourceTree = "<group>"; };
 		5CFE494329265421000F2856 /* changelog.py */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.python; path = changelog.py; sourceTree = "<group>"; };
 		5EC1B2E42E2FEAFB007042A6 /* UnitedWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnitedWidget.swift; sourceTree = "<group>"; };
@@ -950,7 +962,7 @@
 				5CFE492929264DF1000F2856 /* main.swift */,
 				5CFE493829265055000F2856 /* protocol.swift */,
 				5CFE493A292650BD000F2856 /* Info.plist */,
-				5CFE493B292650F8000F2856 /* Launchd.plist */,
+				5CFE493B292650F8000F2856 /* eu.exelban.Stats.SMC.Helper.plist */,
 			);
 			path = Helper;
 			sourceTree = "<group>";
@@ -1499,6 +1511,7 @@
 				9A88E2672659002E00E2B7B0 /* ShellScript */,
 				9A46BF89266D7CFA001A1117 /* CopyFiles */,
 				5CFE493C29265130000F2856 /* Copy Files */,
+				5CFE493C29265130000F2857 /* Copy Files */,
 				5CE7E79D2C318513006BC92C /* Embed Foundation Extensions */,
 			);
 			buildRules = (
@@ -2651,7 +2664,7 @@
 					"-sectcreate",
 					__TEXT,
 					__launchd_plist,
-					"\"$(SRCROOT)/SMC/Helper/Launchd.plist\"",
+					"\"$(SRCROOT)/SMC/Helper/eu.exelban.Stats.SMC.Helper.plist\"",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = eu.exelban.Stats.SMC.Helper;
 				PRODUCT_NAME = eu.exelban.Stats.SMC.Helper;
@@ -2688,7 +2701,7 @@
 					"-sectcreate",
 					__TEXT,
 					__launchd_plist,
-					"\"$(SRCROOT)/SMC/Helper/Launchd.plist\"",
+					"\"$(SRCROOT)/SMC/Helper/eu.exelban.Stats.SMC.Helper.plist\"",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = eu.exelban.Stats.SMC.Helper;
 				PRODUCT_NAME = eu.exelban.Stats.SMC.Helper;
