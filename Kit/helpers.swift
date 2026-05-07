@@ -468,9 +468,7 @@ public func syncShell(_ args: String) -> String {
     task.waitUntilExit()
     
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    let output = String(data: data, encoding: .utf8)!
-    
-    return output
+    return String(data: data, encoding: .utf8) ?? ""
 }
 
 public func isNewestVersion(currentVersion: String, latestVersion: String) -> Bool {
@@ -666,13 +664,12 @@ internal func convertCFDataToArr(_ data: CFData, _ isM4OrLater: Bool = false) ->
     }
     
     var arr: [Int32] = []
-    var chunks = stride(from: 0, to: bytes.count, by: 8).map { Array(bytes[$0..<min($0 + 8, bytes.count)])}
+    let chunks = stride(from: 0, to: bytes.count, by: 8).map { Array(bytes[$0..<min($0 + 8, bytes.count)])}
     for chunk in chunks {
+        guard chunk.count >= 4 else { continue }
         let v = UInt32(chunk[0]) | UInt32(chunk[1]) << 8 | UInt32(chunk[2]) << 16 | UInt32(chunk[3]) << 24
         arr.append(Int32(v / multiplier))
     }
-    bytes.removeAll()
-    chunks.removeAll()
     
     return arr
 }

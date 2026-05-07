@@ -187,6 +187,15 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
         
         return cpuLoadInfo
     }
+    
+    deinit {
+        self.loadLock.withLock { state in
+            if let prevCpuInfo = state.prevCpuInfo {
+                let prevCpuInfoSize: size_t = MemoryLayout<integer_t>.stride * Int(state.numPrevCpuInfo)
+                vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prevCpuInfo), vm_size_t(prevCpuInfoSize))
+            }
+        }
+    }
 }
 
 public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
@@ -346,6 +355,11 @@ public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
         var dict: Unmanaged<CFMutableDictionary>?
         self.subscription = IOReportCreateSubscription(nil, self.channels, &dict, 0, nil)
         dict?.release()
+    }
+    
+    @MainActor public override func terminate() {
+        self.channels = nil
+        self.subscription = nil
     }
     
     nonisolated public override func read() {
@@ -508,12 +522,12 @@ public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
     }
     
     nonisolated private func collectIOSamples(data: CFDictionary) -> [IOSample] {
-        guard let items = (data as? [String: Any])?["IOReportChannels"] else { return [] }
-        let itemSize = CFArrayGetCount((items as! CFArray))
+        guard let items = (data as? [String: Any])?["IOReportChannels"] as? NSArray else { return [] }
+        let itemSize = items.count
         var samples = [IOSample]()
         for index in 0..<itemSize {
-            let dict = CFArrayGetValueAtIndex((items as! CFArray), index)
-            let item = unsafeBitCast(dict, to: CFDictionary.self)
+            let itemDict = items[index]
+            let item = unsafeBitCast(itemDict, to: CFDictionary.self)
             let group = IOReportChannelGetGroup(item)?.takeUnretainedValue() ?? ("" as CFString)
             let subGroup = IOReportChannelGetSubGroup(item)?.takeUnretainedValue() ?? ("" as CFString)
             let channel = IOReportChannelGetChannelName(item)?.takeUnretainedValue() ?? ("" as CFString)

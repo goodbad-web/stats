@@ -96,6 +96,13 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
         }
     }
     
+    @MainActor public override func terminate() {
+        self.aneChannels = nil
+        self.aneSubscription = nil
+        self.framesChannels = nil
+        self.framesSubscription = nil
+    }
+    
     nonisolated public override func read() {
         Task { @MainActor in
             let updatedGPUs = await Task.detached(priority: .userInitiated) {
@@ -268,14 +275,14 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
         guard let subscription = self.framesSubscription,
               let channels = self.framesChannels,
               let sample = IOReportCreateSamples(subscription, channels, nil)?.takeRetainedValue(),
-              let dict = (sample as AnyObject) as? [String: Any] else {
+              let dict = (sample as AnyObject) as? [String: Any],
+              let items = dict["IOReportChannels"] as? NSArray else {
             return nil
         }
-        let items = dict["IOReportChannels"] as! CFArray
         
         var total: Int64 = 0
-        for i in 0..<CFArrayGetCount(items) {
-            let item = unsafeBitCast(CFArrayGetValueAtIndex(items, i), to: CFDictionary.self)
+        for i in 0..<items.count {
+            let item = unsafeBitCast(items[i], to: CFDictionary.self)
             guard let group = IOReportChannelGetGroup(item)?.takeUnretainedValue() as? String,
                   group.hasPrefix("DCP"),
                   let sub = IOReportChannelGetSubGroup(item)?.takeUnretainedValue() as? String,
@@ -319,13 +326,15 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
               let dict = (reportSample as AnyObject) as? [String: Any] else {
             return nil
         }
-        let items = dict["IOReportChannels"] as! CFArray
+        guard let items = dict["IOReportChannels"] as? NSArray else {
+            return nil
+        }
         
         var currentEnergy: Double = 0
         var found = false
         
-        for i in 0..<CFArrayGetCount(items) {
-            let item = unsafeBitCast(CFArrayGetValueAtIndex(items, i), to: CFDictionary.self)
+        for i in 0..<items.count {
+            let item = unsafeBitCast(items[i], to: CFDictionary.self)
             
             guard let group = IOReportChannelGetGroup(item)?.takeUnretainedValue() as? String,
                   group == "Energy Model",

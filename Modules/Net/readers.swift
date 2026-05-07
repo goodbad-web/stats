@@ -304,11 +304,16 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
             var res = (interface: nil as Network_interface?, connectionType: .other as Network_t, dns: [] as [String])
             
             for interface in SCNetworkInterfaceCopyAll() as NSArray {
-                if let bsdName = SCNetworkInterfaceGetBSDName(interface as! SCNetworkInterface), bsdName as String == interfaceID,
-                   let type = SCNetworkInterfaceGetInterfaceType(interface as! SCNetworkInterface),
-                   let displayName = SCNetworkInterfaceGetLocalizedDisplayName(interface as! SCNetworkInterface),
-                   let address = SCNetworkInterfaceGetHardwareAddressString(interface as! SCNetworkInterface) {
-                    res.interface = Network_interface(displayName: displayName as String, BSDName: bsdName as String, address: address as String)
+                guard let bsName = SCNetworkInterfaceGetBSDName(interface as! SCNetworkInterface),
+                      let type = SCNetworkInterfaceGetInterfaceType(interface as! SCNetworkInterface),
+                      let displayName = SCNetworkInterfaceGetLocalizedDisplayName(interface as! SCNetworkInterface),
+                      let address = SCNetworkInterfaceGetHardwareAddressString(interface as! SCNetworkInterface) else {
+                    continue
+                }
+                
+                let bsdName = bsName as String
+                if bsdName == interfaceID {
+                    res.interface = Network_interface(displayName: displayName as String, BSDName: bsdName, address: address as String)
                     switch type {
                     case kSCNetworkInterfaceTypeEthernet: res.connectionType = .ethernet
                     case kSCNetworkInterfaceTypeIEEE80211, kSCNetworkInterfaceTypeWWAN: res.connectionType = .wifi
@@ -610,7 +615,10 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
     
     private func openConn() {
         let info = ConnectivityReaderWrapper(self)
-        var context = CFSocketContext(version: 0, info: Unmanaged.passRetained(info).toOpaque(), retain: nil, release: nil, copyDescription: nil)
+        var context = CFSocketContext(version: 0, info: Unmanaged.passRetained(info).toOpaque(), retain: nil, release: { info in
+            guard let info = info else { return }
+            Unmanaged<ConnectivityReaderWrapper>.fromOpaque(info).release()
+        }, copyDescription: nil)
         self.socket = CFSocketCreate(kCFAllocatorDefault, AF_INET, SOCK_DGRAM, IPPROTO_ICMP, CFSocketCallBackType.dataCallBack.rawValue, { _, _, _, data, info in
             guard let info = info, let data = data else { return }
             let wrapper = Unmanaged<ConnectivityReaderWrapper>.fromOpaque(info).takeUnretainedValue()
