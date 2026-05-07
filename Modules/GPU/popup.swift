@@ -369,7 +369,7 @@ private class GPUView: NSStackView {
             
             for i in 0..<gpu.topProcesses.count where i < (self.processes?.count ?? 0) {
                 let process = gpu.topProcesses[i]
-                self.processes?.set(i, process, ["\(Int(process.usage))%"])
+                self.processes?.set(i, process, [String(format: "%.1f%%", process.usage)])
             }
         }
         

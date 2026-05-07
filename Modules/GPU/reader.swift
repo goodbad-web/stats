@@ -152,10 +152,21 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
                     let vramUsed: Int64? = stats["In use system memory"] as? Int64 ?? stats["vramUsedBytes"] as? Int64 ?? nil
                     
                     var topProcesses: [TopProcess] = []
-                    if let clients = accelerator["Clients"] as? [[String: Any]] {
+                    if let clients = accelerator["Clients"] as? NSArray {
                         for client in clients {
-                            guard let pid = client["ProcessID"] as? Int, let name = client["ProcessName"] as? String else { continue }
-                            let usage = (client["PerformanceStatistics"] as? [String: Any])?["Device Utilization %"] as? Double ?? 0
+                            guard let clientDict = client as? NSDictionary else { continue }
+                            
+                            let pid = (clientDict["ProcessID"] as? NSNumber)?.intValue ?? (clientDict["pid"] as? NSNumber)?.intValue ?? 0
+                            let name = (clientDict["ProcessName"] as? String) ?? (clientDict["ExecutableName"] as? String) ?? "Unknown"
+                            guard pid != 0 && name != "Unknown" else { continue }
+                            
+                            var usage: Double = 0
+                            if let stats = clientDict["PerformanceStatistics"] as? NSDictionary {
+                                usage = (stats["Device Utilization %"] as? NSNumber)?.doubleValue ?? (stats["GPU Activity(%)"] as? NSNumber)?.doubleValue ?? 0
+                            } else if let u = clientDict["Device Utilization %"] as? NSNumber {
+                                usage = u.doubleValue
+                            }
+                            
                             topProcesses.append(TopProcess(pid: pid, name: name, usage: usage))
                         }
                     }
