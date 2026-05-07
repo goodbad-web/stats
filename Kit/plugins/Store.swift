@@ -18,9 +18,10 @@ public final class Store: @unchecked Sendable {
     
     public init() {
         self.loadCache()
+        NotificationCenter.default.addObserver(self, selector: #selector(loadCache), name: UserDefaults.didChangeNotification, object: nil)
     }
     
-    private func loadCache() {
+    @objc private func loadCache() {
         guard let bundleId = Bundle.main.bundleIdentifier,
               let domain = self.defaults.persistentDomain(forName: bundleId) else { return }
         self.lock.withLock { cache in
