@@ -15,7 +15,7 @@ import Kit
 internal class Popup: PopupWrapper {
     private let dashboardHeight: CGFloat = 90
     private var detailsHeight: CGFloat = (22 * 4) + Constants.Popup.separatorHeight
-    private let batteryHeight: CGFloat = (22 * 8) + Constants.Popup.separatorHeight
+    private let batteryHeight: CGFloat = (22 * 9) + Constants.Popup.separatorHeight
     private let adapterHeight: CGFloat = (22 * 4) + Constants.Popup.separatorHeight
     private let processHeight: CGFloat = 22
     
@@ -308,10 +308,22 @@ internal class Popup: PopupWrapper {
             self.totalPowerField?.stringValue = value.systemPower == 0 ? localizedString("Unknown") : "\(value.systemPower.roundTo(decimalPlaces: 2)) W"
             self.temperatureField?.stringValue = temperature(value.temperature)
             
-            self.powerField?.stringValue = value.isBatteryPowered ? localizedString("Not connected") : "\(value.ACwatts) W (\(localizedString("Rating")))"
+            if value.isBatteryPowered {
+                let notConnected = localizedString("Not connected")
+                self.powerField?.stringValue = notConnected
+                self.chargingCurrentField?.stringValue = notConnected
+                self.chargingVoltageField?.stringValue = notConnected
+            } else {
+                let chargingPower = Double(value.chargingCurrent * value.chargingVoltage) / 1000000.0
+                self.powerField?.stringValue = "\(chargingPower.roundTo(decimalPlaces: 2)) / \(value.ACwatts) W"
+                
+                let current = value.adapterMaxCurrent != 0 ? "\(value.chargingCurrent) / \(value.adapterMaxCurrent) mA" : "\(value.chargingCurrent) mA"
+                self.chargingCurrentField?.stringValue = current
+                
+                let voltage = value.adapterMaxVoltage != 0 ? "\(value.chargingVoltage) / \(value.adapterMaxVoltage) mV" : "\(value.chargingVoltage) mV"
+                self.chargingVoltageField?.stringValue = voltage
+            }
             self.chargingStateField?.stringValue = value.isCharging ? localizedString("Yes") : localizedString("No")
-            self.chargingCurrentField?.stringValue = value.isBatteryPowered ? localizedString("Not connected") : "\(value.chargingCurrent) mA"
-            self.chargingVoltageField?.stringValue = value.isBatteryPowered ? localizedString("Not connected") : "\(value.chargingVoltage) mV"
         }
     }
     

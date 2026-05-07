@@ -135,6 +135,16 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
                     }
                     usage.ACwatts = ACwatts
                     
+                    if let adapterDetails = IORegistryEntryCreateCFProperty(self.service, "AdapterDetails" as CFString, kCFAllocatorDefault, 0) {
+                        if let dict = adapterDetails.takeRetainedValue() as? [String: Any] {
+                            usage.adapterMaxCurrent = dict["Current"] as? Int ?? 0
+                            usage.adapterMaxVoltage = dict["AdapterVoltage"] as? Int ?? 0
+                            if let watts = dict["Watts"] as? Int {
+                                usage.ACwatts = watts
+                            }
+                        }
+                    }
+                    
                     if let chargerData = self.getChargerData() {
                         usage.chargingCurrent = chargerData["ChargingCurrent"] as? Int ?? 0
                         usage.chargingVoltage = chargerData["ChargingVoltage"] as? Int ?? 0
