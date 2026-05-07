@@ -18,11 +18,10 @@ public struct CPU_entry: TimelineEntry {
     public static let kind = "CPUWidget"
     public static var snapshot: CPU_entry = CPU_entry(value: CPU_Load(totalUsage: 0.34, systemLoad: 0.11, userLoad: 0.23, idleLoad: 0.66), isPreview: true)
     
-    public var date: Date {
-        Calendar.current.date(byAdding: .second, value: 5, to: Date())!
-    }
+    public var date: Date = Date()
     public var value: CPU_Load? = nil
     public var isPreview: Bool = false
+    public var systemWidgetsUpdatesState: Bool = false
 }
 
 public struct Provider: TimelineProvider {
@@ -44,7 +43,7 @@ public struct Provider: TimelineProvider {
     
     public func getTimeline(in context: Context, completion: @escaping (Timeline<CPU_entry>) -> Void) {
         self.userDefaults?.set(Date().timeIntervalSince1970, forKey: CPU_entry.kind)
-        var entry = CPU_entry()
+        var entry = CPU_entry(date: Date(), systemWidgetsUpdatesState: self.systemWidgetsUpdatesState)
         if let raw = self.userDefaults?.data(forKey: "CPU@LoadReader"), let load = try? JSONDecoder().decode(CPU_Load.self, from: raw) {
             entry.value = load
         }
@@ -64,7 +63,7 @@ public struct CPUWidget: Widget {
     public var body: some WidgetConfiguration {
         StaticConfiguration(kind: CPU_entry.kind, provider: Provider()) { entry in
             VStack(spacing: 10) {
-                if Provider().systemWidgetsUpdatesState || entry.isPreview, let value = entry.value {
+                if entry.systemWidgetsUpdatesState || entry.isPreview, let value = entry.value {
                     HStack {
                         Chart {
                             SectorMark(angle: .value(localizedString("System"), value.systemLoad), innerRadius: .ratio(0.8)).foregroundStyle(self.systemColor)
@@ -101,7 +100,7 @@ public struct CPUWidget: Widget {
                             Text("\(value.userLoad.isFinite ? Int(value.userLoad*100) : 0)%")
                         }
                     }
-                } else if !Provider().systemWidgetsUpdatesState {
+                } else if !entry.systemWidgetsUpdatesState {
                     Text("Enable in Settings")
                         .font(.system(size: 12, weight: .regular))
                         .foregroundColor(.secondary)

@@ -18,11 +18,10 @@ public struct Disk_entry: TimelineEntry {
     public static let kind = "DiskWidget"
     public static var snapshot: Disk_entry = Disk_entry(value: drive(size: 494384795648, free: 251460125440), isPreview: true)
     
-    public var date: Date {
-        Calendar.current.date(byAdding: .second, value: 5, to: Date())!
-    }
+    public var date: Date = Date()
     public var value: drive? = nil
     public var isPreview: Bool = false
+    public var systemWidgetsUpdatesState: Bool = false
 }
 
 public struct Provider: TimelineProvider {
@@ -44,7 +43,7 @@ public struct Provider: TimelineProvider {
     
     public func getTimeline(in context: Context, completion: @escaping (Timeline<Disk_entry>) -> Void) {
         self.userDefaults?.set(Date().timeIntervalSince1970, forKey: Disk_entry.kind)
-        var entry = Disk_entry()
+        var entry = Disk_entry(date: Date(), systemWidgetsUpdatesState: self.systemWidgetsUpdatesState)
         if let raw = userDefaults?.data(forKey: "Disk@CapacityReader"), let load = try? JSONDecoder().decode(drive.self, from: raw) {
             entry.value = load
         }
@@ -63,7 +62,7 @@ public struct DiskWidget: Widget {
     public var body: some WidgetConfiguration {
         StaticConfiguration(kind: Disk_entry.kind, provider: Provider()) { entry in
             VStack(spacing: 10) {
-                if Provider().systemWidgetsUpdatesState || entry.isPreview, let value = entry.value {
+                if entry.systemWidgetsUpdatesState || entry.isPreview, let value = entry.value {
                     HStack {
                         Chart {
                             SectorMark(angle: .value(localizedString("Used"), (100*(value.size-value.free))/value.size), innerRadius: .ratio(0.8)).foregroundStyle(self.usedColor)
@@ -99,7 +98,7 @@ public struct DiskWidget: Widget {
                             Text(DiskSize(value.free).getReadableMemory())
                         }
                     }
-                } else if !Provider().systemWidgetsUpdatesState {
+                } else if !entry.systemWidgetsUpdatesState {
                     Text("Enable in Settings")
                         .font(.system(size: 12, weight: .regular))
                         .foregroundColor(.secondary)

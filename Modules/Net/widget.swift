@@ -23,11 +23,10 @@ public struct Network_entry: TimelineEntry {
         status: true
     ), isPreview: true)
     
-    public var date: Date {
-        Calendar.current.date(byAdding: .second, value: 5, to: Date())!
-    }
+    public var date: Date = Date()
     public var value: Network_Usage? = nil
     public var isPreview: Bool = false
+    public var systemWidgetsUpdatesState: Bool = false
 }
 
 public struct Provider: TimelineProvider {
@@ -49,7 +48,7 @@ public struct Provider: TimelineProvider {
     
     public func getTimeline(in context: Context, completion: @escaping (Timeline<Network_entry>) -> Void) {
         self.userDefaults?.set(Date().timeIntervalSince1970, forKey: Network_entry.kind)
-        var entry = Network_entry()
+        var entry = Network_entry(date: Date(), systemWidgetsUpdatesState: self.systemWidgetsUpdatesState)
         if let raw = userDefaults?.data(forKey: "Network@UsageReader"), let load = try? JSONDecoder().decode(Network_Usage.self, from: raw) {
             entry.value = load
         }
@@ -68,7 +67,7 @@ public struct NetworkWidget: Widget {
     public var body: some WidgetConfiguration {
         StaticConfiguration(kind: Network_entry.kind, provider: Provider()) { entry in
             VStack(spacing: 10) {
-                if Provider().systemWidgetsUpdatesState || entry.isPreview, let value = entry.value {
+                if entry.systemWidgetsUpdatesState || entry.isPreview, let value = entry.value {
                     VStack {
                         HStack {
                             VStack {
@@ -116,7 +115,7 @@ public struct NetworkWidget: Widget {
                             }
                         }
                     }
-                } else if !Provider().systemWidgetsUpdatesState {
+                } else if !entry.systemWidgetsUpdatesState {
                     Text("Enable in Settings")
                         .font(.system(size: 12, weight: .regular))
                         .foregroundColor(.secondary)

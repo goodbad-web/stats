@@ -339,8 +339,8 @@ public class Network: Module {
         if self.systemWidgetsUpdatesState {
             if isWidgetActive(self.userDefaults, [Network_entry.kind]), let blobData = try? JSONEncoder().encode(raw) {
                 self.userDefaults?.set(blobData, forKey: "Network@UsageReader")
+                WidgetCenter.shared.reloadTimelines(ofKind: Network_entry.kind)
             }
-            WidgetCenter.shared.reloadTimelines(ofKind: Network_entry.kind)
         }
     }
     
