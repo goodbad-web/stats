@@ -90,6 +90,9 @@ public class PieChart: WidgetWrapper {
     }
     
     public func setValue(_ list: [ColorValue]) {
+        for val in list {
+            guard val.value.isFinite else { return }
+        }
         var segments = list
         
         if self.monochromeState {

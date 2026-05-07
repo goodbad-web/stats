@@ -249,10 +249,11 @@ public class LineChart: WidgetWrapper {
     }
     
     public func setValue(_ newValue: Double) {
+        guard newValue.isFinite else { return }
         DispatchQueue.main.async(execute: {
             self._value = newValue
             self.chart.addValue(newValue)
-            self.display()
+            self.needsDisplay = true
         })
     }
     
@@ -260,7 +261,7 @@ public class LineChart: WidgetWrapper {
         DispatchQueue.main.async(execute: {
             guard self._pressureLevel != newPressureLevel else { return }
             self._pressureLevel = newPressureLevel
-            self.display()
+            self.needsDisplay = true
         })
     }
     
@@ -318,7 +319,7 @@ public class LineChart: WidgetWrapper {
     @objc private func toggleLabel(_ sender: NSControl) {
         self.labelState = controlState(sender)
         Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_label", value: self.labelState)
-        self.display()
+        self.needsDisplay = true
     }
     
     @objc private func toggleBox(_ sender: NSControl) {
@@ -331,7 +332,7 @@ public class LineChart: WidgetWrapper {
             Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_frame", value: self.frameState)
         }
         
-        self.display()
+        self.needsDisplay = true
     }
     
     @objc private func toggleFrame(_ sender: NSControl) {
@@ -344,13 +345,13 @@ public class LineChart: WidgetWrapper {
             Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_box", value: self.boxState)
         }
         
-        self.display()
+        self.needsDisplay = true
     }
     
     @objc private func toggleValue(_ sender: NSControl) {
         self.valueState = controlState(sender)
         Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_value", value: self.valueState)
-        self.display()
+        self.needsDisplay = true
     }
     
     @objc private func toggleColor(_ sender: NSMenuItem) {
@@ -359,13 +360,13 @@ public class LineChart: WidgetWrapper {
             self.colorState = newColor
         }
         Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_color", value: key)
-        self.display()
+        self.needsDisplay = true
     }
     
     @objc private func toggleValueColor(_ sender: NSControl) {
         self.valueColorState = controlState(sender)
         Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_valueColor", value: self.valueColorState)
-        self.display()
+        self.needsDisplay = true
     }
     
     @objc private func toggleHistoryCount(_ sender: NSMenuItem) {
@@ -373,7 +374,7 @@ public class LineChart: WidgetWrapper {
         self.historyCount = value
         Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_historyCount", value: value)
         self.chart.reinit(value)
-        self.display()
+        self.needsDisplay = true
     }
     
     @objc private func toggleScale(_ sender: NSMenuItem) {
@@ -382,6 +383,6 @@ public class LineChart: WidgetWrapper {
         self.scaleState = value
         self.chart.setScale(value)
         Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_scale", value: key)
-        self.display()
+        self.needsDisplay = true
     }
 }

@@ -223,6 +223,11 @@ public class BarChart: WidgetWrapper {
     }
     
     public func setValue(_ newValue: [[ColorValue]]) {
+        for row in newValue {
+            for val in row {
+                guard val.value.isFinite else { return }
+            }
+        }
         DispatchQueue.main.async(execute: {
             let tolerance: CGFloat = 0.01
             let isDifferent = self._value.count != newValue.count || zip(self._value, newValue).contains { row1, row2 in

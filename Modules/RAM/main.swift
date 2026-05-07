@@ -33,7 +33,7 @@ public struct RAM_Usage: Codable, RemoteType {
     var swapouts: Int64
     
     public var usage: Double {
-        get { Double((self.total - self.free) / self.total) }
+        get { self.total == 0 ? 0 : Double((self.total - self.free) / self.total) }
     }
     
     public func remote() -> Data? {
