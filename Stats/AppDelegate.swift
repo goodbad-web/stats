@@ -20,8 +20,10 @@ import Sensors
 import GPU
 import Bluetooth
 import Clock
+import OSLog
 
 let updater = Updater(github: "exelban/stats", url: "https://api.mac-stats.com/release/latest")
+private let appLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "eu.exelban.Stats", category: "App")
 @MainActor
 var modules: [Module] = [
     CPU(),
@@ -88,7 +90,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
                 return event
             }
             
-            info("Stats started in \((startingPoint.timeIntervalSinceNow * -1).rounded(toPlaces: 4)) seconds")
+            appLogger.info("Stats started in \(String(describing: (startingPoint.timeIntervalSinceNow * -1).rounded(toPlaces: 4))) seconds")
             self.startTS = Date()
         }
     }
@@ -136,11 +138,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
             self.clickInNotification = true
             
             if let uri = response.notification.request.content.userInfo["url"] as? String {
-                debug("Downloading new version of app...")
+                appLogger.debug("Downloading new version of app…")
                 if let url = URL(string: uri) {
                     updater.download(url, completion: { path in
                         updater.install(path: path) { error in
                             if let error {
+                                appLogger.error("Update installation failed: \(error, privacy: .public)")
                                 showAlert("Error update Stats", error, .critical)
                             }
                         }
@@ -221,3 +224,4 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
         NSWorkspace.shared.open(URL(string: "https://github.com/exelban/stats")!)
     }
 }
+
