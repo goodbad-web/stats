@@ -112,6 +112,15 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
                     usage.health = Int((Double(100 * usage.maxCapacity) / Double(usage.designedCapacity)).rounded(.toNearestOrEven))
                     
                     usage.amperage = self.getIntValue("Amperage" as CFString) ?? self.getIntValue("InstantAmperage" as CFString) ?? 0
+                    usage.powerBusAmperage = usage.amperage
+                    if let telemetry = IORegistryEntryCreateCFProperty(self.service, "PowerTelemetryData" as CFString, kCFAllocatorDefault, 0) {
+                        if let dict = telemetry.takeRetainedValue() as? [String: Any] {
+                            let batteryPowerMW = dict["BatteryPower"] as? Int ?? (dict["BatteryPower"] as? Double).map{ Int($0) }
+                            if let power = batteryPowerMW, power == 0 && abs(usage.amperage) < 50 && !usage.isBatteryPowered {
+                                usage.amperage = 0
+                            }
+                        }
+                    }
                     usage.voltage = self.getVoltage() ?? 0
                     usage.temperature = self.getTemperature() ?? 0
                     usage.systemPower = SMC.shared.getValue("PSTR") ?? 0

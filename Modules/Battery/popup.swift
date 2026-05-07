@@ -15,7 +15,7 @@ import Kit
 internal class Popup: PopupWrapper {
     private let dashboardHeight: CGFloat = 90
     private var detailsHeight: CGFloat = (22 * 4) + Constants.Popup.separatorHeight
-    private let batteryHeight: CGFloat = (22 * 7) + Constants.Popup.separatorHeight
+    private let batteryHeight: CGFloat = (22 * 8) + Constants.Popup.separatorHeight
     private let adapterHeight: CGFloat = (22 * 4) + Constants.Popup.separatorHeight
     private let processHeight: CGFloat = 22
     
@@ -36,6 +36,7 @@ internal class Popup: PopupWrapper {
     private var lastChargeField: NSTextField? = nil
     
     private var amperageField: NSTextField? = nil
+    private var powerBusAmperageField: NSTextField? = nil
     private var voltageField: NSTextField? = nil
     private var batteryPowerField: NSTextField? = nil
     private var temperatureField: NSTextField? = nil
@@ -151,7 +152,8 @@ internal class Popup: PopupWrapper {
         self.temperatureField = popupRow(container, title: "\(localizedString("Temperature")):", value: "").1
         self.totalPowerField = popupRow(container, title: "\(localizedString("Total consumption")):", value: "").1
         self.batteryPowerField = popupRow(container, title: "\(localizedString("Battery power")):", value: "").1
-        self.amperageField = popupRow(container, title: "\(localizedString("Current")):", value: "").1
+        self.amperageField = popupRow(container, title: "\(localizedString("Amperage")):", value: "").1
+        self.powerBusAmperageField = popupRow(container, title: "\(localizedString("Battery power bus")):", value: "").1
         self.voltageField = popupRow(container, title: "\(localizedString("Voltage")):", value: "").1
         
         view.addSubview(separator)
@@ -293,19 +295,14 @@ internal class Popup: PopupWrapper {
             }
             
             self.amperageField?.stringValue = "\(abs(value.amperage)) mA"
+            self.powerBusAmperageField?.stringValue = "\(abs(value.powerBusAmperage)) mA"
             self.voltageField?.stringValue = "\(value.voltage.roundTo(decimalPlaces: 2)) V"
-            var batteryPower = value.voltage * (Double(abs(value.amperage))/1000)
-            if !value.isBatteryPowered && !value.isCharging {
-                batteryPower = 0
-            }
-            
+            let batteryPower = value.voltage * (Double(abs(value.amperage))/1000)
             var batteryPowerString = "\(batteryPower.roundTo(decimalPlaces: 2)) W"
-            if batteryPower > 0 {
-                if value.amperage < 0 {
-                    batteryPowerString += " (\(localizedString("Discharge")))"
-                } else if value.amperage > 0 {
-                    batteryPowerString += " (\(localizedString("Charge")))"
-                }
+            if value.amperage < 0 {
+                batteryPowerString += " (\(localizedString("Discharge")))"
+            } else if value.amperage > 0 {
+                batteryPowerString += " (\(localizedString("Charge")))"
             }
             self.batteryPowerField?.stringValue = batteryPowerString
             self.totalPowerField?.stringValue = value.systemPower == 0 ? localizedString("Unknown") : "\(value.systemPower.roundTo(decimalPlaces: 2)) W"

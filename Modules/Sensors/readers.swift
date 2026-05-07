@@ -121,8 +121,40 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
         }
         results += self.initIOSensors()
         results += self.initCalculatedSensors(results)
+        results.append(Sensor(key: "battery_amperage", name: "Battery", group: .sensor, type: .current, platforms: Platform.all))
         
         return results
+    }
+    
+    nonisolated private func getBatteryData() -> (raw: Int, corrected: Int, voltage: Int) {
+        var raw: Int = 0
+        var corrected: Int = 0
+        var voltage: Int = 0
+        
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
+        if service != 0 {
+            if let amperage = IORegistryEntryCreateCFProperty(service, "Amperage" as CFString, kCFAllocatorDefault, 0) {
+                raw = (amperage.takeRetainedValue() as? Int ?? 0)
+            } else if let amperage = IORegistryEntryCreateCFProperty(service, "InstantAmperage" as CFString, kCFAllocatorDefault, 0) {
+                raw = (amperage.takeRetainedValue() as? Int ?? 0)
+            }
+            
+            if let v = IORegistryEntryCreateCFProperty(service, "Voltage" as CFString, kCFAllocatorDefault, 0) {
+                voltage = (v.takeRetainedValue() as? Int ?? 0)
+            }
+            
+            corrected = raw
+            if let telemetry = IORegistryEntryCreateCFProperty(service, "PowerTelemetryData" as CFString, kCFAllocatorDefault, 0) {
+                if let dict = telemetry.takeRetainedValue() as? [String: Any] {
+                    let batteryPowerMW = dict["BatteryPower"] as? Int ?? (dict["BatteryPower"] as? Double).map{ Int($0) }
+                    if let power = batteryPowerMW, power == 0 && abs(raw) < 50 {
+                        corrected = 0
+                    }
+                }
+            }
+            IOObjectRelease(service)
+        }
+        return (raw, corrected, voltage)
     }
     
     nonisolated public override func read() {
@@ -139,7 +171,14 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                     guard sensors[i].group != .hid && !sensors[i].isComputed else { continue }
                     if !localUnknownSensorsState && sensors[i].group == .unknown { continue }
                     
-                    var newValue = SMC.shared.getValue(sensors[i].key) ?? 0
+                    var newValue: Double = 0
+                    if sensors[i].key == "battery_amperage" {
+                        let batteryData = self.getBatteryData()
+                        newValue = Double(abs(batteryData.corrected)) / 1000.0
+                    } else {
+                        newValue = SMC.shared.getValue(sensors[i].key) ?? 0
+                    }
+                    
                     if sensors[i].type == .temperature && (newValue < 0 || newValue > 125) {
                         newValue = sensors[i].value
                     }
@@ -369,7 +408,7 @@ extension SensorsReader {
         return modeValue == 1 ? .forced : .automatic
     }
     
-    private func isAC() -> Bool {
+    nonisolated private func isAC() -> Bool {
         guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
               let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef] else {
             return true

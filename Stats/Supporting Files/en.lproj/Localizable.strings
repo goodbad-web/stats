@@ -439,6 +439,7 @@
 "Time" = "Time";
 "Health" = "Health";
 "Amperage" = "Amperage";
+"Battery power bus" = "Battery power bus";
 "Voltage" = "Voltage";
 "Cycles" = "Cycles";
 "Temperature" = "Temperature";

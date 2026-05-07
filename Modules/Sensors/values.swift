@@ -181,6 +181,9 @@ public struct Sensor: Sensor_p, Codable {
             let val = value >= 100 ? "\(Int(value))" : String(format: "%.2f", value)
             return "\(val)\(unit)"
         case .current:
+            if value < 0.1 {
+                return "\(Int(value * 1000)) mA"
+            }
             let val = value >= 100 ? "\(Int(value))" : String(format: "%.2f", value)
             return "\(val)\(unit)"
         case .fan:
@@ -198,6 +201,9 @@ public struct Sensor: Sensor_p, Codable {
             let val = value >= 100 ? "\(Int(value))" : String(format: "%.2f", value)
             return "\(val)\(unit)"
         case .current:
+            if value < 0.1 {
+                return "\(Int(value * 1000)) mA"
+            }
             let val = value >= 100 ? "\(Int(value))" : String(format: "%.2f", value)
             return "\(val)\(unit)"
         case .fan:
@@ -524,7 +530,8 @@ internal let SensorsList: [Sensor] = [
     Sensor(key: "IC0R", name: "CPU High side", group: .sensor, type: .current, platforms: Platform.all),
     Sensor(key: "IG0R", name: "GPU High side", group: .sensor, type: .current, platforms: Platform.all),
     Sensor(key: "ID0R", name: "DC In", group: .sensor, type: .current, platforms: Platform.all),
-    Sensor(key: "IBAC", name: "Battery", group: .sensor, type: .current, platforms: Platform.all),
+    Sensor(key: "IPBR", name: "Battery Power Bus", group: .sensor, type: .current, platforms: Platform.all),
+    Sensor(key: "battery_amperage", name: "Battery", group: .sensor, type: .current, platforms: Platform.all),
     Sensor(key: "IDBR", name: "Brightness", group: .sensor, type: .current, platforms: Platform.all),
     Sensor(key: "IU1R", name: "Thunderbolt Left", group: .sensor, type: .current, platforms: Platform.all),
     Sensor(key: "IU2R", name: "Thunderbolt Right", group: .sensor, type: .current, platforms: Platform.all),
@@ -548,7 +555,9 @@ internal let SensorsList: [Sensor] = [
     Sensor(key: "PCGM", name: "Intel GPU (IMON)", group: .GPU, type: .power, platforms: Platform.all),
     
     Sensor(key: "PC3C", name: "RAM", group: .sensor, type: .power, platforms: Platform.all),
-    Sensor(key: "PPBR", name: "Battery", group: .sensor, type: .power, platforms: Platform.all),
+    Sensor(key: "PPBR", name: "Battery Power Bus", group: .sensor, type: .power, platforms: Platform.all),
+    Sensor(key: "PBRS", name: "Battery", group: .sensor, type: .power, platforms: Platform.all),
+    Sensor(key: "PB0R", name: "Battery", group: .sensor, type: .power, platforms: Platform.all),
     Sensor(key: "PDTR", name: "DC In", group: .sensor, type: .power, platforms: Platform.all),
     Sensor(key: "PMTR", name: "Memory Total", group: .sensor, type: .power, platforms: Platform.all),
     Sensor(key: "PSTR", name: "System Total", group: .sensor, type: .power, platforms: Platform.all),

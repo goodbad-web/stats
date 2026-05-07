@@ -439,6 +439,7 @@
 "Time" = "バッテリー残り時間";
 "Health" = "状態";
 "Amperage" = "電流";
+"Battery power bus" = "バッテリーパワーバス";
 "Voltage" = "電圧";
 "Cycles" = "サイクル数";
 "Temperature" = "温度";

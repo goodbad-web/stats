@@ -29,6 +29,7 @@ struct Battery_Usage: Codable {
     var currentCapacity: Int = 0
     
     var amperage: Int = 0
+    var powerBusAmperage: Int = 0
     var voltage: Double = 0
     var temperature: Double = 0
     
