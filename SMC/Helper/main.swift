@@ -66,21 +66,21 @@ extension Helper {
         completion(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0")
     }
     func setFanMode(id: Int, mode: Int, completion: @escaping (String?) -> Void) {
-        smcQueue.sync {
+        smcQueue.async {
             SMC.shared.setFanMode(id, mode: mode == 1 ? .forced : .automatic)
             completion(nil)
         }
     }
     
     func setFanSpeed(id: Int, value: Int, completion: @escaping (String?) -> Void) {
-        smcQueue.sync {
+        smcQueue.async {
             SMC.shared.setFanSpeed(id, speed: value)
             completion(nil)
         }
     }
     
     func resetFanControl(completion: @escaping (String?) -> Void) {
-        smcQueue.sync {
+        smcQueue.async {
             _ = SMC.shared.resetFanControl()
             completion(nil)
         }

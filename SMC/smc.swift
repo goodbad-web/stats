@@ -536,13 +536,11 @@ internal class AppleSiliconSMC {
         var ftstVal = SMCVal_t("Ftst")
         if parent.read(&ftstVal) == kIOReturnSuccess && ftstVal.bytes[0] != 1 {
             ftstVal.bytes[0] = 1
-            if !parent.writeWithRetry(ftstVal, maxAttempts: 50) {
-                return false
-            }
-            usleep(2_000_000) // Yield control from thermalmonitord
+            _ = parent.writeWithRetry(ftstVal, maxAttempts: 50, delayMicros: 10_000)
         }
         
-        _ = parent.writeWithRetry(modeVal, maxAttempts: 100)
+        // Write mode with retry (up to 2 seconds total)
+        _ = parent.writeWithRetry(modeVal, maxAttempts: 100, delayMicros: 20_000)
         
         // Final check
         if parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] == 1 {
