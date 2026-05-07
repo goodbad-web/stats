@@ -149,7 +149,7 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
                     }
                     usage.voltage = self.getVoltage() ?? 0
                     usage.temperature = self.getTemperature() ?? 0
-                    usage.systemPower = SMC.shared.getValue("PSTR") ?? abs(usage.voltage * Double(usage.amperage) / 1000.0)
+                    usage.systemPower = await SMC.shared.getValue("PSTR") ?? abs(usage.voltage * Double(usage.amperage) / 1000.0)
                     
                     var ACwatts: Int = 0
                     if let ACDetails = IOPSCopyExternalPowerAdapterDetails() {
@@ -171,13 +171,21 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
                         }
                     }
                     
-                    if let padc = SMC.shared.getValue("ID0R") ?? SMC.shared.getValue("PADC") {
-                        usage.adapterCurrent = Int(abs(padc) * 1000)
+                    var padc = await SMC.shared.getValue("ID0R")
+                    if padc == nil {
+                        padc = await SMC.shared.getValue("PADC")
                     }
-                    if let padv = SMC.shared.getValue("VD0R") ?? SMC.shared.getValue("PADV") {
-                        usage.adapterVoltage = Int(abs(padv) * 1000)
+                    if let val = padc {
+                        usage.adapterCurrent = Int(abs(val) * 1000)
                     }
-                    if let pdtr = SMC.shared.getValue("PDTR") {
+                    var padv = await SMC.shared.getValue("VD0R")
+                    if padv == nil {
+                        padv = await SMC.shared.getValue("PADV")
+                    }
+                    if let val = padv {
+                        usage.adapterVoltage = Int(abs(val) * 1000)
+                    }
+                    if let pdtr = await SMC.shared.getValue("PDTR") {
                         usage.adapterPower = abs(pdtr)
                     }
                     
@@ -249,9 +257,7 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
 
 public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
     private var numberOfProcesses: Int {
-        get {
-            return Store.shared.int(key: "Battery_processes", defaultValue: 8)
-        }
+        get { Store.shared.int(key: "Battery_processes", defaultValue: 8) }
     }
     
     public override func setup() {
@@ -259,72 +265,29 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
         self.defaultInterval = 5
     }
     
-    private var isReading: Bool = false
+    private let readLock = OSAllocatedUnfairLock(initialState: false)
+    
     nonisolated public override func read() {
+        let isReading = self.readLock.withLock { $0 }
+        guard !isReading else { return }
+        self.readLock.withLock { $0 = true }
+        
         Task { @MainActor in
-            guard !self.isReading else { return }
-            self.isReading = true
+            if self.numberOfProcesses == 0 {
+                self.readLock.withLock { $0 = false }
+                return
+            }
             
             let limit = self.numberOfProcesses
-            let log = self.log
+            let processes = await ProcessMonitor.shared.getTopProcesses(limit: limit, category: "Power")
             
-            if limit == 0 {
-                self.isReading = false
+            if let old = self.value, old == processes {
+                self.readLock.withLock { $0 = false }
                 return
             }
             
-            Task.detached(priority: .background) { [weak self] in
-                defer { Task { @MainActor in self?.isReading = false } }
-                guard let self else { return }
-                let task = Process()
-            task.launchPath = "/usr/bin/top"
-            task.arguments = ["-o", "power", "-l", "2", "-n", "\(limit)", "-stats", "pid,command,power"]
-            
-            let outputPipe = Pipe()
-            task.standardOutput = outputPipe
-            
-            do {
-                try task.run()
-            } catch let err {
-                error("error read ps: \(err.localizedDescription)", log: log)
-                return
-            }
-            
-            let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-            outputPipe.fileHandleForReading.closeFile()
-            if outputData.isEmpty {
-                return
-            }
-            
-            let outputString = String(data: outputData, encoding: .utf8)
-            guard let outputString, !outputString.isEmpty else { return }
-            
-            // Find the last occurrence of the header to get the second (latest) sample
-            let samples = outputString.components(separatedBy: "PID")
-            guard samples.count >= 2, let lastSample = samples.last else { return }
-            
-            var processes: [TopProcess] = []
-            lastSample.enumerateLines { (line, _) in
-                let parts = line.trimmingCharacters(in: .whitespaces).components(separatedBy: " ").filter{ !$0.isEmpty }
-                if parts.count >= 3 {
-                    let pid = Int(parts[0]) ?? 0
-                    guard let usage = Double(parts.last!.filter("0123456789.".contains)) else { return }
-                    let command = parts[1..<(parts.count - 1)].joined(separator: " ")
-                    
-                    var name: String = command
-                    if let app = NSRunningApplication(processIdentifier: pid_t(pid)), let n = app.localizedName {
-                        name = n
-                    }
-                    
-                    processes.append(TopProcess(pid: pid, name: name, usage: usage))
-                }
-            }
-            
-            let result = Array(processes.suffix(limit).sorted(by: { $0.usage > $1.usage }))
-            await MainActor.run {
-                self.callback(result)
-            }
-        }
+            self.callback(processes)
+            self.readLock.withLock { $0 = false }
         }
     }
 }

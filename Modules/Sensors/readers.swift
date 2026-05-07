@@ -41,11 +41,16 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
         self.subscription = IOReportCreateSubscription(nil, self.channels, &dict, 0, nil)
         dict?.release()
         
-        self.list.sensors = self.sensors()
+        Task {
+            let list = await self.sensors()
+            await MainActor.run {
+                self.list.sensors = list
+            }
+        }
     }
     
-    private func sensors() -> [Sensor_p] {
-        var available: [String] = SMC.shared.getAllKeys()
+    private func sensors() async -> [Sensor_p] {
+        var available: [String] = await SMC.shared.getAllKeys()
         var list: [Sensor_p] = []
         var sensorsList = SensorsList
         
@@ -53,8 +58,8 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
             sensorsList = sensorsList.filter({ $0.platforms.contains(platform) })
         }
         
-        if let count = SMC.shared.getValue("FNum") {
-            list += self.loadFans(Int(count))
+        if let count = await SMC.shared.getValue("FNum") {
+            list += await self.loadFans(Int(count))
         }
         
         available = available.filter({ (key: String) -> Bool in
@@ -99,11 +104,9 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
             }
         }
         
-        for sensor in list {
-            if let newValue = SMC.shared.getValue(sensor.key) {
-                if let idx = list.firstIndex(where: { $0.key == sensor.key }) {
-                    list[idx].value = newValue
-                }
+        for i in list.indices {
+            if let newValue = await SMC.shared.getValue(list[i].key) {
+                list[i].value = newValue
             }
         }
         
@@ -188,7 +191,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                             newValue = (Double(abs(batteryData.corrected)) / 1000.0) * (Double(batteryData.voltage) / 1000.0)
                         }
                     } else {
-                        newValue = SMC.shared.getValue(sensors[i].key) ?? 0
+                        newValue = await SMC.shared.getValue(sensors[i].key) ?? 0
                     }
                     
                     if sensors[i].type == .temperature && (newValue < 0 || newValue > 125) {
@@ -394,10 +397,10 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
 // MARK: - Fans
 
 extension SensorsReader {
-    private func loadFans(_ count: Int) -> [Sensor_p] {
+    private func loadFans(_ count: Int) async -> [Sensor_p] {
         var list: [Fan] = []
         for i in 0..<Int(count) {
-            var name = SMC.shared.getStringValue("F\(i)ID")
+            var name = await SMC.shared.getStringValue("F\(i)ID")
             
             if name == nil && count == 2 {
                 switch i {
@@ -409,15 +412,15 @@ extension SensorsReader {
                 }
             }
             
-            let mode = self.getFanMode(i)
+            let mode = await self.getFanMode(i)
             
             list.append(Fan(
                 id: i,
                 key: "F\(i)Ac",
                 name: name ?? "\(localizedString("Fan")) #\(i)",
-                minSpeed: SMC.shared.getValue("F\(i)Mn") ?? 1,
-                maxSpeed: SMC.shared.getValue("F\(i)Mx") ?? 1,
-                value: SMC.shared.getValue("F\(i)Ac") ?? 0,
+                minSpeed: await SMC.shared.getValue("F\(i)Mn") ?? 1,
+                maxSpeed: await SMC.shared.getValue("F\(i)Mx") ?? 1,
+                value: await SMC.shared.getValue("F\(i)Ac") ?? 0,
                 mode: mode
             ))
         }
@@ -425,8 +428,9 @@ extension SensorsReader {
         return list
     }
     
-    private func getFanMode(_ id: Int) -> FanMode {
-        let modeValue = Int(SMC.shared.getValue(SMC.shared.fanModeKey(id)) ?? 0)
+    private func getFanMode(_ id: Int) async -> FanMode {
+        let modeKey = await SMC.shared.fanModeKey(id)
+        let modeValue = Int(await SMC.shared.getValue(modeKey) ?? 0)
         return modeValue == 1 ? .forced : .automatic
     }
     

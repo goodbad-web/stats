@@ -187,7 +187,7 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
                         type = .discrete
                         
                         if temperature == nil || temperature == 0 {
-                            if let tmp = SMC.shared.getValue("TGDD"), tmp != 128 {
+                            if let tmp = await SMC.shared.getValue("TGDD"), tmp != 128 {
                                 temperature = Int(tmp)
                             }
                         }

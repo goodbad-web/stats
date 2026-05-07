@@ -271,3 +271,94 @@ public class ProcessView: NSStackView {
         }
     }
 }
+
+// MARK: - Process Monitor
+
+public actor ProcessMonitor {
+    public static let shared = ProcessMonitor()
+    
+    private init() {}
+    
+    public func getTopProcesses(limit: Int, category: String) async -> [TopProcess] {
+        // This is a placeholder for the actual libproc implementation.
+        // For now, we'll keep the logic that uses System APIs where possible.
+        // In a full implementation, we would use proc_listpids and proc_pidinfo(PROC_PIDTHREADINFO).
+        
+        // For this refactoring step, let's provide a unified way to get processes
+        // while minimizing the risk of breaking existing behavior.
+        
+        let task = Process()
+        if category == "Power" {
+            task.launchPath = "/usr/bin/top"
+            task.arguments = ["-o", "power", "-l", "2", "-n", "\(limit)", "-stats", "pid,command,power"]
+        } else {
+            task.launchPath = "/bin/ps"
+            let sortKey = category == "CPU" ? "pcpu" : "rss"
+            task.arguments = ["-Aceo", "pid,\(sortKey),comm", "-r"]
+        }
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            return []
+        }
+        
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else { return [] }
+        
+        var list: [TopProcess] = []
+        
+        if category == "Power" {
+            let samples = output.components(separatedBy: "PID")
+            guard samples.count >= 2, let lastSample = samples.last else { return [] }
+            lastSample.enumerateLines { (line, _) in
+                if list.count >= limit { return }
+                let parts = line.trimmingCharacters(in: .whitespaces).components(separatedBy: " ").filter{ !$0.isEmpty }
+                if parts.count >= 3 {
+                    let pid = Int(parts[0]) ?? 0
+                    guard let usage = Double(parts.last!.filter("0123456789.".contains)) else { return }
+                    let command = parts[1..<(parts.count - 1)].joined(separator: " ")
+                    var name = command
+                    if let app = NSRunningApplication(processIdentifier: pid_t(pid)), let n = app.localizedName {
+                        name = n
+                    }
+                    list.append(TopProcess(pid: pid, name: name, usage: usage))
+                }
+            }
+        } else {
+            let lines = output.components(separatedBy: .newlines)
+            for (index, line) in lines.enumerated() {
+                if index == 0 || line.isEmpty { continue }
+                if list.count >= limit { break }
+                
+                let parts = line.trimmingCharacters(in: .whitespaces).components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+                guard parts.count >= 3 else { continue }
+                
+                let pid = Int(parts[0]) ?? 0
+                let usage = Double(parts[1].replacingOccurrences(of: ",", with: ".")) ?? 0
+                let command = parts.dropFirst(2).joined(separator: " ")
+                
+                var name = command
+                if let app = NSRunningApplication(processIdentifier: pid_t(pid)), let localizedName = app.localizedName {
+                    name = localizedName
+                }
+                
+                if command.contains("com.apple.Virtua") && name.contains("Docker") {
+                    name = "Docker"
+                }
+                
+                // For RAM, ps -o rss gives KB, we convert to bytes if needed or keep as is depending on TopProcess expectation
+                // TopProcess usage is Double. CPU is %, RAM is usually bytes in this app.
+                let finalUsage = category == "CPU" ? usage : usage * 1024
+                
+                list.append(TopProcess(pid: pid, name: name, usage: finalUsage))
+            }
+        }
+        
+        return list
+    }
+}

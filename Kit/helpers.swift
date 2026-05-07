@@ -991,9 +991,11 @@ public class SMCHelper {
     
     public func uninstall(silent: Bool = false) {
         // ファンをオートモードに戻す（直接SMCを叩く、XPC不要）
-        if let count = SMC.shared.getValue("FNum") {
-            for i in 0..<Int(count) {
-                SMC.shared.setFanMode(i, mode: .automatic)
+        Task {
+            if let count = await SMC.shared.getValue("FNum") {
+                for i in 0..<Int(count) {
+                    await SMC.shared.setFanMode(i, mode: .automatic)
+                }
             }
         }
         

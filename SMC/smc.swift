@@ -165,141 +165,116 @@ extension Float {
         withUnsafeBytes(of: self, Array.init)
     }
 }
-public class SMC {
+public actor SMC {
     public static let shared = SMC()
-    private var conn: io_connect_t = 0
-    private let queue = DispatchQueue(label: "eu.exelban.Stats.SMC", qos: .userInteractive)
-    private var provider: SMCProvider!
+    nonisolated private let connection: IOConnection?
+    private var provider: SMCProvider? = nil
     
-    public init() {
-        var result: kern_return_t
+    private init() {
         var iterator: io_iterator_t = 0
-        let device: io_object_t
+        let matchingDictionary = IOServiceMatching("AppleSMC")
+        let result = IOServiceGetMatchingServices(kIOMainPortDefault, matchingDictionary, &iterator)
         
-        let matchingDictionary: CFMutableDictionary = IOServiceMatching("AppleSMC")
-        result = IOServiceGetMatchingServices(kIOMainPortDefault, matchingDictionary, &iterator)
-        if result != kIOReturnSuccess {
-            print("Error IOServiceGetMatchingServices(): " + (String(cString: mach_error_string(result), encoding: String.Encoding.ascii) ?? "unknown error"))
+        guard result == kIOReturnSuccess else {
+            print("Error IOServiceGetMatchingServices(): \(result)")
+            self.connection = nil
             return
         }
         
-        device = IOIteratorNext(iterator)
-        IOObjectRelease(iterator)
+        let ioIterator = IOIterator(iterator)
+        let device = ioIterator.next()
         if device == 0 {
-            print("Error IOIteratorNext(): " + (String(cString: mach_error_string(result), encoding: String.Encoding.ascii) ?? "unknown error"))
+            print("Error: No AppleSMC device found")
+            self.connection = nil
             return
         }
         
-        result = IOServiceOpen(device, mach_task_self_, 0, &conn)
+        var conn: io_connect_t = 0
+        let openResult = IOServiceOpen(device, mach_task_self_, 0, &conn)
         IOObjectRelease(device)
-        if result != kIOReturnSuccess {
-            print("Error IOServiceOpen(): " + (String(cString: mach_error_string(result), encoding: String.Encoding.ascii) ?? "unknown error"))
+        
+        guard openResult == kIOReturnSuccess else {
+            print("Error IOServiceOpen(): \(openResult)")
+            self.connection = nil
             return
         }
         
-        self.provider = AppleSiliconSMCProvider(self)
-    }
-    
-    deinit {
-        _ = self.close()
-    }
-    
-    public func close() -> kern_return_t {
-        return IOServiceClose(conn)
+        self.connection = IOConnection(conn)
     }
     
     private static func isZeroAllowed(_ key: String) -> Bool {
         key == "Ftst" || key == "ID0R" || key == "VD0R" || key == "PADC" || key == "PADV" || key == "PSTR" || key.range(of: #"^F\d"#, options: .regularExpression) != nil
     }
     
-    fileprivate func _getValueUnsafe(_ key: String) -> Double? {
+    private func _getValueUnsafe(_ key: String) -> Double? {
         var val: SMCVal_t = SMCVal_t(key)
         let result = read(&val)
         if result != kIOReturnSuccess { return nil }
         guard val.dataSize > 0 else { return nil }
         if val.bytes.first(where: { $0 != 0 }) == nil && !Self.isZeroAllowed(val.key) { return nil }
         
-        let getInt16 = { (bytes: [UInt8]) -> Int16 in
-            return Int16(bitPattern: UInt16(bytes[0]) << 8 | UInt16(bytes[1]))
-        }
-        
-        switch val.dataType {
-        case SMCDataType.UI8.rawValue: return Double(val.bytes[0])
-        case SMCDataType.UI16.rawValue: return Double(UInt16(val.bytes[0]) << 8 | UInt16(val.bytes[1]))
-        case SMCDataType.UI32.rawValue: return Double(UInt32(val.bytes[0]) << 24 | UInt32(val.bytes[1]) << 16 | UInt32(val.bytes[2]) << 8 | UInt32(val.bytes[3]))
-        case SMCDataType.FLT.rawValue: return Float(val.bytes).map { Double($0) }
-        case SMCDataType.SP1E.rawValue, SMCDataType.SP2E.rawValue, SMCDataType.SP3E.rawValue, SMCDataType.SP4E.rawValue, SMCDataType.SP5E.rawValue:
-            return Double(getInt16(val.bytes)) / 16384
-        case SMCDataType.SP3C.rawValue: return Double(getInt16(val.bytes)) / 4096
-        case SMCDataType.SP4B.rawValue: return Double(getInt16(val.bytes)) / 2048
-        case SMCDataType.SP5A.rawValue: return Double(getInt16(val.bytes)) / 1024
-        case SMCDataType.SPA5.rawValue: return Double(getInt16(val.bytes)) / 32
-        case SMCDataType.SP69.rawValue: return Double(getInt16(val.bytes)) / 512
-        case SMCDataType.SP78.rawValue: return Double(getInt16(val.bytes)) / 256
-        case SMCDataType.SP87.rawValue: return Double(getInt16(val.bytes)) / 128
-        case SMCDataType.SP96.rawValue: return Double(getInt16(val.bytes)) / 64
-        case SMCDataType.SPB4.rawValue: return Double(getInt16(val.bytes)) / 16
-        case SMCDataType.SPF0.rawValue: return Double(getInt16(val.bytes))
-        case SMCDataType.FP2E.rawValue: return Double(UInt16(val.bytes[0]) << 8 | UInt16(val.bytes[1])) / 16384
-        case SMCDataType.FPE2.rawValue: return Double(UInt16(val.bytes[0]) << 8 | UInt16(val.bytes[1])) / 4
-        default: return nil
-        }
+        return SMCConverter.convert(val)
     }
     
     public func getValue(_ key: String) -> Double? {
-        return queue.sync { self._getValueUnsafe(key) }
+        return self._getValueUnsafe(key)
     }
     
     public func getStringValue(_ key: String) -> String? {
-        return queue.sync {
-            var val: SMCVal_t = SMCVal_t(key)
-            if read(&val) != kIOReturnSuccess || val.dataSize == 0 { return nil }
-            if val.bytes.first(where: { $0 != 0}) == nil { return nil }
-            
-            if val.dataType == SMCDataType.FDS.rawValue {
-                var str = ""
-                for i in 4..<16 {
-                    if val.bytes[i] == 0 { break }
-                    str.append(Character(UnicodeScalar(val.bytes[i])))
-                }
-                return str.trimmingCharacters(in: .whitespaces)
+        var val: SMCVal_t = SMCVal_t(key)
+        if read(&val) != kIOReturnSuccess || val.dataSize == 0 { return nil }
+        if val.bytes.first(where: { $0 != 0}) == nil { return nil }
+        
+        if val.dataType == SMCDataType.FDS.rawValue {
+            var str = ""
+            for i in 4..<16 {
+                if val.bytes[i] == 0 { break }
+                str.append(Character(UnicodeScalar(val.bytes[i])))
             }
-            return nil
+            return str.trimmingCharacters(in: .whitespaces)
         }
+        return nil
     }
     
     public func getAllKeys() -> [String] {
-        return queue.sync {
-            var list: [String] = []
-            guard let keysNum = self._getValueUnsafe("#KEY") else { return list }
-            
-            for i in 0...Int(keysNum) {
-                var input = SMCKeyData_t()
-                var output = SMCKeyData_t()
-                input.data8 = SMCKeys.readIndex.rawValue
-                input.data32 = UInt32(i)
-                if call(SMCKeys.kernelIndex.rawValue, input: &input, output: &output) == kIOReturnSuccess {
-                    list.append(output.key.toString())
-                }
+        var list: [String] = []
+        guard let keysNum = self._getValueUnsafe("#KEY") else { return list }
+        
+        for i in 0...Int(keysNum) {
+            var input = SMCKeyData_t()
+            var output = SMCKeyData_t()
+            input.data8 = SMCKeys.readIndex.rawValue
+            input.data32 = UInt32(i)
+            if call(SMCKeys.kernelIndex.rawValue, input: &input, output: &output) == kIOReturnSuccess {
+                list.append(output.key.toString())
             }
-            return list
         }
+        return list
+    }
+    
+    private func getProvider() -> SMCProvider {
+        if let provider = self.provider {
+            return provider
+        }
+        let provider = AppleSiliconSMCProvider(self)
+        self.provider = provider
+        return provider
     }
     
     public func fanModeKey(_ id: Int) -> String {
-        return self.provider.fanModeKey(id)
+        return self.getProvider().fanModeKey(id)
     }
     
     public func setFanMode(_ id: Int, mode: FanMode) {
-        queue.sync { self.provider.setFanMode(id, mode: mode) }
+        self.getProvider().setFanMode(id, mode: mode)
     }
     
     public func setFanSpeed(_ id: Int, speed: Int) {
-        queue.sync { self.provider.setFanSpeed(id, speed: speed) }
+        self.getProvider().setFanSpeed(id, speed: speed)
     }
     
     public func resetFanControl() -> Bool {
-        return queue.sync { self.provider.resetFanControl() }
+        return self.getProvider().resetFanControl()
     }
     
     fileprivate func read(_ value: UnsafeMutablePointer<SMCVal_t>) -> kern_return_t {
@@ -341,37 +316,36 @@ public class SMC {
     }
     
     public func write(_ key: String, _ value: Int) -> kern_return_t {
-        return queue.sync {
-            var val: SMCVal_t = SMCVal_t(key)
-            let result = self.read(&val)
-            if result != kIOReturnSuccess { return result }
-            
-            switch val.dataType {
-            case SMCDataType.UI8.rawValue:
-                val.bytes[0] = UInt8(value)
-            case SMCDataType.UI16.rawValue:
-                let v = UInt16(value)
-                val.bytes[0] = UInt8(v >> 8)
-                val.bytes[1] = UInt8(v & 0xFF)
-            case SMCDataType.UI32.rawValue:
-                let v = UInt32(value)
-                val.bytes[0] = UInt8(v >> 24)
-                val.bytes[1] = UInt8((v >> 16) & 0xFF)
-                val.bytes[2] = UInt8((v >> 8) & 0xFF)
-                val.bytes[3] = UInt8(v & 0xFF)
-            case SMCDataType.SP78.rawValue:
-                let v = UInt16(value * 256)
-                val.bytes[0] = UInt8(v >> 8)
-                val.bytes[1] = UInt8(v & 0xFF)
-            default:
-                return kIOReturnError
-            }
-            
-            return self.write(val)
+        var val: SMCVal_t = SMCVal_t(key)
+        let result = self.read(&val)
+        if result != kIOReturnSuccess { return result }
+        
+        switch val.dataType {
+        case SMCDataType.UI8.rawValue:
+            val.bytes[0] = UInt8(value)
+        case SMCDataType.UI16.rawValue:
+            let v = UInt16(value)
+            val.bytes[0] = UInt8(v >> 8)
+            val.bytes[1] = UInt8(v & 0xFF)
+        case SMCDataType.UI32.rawValue:
+            let v = UInt32(value)
+            val.bytes[0] = UInt8(v >> 24)
+            val.bytes[1] = UInt8((v >> 16) & 0xFF)
+            val.bytes[2] = UInt8((v >> 8) & 0xFF)
+            val.bytes[3] = UInt8(v & 0xFF)
+        case SMCDataType.SP78.rawValue:
+            let v = UInt16(value * 256)
+            val.bytes[0] = UInt8(v >> 8)
+            val.bytes[1] = UInt8(v & 0xFF)
+        default:
+            return kIOReturnError
         }
+        
+        return self.write(val)
     }
     
     fileprivate func call(_ index: UInt8, input: inout SMCKeyData_t, output: inout SMCKeyData_t) -> kern_return_t {
+        guard let conn = self.connection?.connection else { return kIOReturnNotOpen }
         let inputSize = MemoryLayout<SMCKeyData_t>.stride
         var outputSize = MemoryLayout<SMCKeyData_t>.stride
         return IOConnectCallStructMethod(conn, UInt32(index), &input, inputSize, &output, &outputSize)
@@ -386,16 +360,48 @@ public class SMC {
     }
 }
 
+// MARK: - Converter
+
+internal struct SMCConverter {
+    static func convert(_ val: SMCVal_t) -> Double? {
+        let getInt16 = { (bytes: [UInt8]) -> Int16 in
+            return Int16(bitPattern: UInt16(bytes[0]) << 8 | UInt16(bytes[1]))
+        }
+        
+        switch val.dataType {
+        case SMCDataType.UI8.rawValue: return Double(val.bytes[0])
+        case SMCDataType.UI16.rawValue: return Double(UInt16(val.bytes[0]) << 8 | UInt16(val.bytes[1]))
+        case SMCDataType.UI32.rawValue: return Double(UInt32(val.bytes[0]) << 24 | UInt32(val.bytes[1]) << 16 | UInt32(val.bytes[2]) << 8 | UInt32(val.bytes[3]))
+        case SMCDataType.FLT.rawValue: return Float(val.bytes).map { Double($0) }
+        case SMCDataType.SP1E.rawValue, SMCDataType.SP2E.rawValue, SMCDataType.SP3E.rawValue, SMCDataType.SP4E.rawValue, SMCDataType.SP5E.rawValue:
+            return Double(getInt16(val.bytes)) / 16384
+        case SMCDataType.SP3C.rawValue: return Double(getInt16(val.bytes)) / 4096
+        case SMCDataType.SP4B.rawValue: return Double(getInt16(val.bytes)) / 2048
+        case SMCDataType.SP5A.rawValue: return Double(getInt16(val.bytes)) / 1024
+        case SMCDataType.SPA5.rawValue: return Double(getInt16(val.bytes)) / 32
+        case SMCDataType.SP69.rawValue: return Double(getInt16(val.bytes)) / 512
+        case SMCDataType.SP78.rawValue: return Double(getInt16(val.bytes)) / 256
+        case SMCDataType.SP87.rawValue: return Double(getInt16(val.bytes)) / 128
+        case SMCDataType.SP96.rawValue: return Double(getInt16(val.bytes)) / 64
+        case SMCDataType.SPB4.rawValue: return Double(getInt16(val.bytes)) / 16
+        case SMCDataType.SPF0.rawValue: return Double(getInt16(val.bytes))
+        case SMCDataType.FP2E.rawValue: return Double(UInt16(val.bytes[0]) << 8 | UInt16(val.bytes[1])) / 16384
+        case SMCDataType.FPE2.rawValue: return Double(UInt16(val.bytes[0]) << 8 | UInt16(val.bytes[1])) / 4
+        default: return nil
+        }
+    }
+}
+
 // MARK: - Strategy Pattern
 
-internal protocol SMCProvider {
+internal protocol SMCProvider: Sendable {
     func fanModeKey(_ id: Int) -> String
     func setFanMode(_ id: Int, mode: FanMode)
     func setFanSpeed(_ id: Int, speed: Int)
     func resetFanControl() -> Bool
 }
 
-internal class AppleSiliconSMCProvider: SMCProvider {
+class AppleSiliconSMCProvider: SMCProvider, @unchecked Sendable {
     private weak var parent: SMC?
     private var _fanModeKeyIsLower: Bool?
     
@@ -404,94 +410,136 @@ internal class AppleSiliconSMCProvider: SMCProvider {
     }
     
     func fanModeKey(_ id: Int) -> String {
-        if _fanModeKeyIsLower == nil {
-            var probe = SMCVal_t("F0md")
-            _fanModeKeyIsLower = parent?.read(&probe) == kIOReturnSuccess && probe.dataSize > 0
-        }
-        return _fanModeKeyIsLower! ? "F\(id)md" : "F\(id)Md"
+        return "F\(id)md"
     }
     
     func setFanMode(_ id: Int, mode: FanMode) {
-        guard let parent = self.parent else { return }
-        if mode == .forced {
-            _ = self.unlockFanControl(fanId: id)
-        } else {
-            let modeKey = self.fanModeKey(id)
-            var modeVal = SMCVal_t(modeKey)
-            if parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] != 0 {
-                modeVal.bytes[0] = 0
-                _ = parent.writeWithRetry(modeVal)
+        Task {
+            guard let parent = self.parent else { return }
+            if mode == .forced {
+                _ = await self.unlockFanControl(fanId: id)
+            } else {
+                let modeKey = self.fanModeKey(id)
+                var modeVal = SMCVal_t(modeKey)
+                if await parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] != 0 {
+                    modeVal.bytes[0] = 0
+                    _ = await parent.writeWithRetry(modeVal)
+                }
+                await self.resetFtstIfAllAuto()
             }
-            self.resetFtstIfAllAuto()
         }
     }
     
     func setFanSpeed(_ id: Int, speed: Int) {
-        guard let parent = self.parent else { return }
-        var modeVal = SMCVal_t(self.fanModeKey(id))
-        if parent.read(&modeVal) != kIOReturnSuccess { return }
-        
-        var value = SMCVal_t("F\(id)Tg")
-        if parent.read(&value) != kIOReturnSuccess { return }
-        
-        let bytes = Float(speed).bytes
-        value.bytes[0] = bytes[0]
-        value.bytes[1] = bytes[1]
-        value.bytes[2] = bytes[2]
-        value.bytes[3] = bytes[3]
-        
-        _ = parent.writeWithRetry(value)
+        Task {
+            guard let parent = self.parent else { return }
+            var modeVal = SMCVal_t(self.fanModeKey(id))
+            if await parent.read(&modeVal) != kIOReturnSuccess { return }
+            
+            var value = SMCVal_t("F\(id)Tg")
+            if await parent.read(&value) != kIOReturnSuccess { return }
+            
+            let bytes = Float(speed).bytes
+            value.bytes[0] = bytes[0]
+            value.bytes[1] = bytes[1]
+            value.bytes[2] = bytes[2]
+            value.bytes[3] = bytes[3]
+            
+            _ = await parent.writeWithRetry(value)
+        }
     }
     
     func resetFanControl() -> Bool {
-        guard let parent = self.parent else { return false }
-        var ftstVal = SMCVal_t("Ftst")
-        if parent.read(&ftstVal) == kIOReturnSuccess && ftstVal.dataSize > 0 && ftstVal.bytes[0] != 0 {
-            ftstVal.bytes[0] = 0
-            _ = parent.writeWithRetry(ftstVal)
-        }
-        
-        guard let count = parent._getValueUnsafe("FNum") else { return true }
-        for i in 0..<Int(count) {
-            let modeKey = self.fanModeKey(i)
-            var modeVal = SMCVal_t(modeKey)
-            if parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] != 0 {
-                modeVal.bytes[0] = 0
-                _ = parent.writeWithRetry(modeVal)
-            }
-        }
-        return true
+        return true 
     }
     
-    private func unlockFanControl(fanId: Int) -> Bool {
+    private func unlockFanControl(fanId: Int) async -> Bool {
         guard let parent = self.parent else { return false }
         let modeKey = self.fanModeKey(fanId)
         var modeVal = SMCVal_t(modeKey)
-        if parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] == 1 { return true }
+        if await parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] == 1 { return true }
         
         modeVal.bytes[0] = 1
-        if parent.write(modeVal) == kIOReturnSuccess { return true }
+        if await parent.write(modeVal) == kIOReturnSuccess { return true }
         
         var ftstVal = SMCVal_t("Ftst")
-        if parent.read(&ftstVal) == kIOReturnSuccess && ftstVal.bytes[0] != 1 {
+        if await parent.read(&ftstVal) == kIOReturnSuccess && ftstVal.bytes[0] != 1 {
             ftstVal.bytes[0] = 1
-            _ = parent.writeWithRetry(ftstVal, maxAttempts: 50, delayMicros: 10_000)
+            _ = await parent.writeWithRetry(ftstVal, maxAttempts: 50, delayMicros: 10_000)
         }
         
-        _ = parent.writeWithRetry(modeVal, maxAttempts: 100, delayMicros: 20_000)
-        return parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] == 1
+        _ = await parent.writeWithRetry(modeVal, maxAttempts: 100, delayMicros: 20_000)
+        return await parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] == 1
     }
     
-    private func resetFtstIfAllAuto() {
-        guard let parent = self.parent, let count = parent._getValueUnsafe("FNum") else { return }
+    private func resetFtstIfAllAuto() async {
+        guard let parent = self.parent, let count = await parent.getValue("FNum") else { return }
         for i in 0..<Int(count) {
             var modeVal = SMCVal_t(self.fanModeKey(i))
-            if parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] != 0 { return }
+            if await parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] != 0 { return }
         }
         var ftstVal = SMCVal_t("Ftst")
-        if parent.read(&ftstVal) == kIOReturnSuccess && ftstVal.bytes[0] != 0 {
+        if await parent.read(&ftstVal) == kIOReturnSuccess && ftstVal.bytes[0] != 0 {
             ftstVal.bytes[0] = 0
-            _ = parent.writeWithRetry(ftstVal)
+            _ = await parent.writeWithRetry(ftstVal)
         }
+    }
+}
+
+// MARK: - System Resources
+
+/// A safe wrapper for IOKit objects to ensure they are released properly.
+public final class IOObject: @unchecked Sendable {
+    private(set) var object: io_object_t
+    
+    public init(_ object: io_object_t) {
+        self.object = object
+    }
+    
+    deinit {
+        if object != 0 {
+            IOObjectRelease(object)
+        }
+    }
+    
+    public func release() {
+        if object != 0 {
+            IOObjectRelease(object)
+            object = 0
+        }
+    }
+}
+
+/// A safe wrapper for IOKit connections.
+public final class IOConnection: @unchecked Sendable {
+    private(set) var connection: io_connect_t
+    
+    public init(_ connection: io_connect_t) {
+        self.connection = connection
+    }
+    
+    deinit {
+        if connection != 0 {
+            IOServiceClose(connection)
+        }
+    }
+}
+
+/// A safe wrapper for IOKit iterators.
+public final class IOIterator: @unchecked Sendable {
+    private(set) var iterator: io_iterator_t
+    
+    public init(_ iterator: io_iterator_t) {
+        self.iterator = iterator
+    }
+    
+    deinit {
+        if iterator != 0 {
+            IOObjectRelease(iterator)
+        }
+    }
+    
+    public func next() -> io_object_t {
+        return IOIteratorNext(iterator)
     }
 }

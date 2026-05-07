@@ -222,41 +222,12 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
         
         Task { @MainActor in
             if self.numberOfProcesses == 0 {
+                self.readLock.withLock { $0 = false }
                 return
             }
             
             let limit = self.numberOfProcesses
-            let processes = await Task.detached(priority: .background) {
-                let output = syncShell("/bin/ps -Aceo pid,pcpu,comm -r")
-                guard !output.isEmpty else { return [TopProcess]() }
-                
-                var index = 0
-                var list: [TopProcess] = []
-                output.enumerateLines { (line, stop) in
-                    if index != 0 {
-                        let str = line.trimmingCharacters(in: .whitespaces)
-                        let pidFind = str.findAndCrop(pattern: "^\\d+")
-                        let usageFind = pidFind.remain.findAndCrop(pattern: "^[0-9,.]+ ")
-                        let command = usageFind.remain.trimmingCharacters(in: .whitespaces)
-                        let pid = Int(pidFind.cropped) ?? 0
-                        let usage = Double(usageFind.cropped.replacingOccurrences(of: ",", with: ".")) ?? 0
-                        
-                        var name: String = command
-                        if let app = NSRunningApplication(processIdentifier: pid_t(pid)), let n = app.localizedName {
-                            name = n
-                        }
-                        if command.contains("com.apple.Virtua") && name.contains("Docker") {
-                            name = "Docker"
-                        }
-                        
-                        list.append(TopProcess(pid: pid, name: name, usage: usage))
-                    }
-                    
-                    if index == limit { stop = true }
-                    index += 1
-                }
-                return list
-            }.value
+            let processes = await ProcessMonitor.shared.getTopProcesses(limit: limit, category: "CPU")
             
             if let old = self.value, old == processes {
                 self.readLock.withLock { $0 = false }
@@ -291,24 +262,25 @@ public class TemperatureReader: Reader<Double>, @unchecked Sendable {
     
     nonisolated public override func read() {
         Task { @MainActor in
+            let localList = self.list
             let temp = await Task.detached(priority: .background) {
                 var temperature: Double? = nil
                 
-                if let value = SMC.shared.getValue("TC0D"), value < 110 {
+                if let value = await SMC.shared.getValue("TC0D"), value < 110 {
                     temperature = value
-                } else if let value = SMC.shared.getValue("TC0E"), value < 110 {
+                } else if let value = await SMC.shared.getValue("TC0E"), value < 110 {
                     temperature = value
-                } else if let value = SMC.shared.getValue("TC0F"), value < 110 {
+                } else if let value = await SMC.shared.getValue("TC0F"), value < 110 {
                     temperature = value
-                } else if let value = SMC.shared.getValue("TC0P"), value < 110 {
+                } else if let value = await SMC.shared.getValue("TC0P"), value < 110 {
                     temperature = value
-                } else if let value = SMC.shared.getValue("TC0H"), value < 110 {
+                } else if let value = await SMC.shared.getValue("TC0H"), value < 110 {
                     temperature = value
                 } else {
                     var total: Double = 0
                     var counter: Double = 0
-                    self.list.forEach { (key: String) in
-                        if let value = SMC.shared.getValue(key) {
+                    for key in localList {
+                        if let value = await SMC.shared.getValue(key) {
                             total += value
                             counter += 1
                         }

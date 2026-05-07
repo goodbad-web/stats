@@ -109,8 +109,6 @@ public class Sensors: Module {
                 }
             }
         }
-        
-        _ = SMC.shared.close()
     }
     
     @objc private func fanControlOverrideCallback(_ notification: Notification) {

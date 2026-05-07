@@ -51,14 +51,14 @@ enum FlagsType: String {
     }
 }
 
-func main() {
+func main() async {
     var args = CommandLine.arguments.dropFirst()
     let cmd = CMDType(value: args.first ?? "")
     args = args.dropFirst()
     
     switch cmd {
     case .list:
-        var keys = SMC.shared.getAllKeys()
+        var keys = await SMC.shared.getAllKeys()
         args.forEach { (arg: String) in
             let flag = FlagsType(value: arg)
             if flag != .all {
@@ -68,8 +68,8 @@ func main() {
         
         print("[INFO]: found \(keys.count) keys\n")
         
-        keys.forEach { (key: String) in
-            let value = SMC.shared.getValue(key)
+        for key in keys {
+            let value = await SMC.shared.getValue(key)
             print("[\(key)]    ", value ?? 0)
         }
     case .set:
@@ -91,7 +91,7 @@ func main() {
             return
         }
         
-        let result = SMC.shared.write(key, value)
+        let result = await SMC.shared.write(key, value)
         if result != kIOReturnSuccess {
             print("[ERROR]: " + (String(cString: mach_error_string(result), encoding: String.Encoding.ascii) ?? "unknown error"))
             return
@@ -106,13 +106,13 @@ func main() {
         var help: Bool = true
         
         if let index = args.firstIndex(where: { $0 == "-v" }), args.indices.contains(index+1), let value = Int(args[index+1]) {
-            SMC.shared.setFanSpeed(id, speed: value)
+            await SMC.shared.setFanSpeed(id, speed: value)
             help = false
         }
         
         if let index = args.firstIndex(where: { $0 == "-m" }), args.indices.contains(index+1),
            let raw = Int(args[index+1]), let mode = FanMode.init(rawValue: raw) {
-            SMC.shared.setFanMode(id, mode: mode)
+            await SMC.shared.setFanMode(id, mode: mode)
             help = false
         }
         
@@ -122,24 +122,25 @@ func main() {
         print("  -m    change the fan mode: 0 - automatic, 1 - manual")
         print("  -v    change the fan speed")
     case .fans:
-        guard let count = SMC.shared.getValue("FNum") else {
+        guard let count = await SMC.shared.getValue("FNum") else {
             print("FNum not found")
             return
         }
         print("Number of fans: \(count)\n")
         
         for i in 0..<Int(count) {
-            print("\(i): \(SMC.shared.getStringValue("F\(i)ID") ?? "Fan #\(i)")")
-            print("Actual speed:", SMC.shared.getValue("F\(i)Ac") ?? -1)
-            print("Minimal speed:", SMC.shared.getValue("F\(i)Mn") ?? -1)
-            print("Maximum speed:", SMC.shared.getValue("F\(i)Mx") ?? -1)
-            print("Target speed:", SMC.shared.getValue("F\(i)Tg") ?? -1)
-            print("Mode:", FanMode(rawValue: Int(SMC.shared.getValue(SMC.shared.fanModeKey(i)) ?? -1)) ?? .forced)
+            let modeKey = await SMC.shared.fanModeKey(i)
+            print("\(i): \(await SMC.shared.getStringValue("F\(i)ID") ?? "Fan #\(i)")")
+            print("Actual speed:", await SMC.shared.getValue("F\(i)Ac") ?? -1)
+            print("Minimal speed:", await SMC.shared.getValue("F\(i)Mn") ?? -1)
+            print("Maximum speed:", await SMC.shared.getValue("F\(i)Mx") ?? -1)
+            print("Target speed:", await SMC.shared.getValue("F\(i)Tg") ?? -1)
+            print("Mode:", FanMode(rawValue: Int(await SMC.shared.getValue(modeKey) ?? -1)) ?? .forced)
             
             print()
         }
     case .reset:
-        if SMC.shared.resetFanControl() {
+        if await SMC.shared.resetFanControl() {
             print("[reset] fan control restored to automatic")
         } else {
             print("[reset] fan control reset FAILED")
@@ -163,4 +164,9 @@ func main() {
     }
 }
 
-main()
+let semaphore = DispatchSemaphore(value: 0)
+Task {
+    await main()
+    semaphore.signal()
+}
+semaphore.wait()
