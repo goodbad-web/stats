@@ -1,0 +1,14 @@
+import Foundation
+
+// Assuming SMC.shared.getValue is available in the main app, 
+// I'll try to find where it's defined and how to use it.
+// Since I can't easily run the app code, I'll use a known list of keys.
+
+/*
+Common Apple Silicon Power Keys:
+- PADC: Adapter Current (A)
+- PADV: Adapter Voltage (V)
+- PDTR: Power Delivery Total (W)
+- PSTR: System Total (W)
+- PBAT: Battery Power (W)
+*/

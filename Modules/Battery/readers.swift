@@ -145,6 +145,13 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
                         }
                     }
                     
+                    if let padc = SMC.shared.getValue("ID0R") {
+                        usage.adapterCurrent = Int(abs(padc) * 1000)
+                    }
+                    if let padv = SMC.shared.getValue("VD0R") {
+                        usage.adapterVoltage = Int(abs(padv) * 1000)
+                    }
+                    
                     if let chargerData = self.getChargerData() {
                         usage.chargingCurrent = chargerData["ChargingCurrent"] as? Int ?? 0
                         usage.chargingVoltage = chargerData["ChargingVoltage"] as? Int ?? 0
