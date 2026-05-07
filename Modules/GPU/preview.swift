@@ -227,19 +227,19 @@ internal class Preview: PreviewWrapper {
         DispatchQueue.main.async(execute: {
             if (self.window?.isVisible ?? false) || !self.initialized {
                 if let value = value.utilization {
-                    self.utilizationField?.stringValue = "\(Int(value.rounded(toPlaces: 2) * 100))%"
+                    self.utilizationField?.stringValue = "\(Int(value.isFinite ? value.rounded(toPlaces: 2) * 100 : 0))%"
                     self.utilizationBar?.setValue(ColorValue(value))
                 }
                 if let value = value.renderUtilization {
-                    self.renderField?.stringValue = "\(Int(value.rounded(toPlaces: 2) * 100))%"
+                    self.renderField?.stringValue = "\(Int(value.isFinite ? value.rounded(toPlaces: 2) * 100 : 0))%"
                     self.renderBar?.setValue(ColorValue(value))
                 }
                 if let value = value.tilerUtilization {
-                    self.tilerField?.stringValue = "\(Int(value.rounded(toPlaces: 2) * 100))%"
+                    self.tilerField?.stringValue = "\(Int(value.isFinite ? value.rounded(toPlaces: 2) * 100 : 0))%"
                     self.tilerBar?.setValue(ColorValue(value))
                 }
                 if let value = value.aneUtilization {
-                    self.aneField?.stringValue = "\(Int(value.rounded(toPlaces: 2) * 100))%"
+                    self.aneField?.stringValue = "\(Int(value.isFinite ? value.rounded(toPlaces: 2) * 100 : 0))%"
                     self.aneBar?.setValue(ColorValue(value))
                 }
                 if let value = value.fps {

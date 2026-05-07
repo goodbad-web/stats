@@ -113,12 +113,14 @@ class Notifications: NotificationsWrapper {
         let title = localizedString("RAM utilization threshold")
         
         if self.totalState {
-            let subtitle = localizedString("RAM utilization is", "\(Int((value.usage)*100))%")
+            let usagePercent = value.usage.isFinite ? Int(value.usage * 100) : 0
+            let subtitle = localizedString("RAM utilization is", "\(usagePercent)%")
             self.checkDouble(id: self.totalID, value: value.usage, threshold: Double(self.total)/100, title: title, subtitle: subtitle)
         }
         if self.freeState {
-            let free = value.free / value.total
-            let subtitle = localizedString("Free RAM is", "\(Int((free)*100))%")
+            let free = value.total > 0 ? value.free / value.total : 0
+            let freePercent = free.isFinite ? Int(free * 100) : 0
+            let subtitle = localizedString("Free RAM is", "\(freePercent)%")
             self.checkDouble(id: self.freeID, value: free, threshold: Double(self.free)/100, title: title, subtitle: subtitle, less: true)
         }
         

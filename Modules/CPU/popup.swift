@@ -386,11 +386,12 @@ internal class Popup: PopupWrapper {
     public func loadCallback(_ value: CPU_Load) {
         Task { @MainActor in
             if (self.window?.isVisible ?? false) || !self.initialized {
-                self.systemField?.stringValue = "\(Int(value.systemLoad.rounded(toPlaces: 2) * 100))%"
-                self.userField?.stringValue = "\(Int(value.userLoad.rounded(toPlaces: 2) * 100))%"
-                self.idleField?.stringValue = "\(Int(value.idleLoad.rounded(toPlaces: 2) * 100))%"
+                self.systemField?.stringValue = "\(value.systemLoad.isFinite ? Int(value.systemLoad.rounded(toPlaces: 2) * 100) : 0)%"
+                self.userField?.stringValue = "\(value.userLoad.isFinite ? Int(value.userLoad.rounded(toPlaces: 2) * 100) : 0)%"
+                self.idleField?.stringValue = "\(value.idleLoad.isFinite ? Int(value.idleLoad.rounded(toPlaces: 2) * 100) : 0)%"
                 
-                self.circle?.toolTip = "\(localizedString("CPU usage")): \(Int(value.totalUsage.rounded(toPlaces: 2) * 100))%"
+                let totalPercent = value.totalUsage.isFinite ? Int(value.totalUsage.rounded(toPlaces: 2) * 100) : 0
+                self.circle?.toolTip = "\(localizedString("CPU usage")): \(totalPercent)%"
                 self.circle?.setValue(value.totalUsage)
                 self.circle?.setSegments([
                     ColorValue(value.systemLoad, color: self.systemColor),
@@ -399,13 +400,13 @@ internal class Popup: PopupWrapper {
                 self.circle?.setNonActiveSegmentColor(self.idleColor)
                 
                 if let field = self.eCoresField, let usage = value.usageECores {
-                    field.stringValue = "\(Int(usage * 100))%"
+                    field.stringValue = "\(usage.isFinite ? Int(usage * 100) : 0)%"
                 }
                 if let field = self.pCoresField, let usage = value.usagePCores {
-                    field.stringValue = "\(Int(usage * 100))%"
+                    field.stringValue = "\(usage.isFinite ? Int(usage * 100) : 0)%"
                 }
                 if let field = self.sCoresField, let usage = value.usageSCores {
-                    field.stringValue = "\(Int(usage * 100))%"
+                    field.stringValue = "\(usage.isFinite ? Int(usage * 100) : 0)%"
                 }
                 
                 var usagePerCore: [ColorValue] = []

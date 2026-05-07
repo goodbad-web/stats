@@ -145,7 +145,7 @@ struct CircularGaugeView: View {
                 .animation(.easeInOut(duration: 0.3), value: self.progress)
             VStack(spacing: 0) {
                 Text(self.title).font(.system(size: 10))
-                Text("\(Int(self.progress * 100))%").font(.system(size: 12))
+                Text("\(self.progress.isFinite ? Int(self.progress * 100) : 0)%").font(.system(size: 12))
             }
         }
         .frame(width: 60, height: 60)

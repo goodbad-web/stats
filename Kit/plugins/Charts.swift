@@ -326,7 +326,7 @@ public class LineChartView: ChartView {
             var str: String = ""
             let flatList = originalPoints.map{ $0?.value ?? 0 }
             if let value = flatList.max() {
-                str = toolTipFunc != nil ? toolTipFunc!(DoubleValue(value)) : "\(Int(value.rounded(toPlaces: 2) * 100))\(suffix)"
+                str = toolTipFunc != nil ? toolTipFunc!(DoubleValue(value)) : "\(Int(value.isFinite ? value.rounded(toPlaces: 2) * 100 : 0))\(suffix)"
             }
             let textWidth = str.widthOfString(usingFont: stringAttributes[NSAttributedString.Key.font] as! NSFont)
             let y = flipY ? xLegendHeight + 1 : height + xLegendHeight - 9
@@ -889,7 +889,7 @@ public class PieChartView: ChartView {
                 NSAttributedString.Key.paragraphStyle: NSMutableParagraphStyle()
             ]
             
-            let percentage = "\(Int(value.rounded(toPlaces: 2) * 100))%"
+            let percentage = "\(Int(value.isFinite ? value.rounded(toPlaces: 2) * 100 : 0))%"
             let width: CGFloat = percentage.widthOfString(usingFont: NSFont.systemFont(ofSize: 15))
             let rect = CGRect(x: (self.frame.width-width)/2, y: (self.frame.height-11)/2, width: width, height: 12)
             let str = NSAttributedString.init(string: percentage, attributes: stringAttributes)

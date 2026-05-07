@@ -201,7 +201,8 @@ public class LineChart: WidgetWrapper {
             ]
             
             let rect = CGRect(x: x+2, y: boxSize.height-7, width: boxSize.width - 2, height: 7)
-            let str = NSAttributedString.init(string: "\(Int((value.rounded(toPlaces: 2)) * 100))%", attributes: stringAttributes)
+            let val = value.isFinite ? Int((value.rounded(toPlaces: 2)) * 100) : 0
+            let str = NSAttributedString.init(string: "\(val)%", attributes: stringAttributes)
             str.draw(with: rect)
             
             boxSize.height = offset == 0.5 ? 10 : 9

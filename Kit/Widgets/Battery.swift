@@ -87,7 +87,7 @@ public class BatteryWidget: WidgetWrapper {
             case "percentage":
                 var value = "n/a"
                 if let percentage {
-                    value = "\(Int((percentage.rounded(toPlaces: 2)) * 100))%"
+                    value = "\(Int(percentage.isFinite ? (percentage.rounded(toPlaces: 2)) * 100 : 0))%"
                 }
                 let rowWidth = self.drawOneRow(value: value, x: x).rounded(.up)
                 width += rowWidth
@@ -102,7 +102,7 @@ public class BatteryWidget: WidgetWrapper {
             case "percentageAndTime":
                 var value = "n/a"
                 if let percentage {
-                    value = "\(Int((percentage.rounded(toPlaces: 2)) * 100))%"
+                    value = "\(Int(percentage.isFinite ? (percentage.rounded(toPlaces: 2)) * 100 : 0))%"
                 }
                 let rowWidth = self.drawTwoRows(
                     first: value,
@@ -114,7 +114,7 @@ public class BatteryWidget: WidgetWrapper {
             case "timeAndPercentage":
                 var value = "n/a"
                 if let percentage {
-                    value = "\(Int((percentage.rounded(toPlaces: 2)) * 100))%"
+                    value = "\(Int(percentage.isFinite ? (percentage.rounded(toPlaces: 2)) * 100 : 0))%"
                 }
                 let rowWidth = self.drawTwoRows(
                     first: Double(time*60).printSecondsToHoursMinutesSeconds(short: isShortTimeFormat),
@@ -221,7 +221,7 @@ public class BatteryWidget: WidgetWrapper {
                     NSAttributedString.Key.paragraphStyle: style
                 ]
                 
-                let value = "\(Int((percentage.rounded(toPlaces: 2)) * 100))"
+                let value = "\(Int(percentage.isFinite ? (percentage.rounded(toPlaces: 2)) * 100 : 0))"
                 let rect = CGRect(x: inner.bounds.origin.x, y: (Constants.Widget.height-(fontSize+2))/2, width: maxWidth, height: fontSize)
                 let str = NSAttributedString.init(string: value, attributes: attributes)
                 
@@ -525,7 +525,7 @@ public class BatteryDetailsWidget: WidgetWrapper {
         case "percentage":
             var value = "n/a"
             if let percentage = self.percentage {
-                value = "\(Int((percentage.rounded(toPlaces: 2)) * 100))%"
+                value = "\(Int(percentage.isFinite ? (percentage.rounded(toPlaces: 2)) * 100 : 0))%"
             }
             width = self.drawOneRow(value: value, x: x).rounded(.up)
         case "time":
@@ -536,7 +536,7 @@ public class BatteryDetailsWidget: WidgetWrapper {
         case "percentageAndTime":
             var value = "n/a"
             if let percentage = self.percentage {
-                value = "\(Int((percentage.rounded(toPlaces: 2)) * 100))%"
+                value = "\(Int(percentage.isFinite ? (percentage.rounded(toPlaces: 2)) * 100 : 0))%"
             }
             if self.time > 0 {
                 width = self.drawTwoRows(
@@ -550,7 +550,7 @@ public class BatteryDetailsWidget: WidgetWrapper {
         case "timeAndPercentage":
             var value = "n/a"
             if let percentage = self.percentage {
-                value = "\(Int((percentage.rounded(toPlaces: 2)) * 100))%"
+                value = "\(Int(percentage.isFinite ? (percentage.rounded(toPlaces: 2)) * 100 : 0))%"
             }
             if self.time > 0 {
                 width = self.drawTwoRows(

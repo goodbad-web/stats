@@ -253,7 +253,7 @@ internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBP
                             percentage *= 100
                         }
                     case let value as Double:
-                        percentage = Int(value*100)
+                        percentage = Int(value.isFinite ? value*100 : 0)
                     default: continue
                     }
                     

@@ -329,8 +329,12 @@ public class Disk: Module {
                                 percentage = 0
                             } else {
                                 switch pair.value {
-                                case "used": percentage = Int((Double(d.size - d.free) / Double(d.size)) * 100)
-                                case "free": percentage = Int((Double(d.free) / Double(d.size)) * 100)
+                                case "used": 
+                                    let ratio = d.size > 0 ? (Double(d.size - d.free) / Double(d.size)) : 0
+                                    percentage = ratio.isFinite ? Int(ratio * 100) : 0
+                                case "free": 
+                                    let ratio = d.size > 0 ? (Double(d.free) / Double(d.size)) : 0
+                                    percentage = ratio.isFinite ? Int(ratio * 100) : 0
                                 default: return
                                 }
                             }

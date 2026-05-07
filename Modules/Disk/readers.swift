@@ -40,6 +40,7 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
         Store.shared.bool(key: "\(ModuleType.disk.stringValue)_SMART", defaultValue: true)
     }
     private nonisolated(unsafe) var purgableSpace: [URL: (Date, Int64)] = [:]
+    private let session: DASession? = DASessionCreate(kCFAllocatorDefault)
     
     nonisolated public override func read() {
         Task { @MainActor in
@@ -49,8 +50,7 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
                 return
             }
             
-            guard let session = DASessionCreate(kCFAllocatorDefault) else {
-                error("cannot create main DASessionCreate()", log: self.log)
+            guard let session = self.session else {
                 return
             }
             
@@ -259,6 +259,7 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
 
 internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
     internal nonisolated(unsafe) var list: Disks = Disks()
+    private let session: DASession? = DASessionCreate(kCFAllocatorDefault)
     
     @MainActor override func setup() {
         self.setInterval(1)
@@ -272,8 +273,7 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
                 return
             }
             
-            guard let session = DASessionCreate(kCFAllocatorDefault) else {
-                error("cannot create a DASessionCreate()", log: self.log)
+            guard let session = self.session else {
                 return
             }
             

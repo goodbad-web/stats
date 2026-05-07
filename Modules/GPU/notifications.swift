@@ -25,7 +25,7 @@ class Notifications: NotificationsWrapper {
             let value = Store.shared.string(key: "\(self.module)_notifications_usage", defaultValue: "")
             if let v = Double(value) {
                 Store.shared.set(key: "\(self.module)_notifications_usage_state", value: true)
-                Store.shared.set(key: "\(self.module)_notifications_usage_value", value: Int(v*100))
+                Store.shared.set(key: "\(self.module)_notifications_usage_value", value: Int(v.isFinite ? abs(v*100) : 0))
                 Store.shared.remove("\(self.module)_notifications_usage")
             }
         }
@@ -49,7 +49,7 @@ class Notifications: NotificationsWrapper {
         let title = localizedString("GPU usage threshold")
         
         if self.usageState {
-            let subtitle = localizedString("GPU usage is", "\(Int((value)*100))%")
+            let subtitle = localizedString("GPU usage is", "\(value.isFinite ? Int(abs(value)*100) : 0)%")
             self.checkDouble(id: self.usageID, value: value, threshold: Double(self.usageLevel)/100, title: title, subtitle: subtitle)
         }
     }

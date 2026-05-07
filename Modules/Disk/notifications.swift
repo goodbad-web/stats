@@ -48,7 +48,7 @@ class Notifications: NotificationsWrapper {
         let title = localizedString("Disk utilization threshold")
         
         if self.utilizationState {
-            let subtitle = localizedString("Disk utilization is", "\(Int((value)*100))%")
+            let subtitle = localizedString("Disk utilization is", "\(value.isFinite ? Int(value*100) : 0)%")
             self.checkDouble(id: self.utilizationID, value: value, threshold: Double(self.utilization)/100, title: title, subtitle: subtitle)
         }
     }

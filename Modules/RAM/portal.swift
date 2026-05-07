@@ -105,13 +105,15 @@ public class Portal: PortalWrapper {
                 self.swapField?.stringValue = Units(bytes: Int64(value.swap.used)).getReadableMemory(style: .memory)
                 self.pressureLevelField?.stringValue = value.pressure.value.rawValue
                 
-                self.usedField?.toolTip = "\(Int(value.usage.rounded(toPlaces: 2) * 100))%"
-                self.freeField?.toolTip = "\(Int((1-value.usage).rounded(toPlaces: 2) * 100))%"
+                let usagePercent = value.usage.isFinite ? Int(value.usage.rounded(toPlaces: 2) * 100) : 0
+                let freePercent = value.usage.isFinite ? Int((1-value.usage).rounded(toPlaces: 2) * 100) : 0
+                self.usedField?.toolTip = "\(usagePercent)%"
+                self.freeField?.toolTip = "\(freePercent)%"
                 if let level = memoryPressureLevels.first(where: { $0.additional as? RAMPressure == value.pressure.value }) {
                     self.pressureLevelField?.toolTip = localizedString(level.value)
                 }
                 
-                self.circle?.toolTip = "\(localizedString("Memory usage")): \(Int(value.usage*100))%"
+                self.circle?.toolTip = "\(localizedString("Memory usage")): \(usagePercent)%"
                 self.circle?.setValue(value.usage)
                 self.circle?.setSegments([
                     ColorValue(value.app/value.total, color: self.appColor),

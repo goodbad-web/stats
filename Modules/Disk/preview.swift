@@ -560,10 +560,12 @@ private class LegendView: NSStackView {
             if usedSpace < 0 {
                 usedSpace = 0
             }
-            percentage = Int((Double(self.size - free) / Double(self.size)) * 100)
+            let ratio = self.size > 0 ? (Double(self.size - free) / Double(self.size)) : 0
+            percentage = ratio.isFinite ? Int(ratio * 100) : 0
             value = localizedString("Used disk memory", DiskSize(usedSpace).getReadableMemory(), DiskSize(self.size).getReadableMemory())
         } else {
-            percentage = Int((Double(free) / Double(self.size)).rounded(toPlaces: 2) * 100)
+            let ratio = self.size > 0 ? (Double(free) / Double(self.size)) : 0
+            percentage = ratio.isFinite ? Int(ratio.rounded(toPlaces: 2) * 100) : 0
             value = localizedString("Free disk memory", DiskSize(free).getReadableMemory(), DiskSize(self.size).getReadableMemory())
         }
         

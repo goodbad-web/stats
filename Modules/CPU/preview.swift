@@ -265,7 +265,8 @@ internal class Preview: PreviewWrapper {
     internal func loadCallback(_ value: CPU_Load) {
         DispatchQueue.main.async(execute: {
             if (self.window?.isVisible ?? false) || !self.initialized {
-                self.circle?.toolTip = "\(localizedString("CPU usage")): \(Int(value.totalUsage.rounded(toPlaces: 2) * 100))%"
+                let totalPercent = value.totalUsage.isFinite ? Int(value.totalUsage.rounded(toPlaces: 2) * 100) : 0
+                self.circle?.toolTip = "\(localizedString("CPU usage")): \(totalPercent)%"
                 self.circle?.setValue(value.totalUsage)
                 self.circle?.setSegments([
                     ColorValue(value.systemLoad, color: self.systemColor),
@@ -273,9 +274,9 @@ internal class Preview: PreviewWrapper {
                 ])
                 self.circle?.setNonActiveSegmentColor(self.idleColor)
                 
-                self.systemField?.stringValue = "\(Int(value.systemLoad.rounded(toPlaces: 2) * 100))%"
-                self.userField?.stringValue = "\(Int(value.userLoad.rounded(toPlaces: 2) * 100))%"
-                self.idleField?.stringValue = "\(Int(value.idleLoad.rounded(toPlaces: 2) * 100))%"
+                self.systemField?.stringValue = "\(value.systemLoad.isFinite ? Int(value.systemLoad.rounded(toPlaces: 2) * 100) : 0)%"
+                self.userField?.stringValue = "\(value.userLoad.isFinite ? Int(value.userLoad.rounded(toPlaces: 2) * 100) : 0)%"
+                self.idleField?.stringValue = "\(value.idleLoad.isFinite ? Int(value.idleLoad.rounded(toPlaces: 2) * 100) : 0)%"
                 
                 self.bar?.setValues([
                     ColorValue(value.systemLoad, color: self.systemColor),
@@ -402,7 +403,7 @@ class CoreView: NSStackView {
     }
     
     public func setValue(_ newValue: Double) {
-        self.valueField.stringValue = "\(Int(newValue.rounded(toPlaces: 2) * 100))%"
+        self.valueField.stringValue = "\(newValue.isFinite ? Int(newValue.rounded(toPlaces: 2) * 100) : 0)%"
         let color = self.core.type == .efficiency ? self.eCoresColor : self.core.type == .super ? self.sCoresColor : self.pCoresColor
         self.bar.setValue(ColorValue(newValue, color: color))
     }

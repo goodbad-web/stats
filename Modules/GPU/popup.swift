@@ -252,32 +252,32 @@ private class GPUView: NSStackView {
             }
         } else if id == "GPU utilization" {
             circle.setValue(value)
-            circle.setText("\(Int(value*100))%")
-            circle.toolTip = "\(localizedString(id)): \(Int(value*100))%"
+            circle.setText("\(Int(value.isFinite ? value*100 : 0))%")
+            circle.toolTip = "\(localizedString(id)): \(Int(value.isFinite ? value*100 : 0))%"
             
             if self.utilizationChart == nil {
                 self.utilizationChart = chart
             }
         } else if id == "Render utilization" {
             circle.setValue(value)
-            circle.setText("\(Int(value*100))%")
-            circle.toolTip = "\(localizedString(id)): \(Int(value*100))%"
+            circle.setText("\(Int(value.isFinite ? value*100 : 0))%")
+            circle.toolTip = "\(localizedString(id)): \(Int(value.isFinite ? value*100 : 0))%"
             
             if self.renderUtilizationChart == nil {
                 self.renderUtilizationChart = chart
             }
         } else if id == "Tiler utilization" {
             circle.setValue(value)
-            circle.setText("\(Int(value*100))%")
-            circle.toolTip = "\(localizedString(id)): \(Int(value*100))%"
+            circle.setText("\(Int(value.isFinite ? value*100 : 0))%")
+            circle.toolTip = "\(localizedString(id)): \(Int(value.isFinite ? value*100 : 0))%"
             
             if self.tilerUtilizationChart == nil {
                 self.tilerUtilizationChart = chart
             }
         } else if id == "ANE utilization" {
             circle.setValue(value)
-            circle.setText("\(Int(value*100))%")
-            circle.toolTip = "\(localizedString(id)): \(Int(value*100))%"
+            circle.setText("\(Int(value.isFinite ? value*100 : 0))%")
+            circle.toolTip = "\(localizedString(id)): \(Int(value.isFinite ? value*100 : 0))%"
             
             if self.aneUtilizationChart == nil {
                 self.aneUtilizationChart = chart
@@ -409,25 +409,25 @@ private class GPUDetails: NSView {
             num += 1
         }
         if let value = value.utilization {
-            let arr = keyValueRow("\(localizedString("Utilization")):", "\(Int(value*100))%")
+            let arr = keyValueRow("\(localizedString("Utilization")):", "\(Int(value.isFinite ? value*100 : 0))%")
             self.utilization = arr.last
             grid.addRow(with: arr)
             num += 1
         }
         if let value = value.renderUtilization {
-            let arr = keyValueRow("\(localizedString("Render utilization")):", "\(Int(value*100))%")
+            let arr = keyValueRow("\(localizedString("Render utilization")):", "\(Int(value.isFinite ? value*100 : 0))%")
             self.renderUtilization = arr.last
             grid.addRow(with: arr)
             num += 1
         }
         if let value = value.tilerUtilization {
-            let arr = keyValueRow("\(localizedString("Tiler utilization")):", "\(Int(value*100))%")
+            let arr = keyValueRow("\(localizedString("Tiler utilization")):", "\(Int(value.isFinite ? value*100 : 0))%")
             self.tilerUtilization = arr.last
             grid.addRow(with: arr)
             num += 1
         }
         if let value = value.aneUtilization {
-            let arr = keyValueRow("\(localizedString("ANE utilization")):", "\(Int(value*100))%")
+            let arr = keyValueRow("\(localizedString("ANE utilization")):", "\(Int(value.isFinite ? value*100 : 0))%")
             self.aneUtilization = arr.last
             grid.addRow(with: arr)
             num += 1
@@ -472,16 +472,16 @@ private class GPUDetails: NSView {
             self.temperature?.stringValue = Kit.temperature(Double(value))
         }
         if let value = gpu.utilization {
-            self.utilization?.stringValue = "\(Int(value*100))%"
+            self.utilization?.stringValue = "\(Int(value.isFinite ? value*100 : 0))%"
         }
         if let value = gpu.renderUtilization {
-            self.renderUtilization?.stringValue = "\(Int(value*100))%"
+            self.renderUtilization?.stringValue = "\(Int(value.isFinite ? value*100 : 0))%"
         }
         if let value = gpu.tilerUtilization {
-            self.tilerUtilization?.stringValue = "\(Int(value*100))%"
+            self.tilerUtilization?.stringValue = "\(Int(value.isFinite ? value*100 : 0))%"
         }
         if let value = gpu.aneUtilization {
-            self.aneUtilization?.stringValue = "\(Int(value*100))%"
+            self.aneUtilization?.stringValue = "\(Int(value.isFinite ? value*100 : 0))%"
         }
         if let value = gpu.fps {
             self.fps?.stringValue = "\(Int(value.rounded()))"

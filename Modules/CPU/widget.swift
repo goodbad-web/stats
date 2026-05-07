@@ -77,7 +77,7 @@ public struct CPUWidget: Widget {
                             GeometryReader { geometry in
                                 if let anchor = chartProxy.plotFrame {
                                     let frame = geometry[anchor]
-                                    Text("\(Int(value.totalUsage*100))%")
+                                    Text("\(value.totalUsage.isFinite ? Int(value.totalUsage*100) : 0)%")
                                         .font(.system(size: 16, weight: .regular))
                                         .position(x: frame.midX, y: frame.midY-5)
                                     Text("CPU")
@@ -92,13 +92,13 @@ public struct CPUWidget: Widget {
                             Rectangle().fill(self.systemColor).frame(width: 12, height: 12).cornerRadius(2)
                             Text(localizedString("System")).font(.system(size: 12, weight: .regular)).foregroundColor(.secondary)
                             Spacer()
-                            Text("\(Int(value.systemLoad*100))%")
+                            Text("\(value.systemLoad.isFinite ? Int(value.systemLoad*100) : 0)%")
                         }
                         HStack {
                             Rectangle().fill(self.userColor).frame(width: 12, height: 12).cornerRadius(2)
                             Text(localizedString("User")).font(.system(size: 12, weight: .regular)).foregroundColor(.secondary)
                             Spacer()
-                            Text("\(Int(value.userLoad*100))%")
+                            Text("\(value.userLoad.isFinite ? Int(value.userLoad*100) : 0)%")
                         }
                     }
                 } else if !Provider().systemWidgetsUpdatesState {

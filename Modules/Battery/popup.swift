@@ -221,7 +221,7 @@ internal class Popup: PopupWrapper {
         Task { @MainActor in
             self.dashboardBatteryView?.setValue(abs(value.level))
             
-            self.levelField?.stringValue = "\(Int(abs(value.level) * 100))%"
+            self.levelField?.stringValue = "\(Int(abs(value.level.isFinite ? value.level : 0) * 100))%"
             self.levelField?.toolTip = "\(value.currentCapacity) mAh"
             self.sourceField?.stringValue = localizedString(value.powerSource)
             self.timeField?.stringValue = ""

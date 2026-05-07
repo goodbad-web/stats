@@ -92,7 +92,8 @@ public struct RAMWidget: Widget {
                             GeometryReader { geometry in
                                 if let anchor = chartProxy.plotFrame {
                                     let frame = geometry[anchor]
-                                    Text("\(Int((value.used/value.total)*100))%")
+                                    let ratio = value.total > 0 ? (value.used/value.total) : 0
+                                    Text("\(ratio.isFinite ? Int(ratio*100) : 0)%")
                                         .font(.system(size: 14, weight: .regular))
                                         .position(x: frame.midX, y: frame.midY-5)
                                     Text("RAM")
@@ -118,7 +119,7 @@ public struct RAMWidget: Widget {
                         HStack {
                             Text(localizedString("Pressure level")).font(.system(size: 12, weight: .regular)).foregroundColor(.secondary)
                             Spacer()
-                            Text("\(value.pressure.level)")
+                            Text("\(Double(value.pressure.level).isFinite ? Int(value.pressure.level) : 0)")
                         }
                     }
                 } else if !Provider().systemWidgetsUpdatesState {

@@ -261,7 +261,8 @@ internal class Preview: PreviewWrapper {
                     ColorValue(value.compressed/value.total, color: self.compressedColor)
                 ]
                 
-                self.usageCircle?.toolTip = "\(localizedString("Memory usage")): \(Int(value.usage*100))%"
+                let usagePercent = value.usage.isFinite ? Int(value.usage * 100) : 0
+                self.usageCircle?.toolTip = "\(localizedString("Memory usage")): \(usagePercent)%"
                 self.usageCircle?.setValue(value.usage)
                 self.usageCircle?.setSegments(values)
                 self.usageCircle?.setNonActiveSegmentColor(self.freeColor)

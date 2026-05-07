@@ -75,7 +75,7 @@ public struct DiskWidget: Widget {
                             GeometryReader { geometry in
                                 if let anchor = chartProxy.plotFrame {
                                     let frame = geometry[anchor]
-                                    Text("\(Int(value.percentage.rounded(toPlaces: 2) * 100))%")
+                                    Text("\(value.percentage.isFinite ? Int(value.percentage.rounded(toPlaces: 2) * 100) : 0)%")
                                         .font(.system(size: 16, weight: .regular))
                                         .position(x: frame.midX, y: frame.midY-5)
                                     Text("Disk")

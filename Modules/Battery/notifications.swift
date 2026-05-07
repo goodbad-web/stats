@@ -59,7 +59,7 @@ class Notifications: NotificationsWrapper {
         }
         if let threshold = Double(self.lowLevel), !value.isCharging {
             let title = localizedString("Low battery")
-            var subtitle = localizedString("Battery remaining", "\(Int(value.level*100))")
+            var subtitle = localizedString("Battery remaining", "\(value.level.isFinite ? Int(value.level*100) : 0)")
             if value.timeToEmpty > 0 {
                 subtitle += " (\(Double(value.timeToEmpty*60).printSecondsToHoursMinutesSeconds()))"
             }
@@ -71,7 +71,7 @@ class Notifications: NotificationsWrapper {
         }
         if let threshold = Double(self.highLevel), value.isCharging {
             let title = localizedString("High battery")
-            var subtitle = localizedString("Battery remaining to full charge", "\(Int((1-value.level)*100))")
+            var subtitle = localizedString("Battery remaining to full charge", "\((1-value.level).isFinite ? Int((1-value.level)*100) : 0)")
             if value.timeToCharge > 0 {
                 subtitle += " (\(Double(value.timeToCharge*60).printSecondsToHoursMinutesSeconds()))"
             }

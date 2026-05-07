@@ -141,7 +141,8 @@ public class Mini: WidgetWrapper {
             NSAttributedString.Key.paragraphStyle: style
         ]
         let rect = CGRect(x: origin.x, y: origin.y, width: self.width - (Constants.Widget.margin.x*2), height: valueSize+1)
-        let str = NSAttributedString.init(string: "\(Int(value.rounded(toPlaces: 2) * 100))\(suffix)", attributes: stringAttributes)
+        let val = value.isFinite ? Int(value.rounded(toPlaces: 2) * 100) : 0
+        let str = NSAttributedString.init(string: "\(val)\(suffix)", attributes: stringAttributes)
         str.draw(with: rect)
         
         self.setWidth(width)

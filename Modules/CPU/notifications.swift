@@ -132,32 +132,32 @@ class Notifications: NotificationsWrapper {
         let title = localizedString("CPU usage threshold")
         
         if self.totalLoadState {
-            let subtitle = "\(localizedString("Total load")): \(Int((value.totalUsage)*100))%"
+            let subtitle = "\(localizedString("Total load")): \(value.totalUsage.isFinite ? Int((value.totalUsage)*100) : 0)%"
             self.checkDouble(id: self.totalLoadID, value: value.totalUsage, threshold: Double(self.totalLoad)/100, title: title, subtitle: subtitle)
         }
         
         if self.systemLoadState {
-            let subtitle = "\(localizedString("System load")): \(Int((value.systemLoad)*100))%"
+            let subtitle = "\(localizedString("System load")): \(value.systemLoad.isFinite ? Int((value.systemLoad)*100) : 0)%"
             self.checkDouble(id: self.systemLoadID, value: value.systemLoad, threshold: Double(self.systemLoad)/100, title: title, subtitle: subtitle)
         }
         
         if self.userLoadState {
-            let subtitle = "\(localizedString("User load")): \(Int((value.userLoad)*100))%"
+            let subtitle = "\(localizedString("User load")): \(value.userLoad.isFinite ? Int((value.userLoad)*100) : 0)%"
             self.checkDouble(id: self.userLoadID, value: value.userLoad, threshold: Double(self.userLoad)/100, title: title, subtitle: subtitle)
         }
         
         if self.eCoresLoadState, let usage = value.usageECores {
-            let subtitle = "\(localizedString("Efficiency cores load")): \(Int((usage)*100))%"
+            let subtitle = "\(localizedString("Efficiency cores load")): \(usage.isFinite ? Int((usage)*100) : 0)%"
             self.checkDouble(id: self.eCoresLoadID, value: usage, threshold: Double(self.eCoresLoad)/100, title: title, subtitle: subtitle)
         }
         
         if self.sCoresLoadState, let usage = value.usageSCores {
-            let subtitle = "\(localizedString("Super cores load")): \(Int((usage)*100))%"
+            let subtitle = "\(localizedString("Super cores load")): \(usage.isFinite ? Int((usage)*100) : 0)%"
             self.checkDouble(id: self.sCoresLoadID, value: usage, threshold: Double(self.sCoresLoad)/100, title: title, subtitle: subtitle)
         }
         
         if self.pCoresLoadState, let usage = value.usagePCores {
-            let subtitle = "\(localizedString("Performance cores load")): \(Int((usage)*100))%"
+            let subtitle = "\(localizedString("Performance cores load")): \(usage.isFinite ? Int((usage)*100) : 0)%"
             self.checkDouble(id: self.pCoresLoadID, value: usage, threshold: Double(self.pCoresLoad)/100, title: title, subtitle: subtitle)
         }
     }

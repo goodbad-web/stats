@@ -92,7 +92,7 @@ internal class Portal: NSStackView, Portal_p {
     
     public func loadCallback(_ value: Battery_Usage) {
         DispatchQueue.main.async(execute: {
-            self.levelField.stringValue = "\(Int(abs(value.level) * 100))%"
+            self.levelField.stringValue = "\(Int(abs(value.level.isFinite ? value.level : 0) * 100))%"
             
             var seconds: Double = 0
             if value.timeToEmpty != -1 && value.timeToEmpty != 0 {

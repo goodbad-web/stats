@@ -106,7 +106,7 @@ public class Portal: PortalWrapper {
                 self.usedField?.stringValue = DiskSize(value.size - value.free).getReadableMemory()
                 self.freeField?.stringValue = DiskSize(value.free).getReadableMemory()
                 
-                self.circle?.toolTip = "\(localizedString("Disk usage")): \(Int(value.percentage*100))%"
+                self.circle?.toolTip = "\(localizedString("Disk usage")): \(value.percentage.isFinite ? Int(value.percentage*100) : 0)%"
                 self.circle?.setValue(value.percentage)
                 self.circle?.setSegments([
                     ColorValue(value.percentage, color: self.valueColor)

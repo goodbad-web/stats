@@ -255,7 +255,7 @@ private class UpdateView: NSView {
         updater.download(url, progress: { progress in
             DispatchQueue.main.async {
                 progressBar.doubleValue = progress.fractionCompleted
-                state.stringValue = "\(Int(progress.fractionCompleted*100))%"
+                state.stringValue = "\(progress.fractionCompleted.isFinite ? Int(progress.fractionCompleted*100) : 0)%"
             }
         }, completion: { path in
             self.path = path

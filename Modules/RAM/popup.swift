@@ -250,7 +250,8 @@ internal class Popup: PopupWrapper {
                 self.usedField?.stringValue = Units(bytes: Int64(value.used)).getReadableMemory(style: .memory)
                 self.freeField?.stringValue = Units(bytes: Int64(value.free)).getReadableMemory(style: .memory)
                 
-                self.circle?.toolTip = "\(localizedString("Memory usage")): \(Int(value.usage*100))%"
+                let usagePercent = value.usage.isFinite ? Int(value.usage * 100) : 0
+                self.circle?.toolTip = "\(localizedString("Memory usage")): \(usagePercent)%"
                 self.circle?.setValue(value.usage)
                 self.circle?.setSegments([
                     ColorValue(value.app/value.total, color: self.appColor),
