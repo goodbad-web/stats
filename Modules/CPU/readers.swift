@@ -13,12 +13,25 @@ import Cocoa
 import Kit
 import os
 import IOKit.pwr_mgt
+import Darwin
 
-@_silgen_name("IOPMCopyCPUProcessorLimits")
-private func IOPMCopyCPUProcessorLimits(_ service: io_connect_t, _ limits: UnsafeMutablePointer<Unmanaged<CFDictionary>?>) -> kern_return_t
+private typealias IOPMFindPowerManagementFn = @convention(c) (mach_port_t, UnsafeMutablePointer<io_connect_t>) -> kern_return_t
+private typealias IOPMCopyCPUProcessorLimitsFn = @convention(c) (io_connect_t, UnsafeMutablePointer<Unmanaged<CFDictionary>?>) -> kern_return_t
 
-@_silgen_name("IOPMFindPowerManagement")
-private func IOPMFindPowerManagement(_ masterPort: mach_port_t, _ service: UnsafeMutablePointer<io_connect_t>) -> kern_return_t
+private enum PowerManagementSymbols {
+    static let findPM: IOPMFindPowerManagementFn? = {
+        if let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "IOPMFindPowerManagement") {
+            return unsafeBitCast(sym, to: IOPMFindPowerManagementFn.self)
+        }
+        return nil
+    }()
+    static let copyLimits: IOPMCopyCPUProcessorLimitsFn? = {
+        if let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "IOPMCopyCPUProcessorLimits") {
+            return unsafeBitCast(sym, to: IOPMCopyCPUProcessorLimitsFn.self)
+        }
+        return nil
+    }()
+}
 
 private struct LoadState {
     var cpuInfo: processor_info_array_t?
@@ -542,21 +555,23 @@ public class LimitReader: Reader<CPU_Limit>, @unchecked Sendable {
         Task { @MainActor in
             let limit = await Task.detached(priority: .background) {
                 var res = CPU_Limit()
-                var service: io_connect_t = 0
-                if IOPMFindPowerManagement(kIOMainPortDefault, &service) == KERN_SUCCESS {
-                    var dict: Unmanaged<CFDictionary>?
-                    if IOPMCopyCPUProcessorLimits(service, &dict) == KERN_SUCCESS, let limits = dict?.takeRetainedValue() as? [String: Any] {
-                        if let scheduler = limits["CPU_Scheduler_Limit"] as? Int {
-                            res.scheduler = scheduler
+                if #available(macOS 12.0, *) {
+                    var service: io_connect_t = 0
+                    if let findPM = PowerManagementSymbols.findPM, let copyLimits = PowerManagementSymbols.copyLimits, findPM(kIOMainPortDefault, &service) == KERN_SUCCESS {
+                        var dict: Unmanaged<CFDictionary>?
+                        if copyLimits(service, &dict) == KERN_SUCCESS, let limits = dict?.takeRetainedValue() as? [String: Any] {
+                            if let scheduler = limits["CPU_Scheduler_Limit"] as? Int {
+                                res.scheduler = scheduler
+                            }
+                            if let cpus = limits["CPU_Available_CPUs"] as? Int {
+                                res.cpus = cpus
+                            }
+                            if let speed = limits["CPU_Speed_Limit"] as? Int {
+                                res.speed = speed
+                            }
                         }
-                        if let cpus = limits["CPU_Available_CPUs"] as? Int {
-                            res.cpus = cpus
-                        }
-                        if let speed = limits["CPU_Speed_Limit"] as? Int {
-                            res.speed = speed
-                        }
+                        IOServiceClose(service)
                     }
-                    IOServiceClose(service)
                 }
                 return res
             }.value
@@ -597,3 +612,4 @@ public class AverageLoadReader: Reader<CPU_AverageLoad>, @unchecked Sendable {
         }
     }
 }
+

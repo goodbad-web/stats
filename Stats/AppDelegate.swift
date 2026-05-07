@@ -67,32 +67,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         let startingPoint = Date()
         
-        self.parseArguments()
-        self.parseVersion()
-        SMCHelper.shared.checkForUpdate()
-        self.setup {
-            modules.reversed().forEach{ $0.mount() }
-            self.settingsWindow.setModules()
+        Task { @MainActor in
+            self.parseArguments()
+            self.parseVersion()
+            SMCHelper.shared.checkForUpdate()
+            self.setup {
+                modules.reversed().forEach{ $0.mount() }
+                self.settingsWindow.setModules()
+            }
+            self.defaultValues()
+            self.icon()
+            self.setupMainMenu()
+            
+            NotificationCenter.default.addObserver(self, selector: #selector(listenForAppPause), name: .pause, object: nil)
+            self.globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+                self?.handleKeyEvent(event)
+            }
+            self.localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+                self?.handleKeyEvent(event)
+                return event
+            }
+            
+            info("Stats started in \((startingPoint.timeIntervalSinceNow * -1).rounded(toPlaces: 4)) seconds")
+            self.startTS = Date()
         }
-        self.defaultValues()
-        self.icon()
-        self.setupMainMenu()
-        
-        NotificationCenter.default.addObserver(self, selector: #selector(listenForAppPause), name: .pause, object: nil)
-        self.globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
-            self?.handleKeyEvent(event)
-        }
-        self.localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
-            self?.handleKeyEvent(event)
-            return event
-        }
-        
-        info("Stats started in \((startingPoint.timeIntervalSinceNow * -1).rounded(toPlaces: 4)) seconds")
-        self.startTS = Date()
     }
     
     func applicationWillTerminate(_ aNotification: Notification) {
-        SMCHelper.shared.resetFanControl()
+        Task {
+            await SMCHelper.shared.resetFanControl()
+        }
         modules.forEach{ $0.terminate() }
         Remote.shared.terminate()
     }
@@ -128,22 +132,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
-        self.clickInNotification = true
-        
-        if let uri = response.notification.request.content.userInfo["url"] as? String {
-            debug("Downloading new version of app...")
-            if let url = URL(string: uri) {
-                updater.download(url, completion: { path in
-                    updater.install(path: path) { error in
-                        if let error {
-                            showAlert("Error update Stats", error, .critical)
+        Task { @MainActor in
+            self.clickInNotification = true
+            
+            if let uri = response.notification.request.content.userInfo["url"] as? String {
+                debug("Downloading new version of app...")
+                if let url = URL(string: uri) {
+                    updater.download(url, completion: { path in
+                        updater.install(path: path) { error in
+                            if let error {
+                                showAlert("Error update Stats", error, .critical)
+                            }
                         }
-                    }
-                })
+                    })
+                }
             }
+            
+            completionHandler()
         }
-        
-        completionHandler()
     }
     
     private func setupMainMenu() {
@@ -202,7 +208,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
     }
     
     @objc private func checkForNewVersionMenu() {
-        self.checkForNewVersion()
+        Task { @MainActor in
+            self.checkForNewVersion()
+        }
     }
     
     @objc private func reportBugMenu() {
@@ -213,3 +221,4 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
         NSWorkspace.shared.open(URL(string: "https://github.com/exelban/stats")!)
     }
 }
+
