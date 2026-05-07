@@ -151,13 +151,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
         
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About Stats", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: localizedString("Check for update"), action: #selector(self.checkForNewVersionMenu), keyEquivalent: "")
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(withTitle: localizedString("Settings"), action: #selector(self.openSettings), keyEquivalent: ",")
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(withTitle: "Hide Stats", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h").keyEquivalentModifierMask = [.command, .option]
+        appMenu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Quit Stats", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let appMenuItem = NSMenuItem()
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
         
+        let fileMenu = NSMenu(title: localizedString("File"))
+        fileMenu.addItem(withTitle: localizedString("Close"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        let fileMenuItem = NSMenuItem()
+        fileMenuItem.submenu = fileMenu
+        mainMenu.addItem(fileMenuItem)
+        
         let editMenu = NSMenu(title: localizedString("Edit"))
+        editMenu.addItem(withTitle: localizedString("Undo"), action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: localizedString("Redo"), action: Selector(("redo:")), keyEquivalent: "Z")
+        editMenu.addItem(NSMenuItem.separator())
         editMenu.addItem(withTitle: localizedString("Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
         editMenu.addItem(withTitle: localizedString("Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         editMenu.addItem(withTitle: localizedString("Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
@@ -167,10 +183,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
         mainMenu.addItem(editMenuItem)
         
         let windowMenu = NSMenu(title: localizedString("Window"))
+        windowMenu.addItem(withTitle: localizedString("Minimize"), action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: localizedString("Zoom"), action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        windowMenu.addItem(NSMenuItem.separator())
+        windowMenu.addItem(withTitle: localizedString("Bring All to Front"), action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
         let windowMenuItem = NSMenuItem()
         windowMenuItem.submenu = windowMenu
         mainMenu.addItem(windowMenuItem)
         
+        let helpMenu = NSMenu(title: localizedString("Help"))
+        helpMenu.addItem(withTitle: localizedString("Report a bug"), action: #selector(self.reportBugMenu), keyEquivalent: "")
+        helpMenu.addItem(withTitle: "GitHub", action: #selector(self.openGitHubMenu), keyEquivalent: "")
+        let helpMenuItem = NSMenuItem()
+        helpMenuItem.submenu = helpMenu
+        mainMenu.addItem(helpMenuItem)
+        
         NSApp.mainMenu = mainMenu
+    }
+    
+    @objc private func checkForNewVersionMenu() {
+        self.checkForNewVersion()
+    }
+    
+    @objc private func reportBugMenu() {
+        NSWorkspace.shared.open(URL(string: "https://github.com/exelban/stats/issues/new?template=bug_report.md")!)
+    }
+    
+    @objc private func openGitHubMenu() {
+        NSWorkspace.shared.open(URL(string: "https://github.com/exelban/stats")!)
     }
 }

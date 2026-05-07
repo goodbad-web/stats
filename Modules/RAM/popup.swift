@@ -105,9 +105,7 @@ internal class Popup: PopupWrapper {
         fatalError("init(coder:) has not been implemented")
     }
     
-    public override func updateLayer() {
-        self.chart?.display()
-    }
+    public override func updateLayer() {}
     
     public override func disappear() {
         self.processes?.setLock(false)
