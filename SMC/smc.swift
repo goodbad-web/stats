@@ -414,6 +414,9 @@ public class SMC {
         if result != kIOReturnSuccess {
             return result
         }
+        if output.result != 0 {
+            return kern_return_t(output.result)
+        }
         
         value.pointee.dataSize = UInt32(output.keyInfo.dataSize)
         value.pointee.dataType = output.keyInfo.dataType.toString()
@@ -423,6 +426,9 @@ public class SMC {
         result = call(SMCKeys.kernelIndex.rawValue, input: &input, output: &output)
         if result != kIOReturnSuccess {
             return result
+        }
+        if output.result != 0 {
+            return kern_return_t(output.result)
         }
         
         memcpy(&value.pointee.bytes, &output.bytes, Int(value.pointee.dataSize))
@@ -447,6 +453,9 @@ public class SMC {
         let result = self.call(SMCKeys.kernelIndex.rawValue, input: &input, output: &output)
         if result != kIOReturnSuccess {
             return result
+        }
+        if output.result != 0 {
+            return kern_return_t(output.result)
         }
         
         return kIOReturnSuccess
@@ -525,13 +534,22 @@ internal class AppleSiliconSMC {
         
         // Use Ftst (M1-M4)
         var ftstVal = SMCVal_t("Ftst")
-        if parent.read(&ftstVal) == kIOReturnSuccess && ftstVal.bytes[0] == 0 {
+        if parent.read(&ftstVal) == kIOReturnSuccess && ftstVal.bytes[0] != 1 {
             ftstVal.bytes[0] = 1
-            if !parent.writeWithRetry(ftstVal, maxAttempts: 50) { return false }
+            if !parent.writeWithRetry(ftstVal, maxAttempts: 50) {
+                return false
+            }
             usleep(2_000_000) // Yield control from thermalmonitord
         }
         
-        return parent.writeWithRetry(modeVal, maxAttempts: 100)
+        _ = parent.writeWithRetry(modeVal, maxAttempts: 100)
+        
+        // Final check
+        if parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] == 1 {
+            return true
+        }
+        
+        return false
     }
     
     private func resetFtstIfAllAuto() {
