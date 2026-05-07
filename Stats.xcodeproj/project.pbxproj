@@ -68,6 +68,7 @@
 		5CA518382B543FE600EBCCC4 /* portal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CA518372B543FE600EBCCC4 /* portal.swift */; };
 		5CAA50722C8E417700B13E13 /* Text.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CAA50712C8E417700B13E13 /* Text.swift */; };
 		5CB3878A2C35A7110030459D /* widget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB387892C35A7110030459D /* widget.swift */; };
+		5CC3B4E32F5A033000775E2C /* ObservableModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC3B4E22F5A032E00775E2C /* ObservableModel.swift */; };
 		5CC3B4E52F5A033000775E2C /* reader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC3B4E42F5A032E00775E2C /* reader.swift */; };
 		5CC8042A2F7EDECA00B78DC7 /* bridge.h in Headers */ = {isa = PBXBuildFile; fileRef = 5CC804292F7EDECA00B78DC7 /* bridge.h */; };
 		5CCA5CD52D4E8DB3002917F0 /* libIOReport.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 5C1E45552D11D66200525864 /* libIOReport.tbd */; };
@@ -173,6 +174,7 @@
 		9A97CED22537331B00742D8F /* CPU.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9A97CECA2537331B00742D8F /* CPU.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		9A97CEE92537338600742D8F /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A97CEE82537338600742D8F /* main.swift */; };
 		9A97CEF1253733D200742D8F /* readers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A97CEF0253733D200742D8F /* readers.swift */; };
+		5CC3B4E52F5A033000775E2D /* CPUView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC3B4E42F5A032E00775E2D /* CPUView.swift */; };
 		9A97CEF6253733E400742D8F /* popup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A97CEF5253733E400742D8F /* popup.swift */; };
 		9A97CEFB253733F300742D8F /* settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A97CEFA253733F300742D8F /* settings.swift */; };
 		9A97CF002537340400742D8F /* config.plist in Resources */ = {isa = PBXBuildFile; fileRef = 9A97CEFF2537340400742D8F /* config.plist */; };
@@ -539,6 +541,7 @@
 		5C23BC0929A0EDA300DBA990 /* portal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = portal.swift; sourceTree = "<group>"; };
 		5C23BC0B29A10BE000DBA990 /* portal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = portal.swift; sourceTree = "<group>"; };
 		5C23BC0F29A3B5AE00DBA990 /* portal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = portal.swift; sourceTree = "<group>"; };
+		5CC3B4E42F5A032E00775E2D /* CPUView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CPUView.swift; sourceTree = "<group>"; };
 		5C2F5C432F8409F200B3F8AC /* preview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = preview.swift; sourceTree = "<group>"; };
 		5C3068722C32E83200B05EFA /* widget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = widget.swift; sourceTree = "<group>"; };
 		5C30CD5F2F8A8F930001EF1C /* preview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = preview.swift; sourceTree = "<group>"; };
@@ -573,6 +576,7 @@
 		5CA518372B543FE600EBCCC4 /* portal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = portal.swift; sourceTree = "<group>"; };
 		5CAA50712C8E417700B13E13 /* Text.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Text.swift; sourceTree = "<group>"; };
 		5CB387892C35A7110030459D /* widget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = widget.swift; sourceTree = "<group>"; };
+		5CC3B4E22F5A032E00775E2C /* ObservableModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObservableModel.swift; sourceTree = "<group>"; };
 		5CC3B4E42F5A032E00775E2C /* reader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = reader.swift; sourceTree = "<group>"; };
 		5CC804292F7EDECA00B78DC7 /* bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bridge.h; sourceTree = "<group>"; };
 		5CD342F32B2F2FB700225631 /* notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = notifications.swift; sourceTree = "<group>"; };
@@ -1086,6 +1090,7 @@
 				9A2847762666AA5000EC1F6D /* popup.swift */,
 				9A2847782666AA5000EC1F6D /* widget.swift */,
 				9A2847772666AA5000EC1F6D /* reader.swift */,
+				5CC3B4E22F5A032E00775E2C /* ObservableModel.swift */,
 				9A2847752666AA5000EC1F6D /* window.swift */,
 				5C23BC0329A014AC00DBA990 /* portal.swift */,
 				5CF2210C2B1E7EAF006C583F /* notifications.swift */,
@@ -1197,6 +1202,7 @@
 				9A97CEE82537338600742D8F /* main.swift */,
 				9A97CEF0253733D200742D8F /* readers.swift */,
 				9A97CEF5253733E400742D8F /* popup.swift */,
+				5CC3B4E42F5A032E00775E2D /* CPUView.swift */,
 				5C23BC0129A0102500DBA990 /* portal.swift */,
 				9A97CEFA253733F300742D8F /* settings.swift */,
 				5CF221122B1E8078006C583F /* notifications.swift */,
@@ -2138,6 +2144,7 @@
 				9A5A8447271895B700BC40A4 /* Reachability.swift in Sources */,
 				9A2847622666AA2700EC1F6D /* Label.swift in Sources */,
 				9A28477C2666AA5000EC1F6D /* reader.swift in Sources */,
+				5CC3B4E32F5A033000775E2C /* ObservableModel.swift in Sources */,
 				9A9B8C9D27149A3700218374 /* Tachometer.swift in Sources */,
 				9A2847652666AA2700EC1F6D /* Memory.swift in Sources */,
 				9A2847642666AA2700EC1F6D /* Battery.swift in Sources */,
@@ -2213,6 +2220,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9A97CEF1253733D200742D8F /* readers.swift in Sources */,
+				5CC3B4E52F5A033000775E2D /* CPUView.swift in Sources */,
 				9A97CEF6253733E400742D8F /* popup.swift in Sources */,
 				5C4A1F5D2F6099AA009CFEE6 /* preview.swift in Sources */,
 				5C3068732C32E83200B05EFA /* widget.swift in Sources */,
@@ -3437,15 +3445,14 @@
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CODE_SIGN_IDENTITY = "";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEFINES_MODULE = YES;
 				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=macosx*]" = "";
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 76Q8Z9XK4F;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
@@ -3486,15 +3493,14 @@
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CODE_SIGN_IDENTITY = "";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEFINES_MODULE = YES;
 				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=macosx*]" = "";
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 76Q8Z9XK4F;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";

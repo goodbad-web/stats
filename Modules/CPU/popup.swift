@@ -11,6 +11,7 @@
 
 import Cocoa
 import Kit
+import SwiftUI
 
 internal class Popup: PopupWrapper {
     private let dashboardHeight: CGFloat = 90
@@ -114,6 +115,10 @@ internal class Popup: PopupWrapper {
     private var processesView: NSView? = nil
     private var frequenciesView: NSView? = nil
     
+    private let loadReader: LoadReader
+    private let frequencyReader: FrequencyReader
+    private let temperatureReader: TemperatureReader
+    
     private var numberOfProcesses: Int {
         Store.shared.int(key: "\(self.title)_processes", defaultValue: 8)
     }
@@ -134,7 +139,11 @@ internal class Popup: PopupWrapper {
         return value
     }
     
-    public init(_ module: ModuleType) {
+    public init(_ module: ModuleType, load: LoadReader, frequency: FrequencyReader, temperature: TemperatureReader) {
+        self.loadReader = load
+        self.frequencyReader = frequency
+        self.temperatureReader = temperature
+        
         super.init(module, frame: NSRect(x: 0, y: 0, width: Constants.Popup.width, height: 0))
         
         self.spacing = 0
@@ -192,34 +201,12 @@ internal class Popup: PopupWrapper {
     }
     
     private func initDashboard() -> NSView {
-        let view: NSView = NSView(frame: NSRect(x: 0, y: 0, width: self.frame.width, height: self.dashboardHeight))
-        view.heightAnchor.constraint(equalToConstant: view.bounds.height).isActive = true
-        
-        let usageSize = self.dashboardHeight-20
-        let usageX = (view.frame.width - usageSize)/2
-        
-        let usage = NSView(frame: NSRect(x: usageX, y: (view.frame.height - usageSize)/2, width: usageSize, height: usageSize))
-        let temperature = NSView(frame: NSRect(x: (usageX - 50)/2, y: (view.frame.height - 50)/2 - 3, width: 50, height: 50))
-        let frequency = NSView(frame: NSRect(x: (usageX+usageSize) + (usageX - 50)/2, y: 0, width: 50, height: self.dashboardHeight))
-        
-        self.circle = PieChartView(frame: NSRect(x: 0, y: 0, width: usage.frame.width, height: usage.frame.height), segments: [], drawValue: true)
-        self.circle!.toolTip = localizedString("CPU usage")
-        usage.addSubview(self.circle!)
-        
-        self.temperatureCircle = PieChartView(frame: NSRect(x: 0, y: 0, width: temperature.frame.width, height: temperature.frame.height), openCircle: true)
-        self.temperatureCircle!.toolTip = localizedString("CPU temperature")
-        (self.temperatureCircle! as NSView).isHidden = true
-        temperature.addSubview(self.temperatureCircle!)
-        
-        self.frequencyCircle = PieChartView(frame: NSRect(x: 0, y: 0, width: frequency.frame.width, height: frequency.frame.height), openCircle: true)
-        self.frequencyCircle!.toolTip = localizedString("CPU frequency")
-        (self.frequencyCircle! as NSView).isHidden = true
-        frequency.addSubview(self.frequencyCircle!)
-        
-        view.addSubview(temperature)
-        view.addSubview(usage)
-        view.addSubview(frequency)
-        
+        let view = NSHostingView(rootView: CPUView(
+            load: self.loadReader.observable,
+            frequency: self.frequencyReader.observable,
+            temperature: self.temperatureReader.observable
+        ))
+        view.frame = NSRect(x: 0, y: 0, width: self.frame.width, height: self.dashboardHeight)
         return view
     }
     

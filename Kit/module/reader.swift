@@ -82,6 +82,7 @@ private struct ReaderState<T> {
     public var alignOffset: TimeInterval = 0
     
     public var callbackHandler: (T?) -> Void
+    public var observable = ObservableModel<T>()
     
     nonisolated private let module: ModuleType
     private var history: Bool
@@ -141,6 +142,7 @@ private struct ReaderState<T> {
                     DB.shared.insert(key: moduleKey, value: value, ts: self.history)
                     self.lastDBWrite = Date()
                 }
+                self.observable.value = value
             }
         }
     }

@@ -82,7 +82,9 @@ internal class Popup: PopupWrapper {
         let fanViews = self.list.values.compactMap { $0 as? FanView }
         guard !fanViews.isEmpty else { return }
         guard fanViews.allSatisfy({ $0.fan.mode.isAutomatic }) else { return }
-        SMCHelper.shared.resetFanControl()
+        Task {
+            await SMCHelper.shared.resetFanControl()
+        }
     }
     
     required init?(coder: NSCoder) {
@@ -564,7 +566,9 @@ internal class FanView: NSStackView {
         NotificationCenter.default.addObserver(self, selector: #selector(self.controlCallback), name: .toggleFanControl, object: nil)
         
         if let fanMode = self.fan.customMode, self.speedState && fanMode != FanMode.automatic {
-            SMCHelper.shared.setFanMode(fan.id, mode: fanMode.rawValue)
+            Task {
+                await SMCHelper.shared.setFanMode(fan.id, mode: fanMode.rawValue)
+            }
             self.modeButtons?.setMode(FanMode(rawValue: fanMode.rawValue) ?? .automatic)
             
             self.setSpeed(value: Int(self.speed), then: {
@@ -664,29 +668,35 @@ internal class FanView: NSStackView {
             if let fan = self?.fan, mode == .automatic || fan.mode != mode {
                 self?.fan.mode = mode
                 self?.fan.customMode = mode
-                SMCHelper.shared.setFanMode(fan.id, mode: mode.rawValue)
+                Task {
+                    await SMCHelper.shared.setFanMode(fan.id, mode: mode.rawValue)
+                }
             }
             self?.toggleControlView(mode == .forced)
         }
         buttons.off = { [weak self] in
             if let fan = self?.fan {
-                if self?.fan.mode != .forced {
-                    self?.fan.mode = .forced
-                    SMCHelper.shared.setFanMode(fan.id, mode: FanMode.forced.rawValue)
+                Task {
+                    if self?.fan.mode != .forced {
+                        self?.fan.mode = .forced
+                        await SMCHelper.shared.setFanMode(fan.id, mode: FanMode.forced.rawValue)
+                    }
+                    await SMCHelper.shared.setFanSpeed(fan.id, speed: 0)
+                    self?.fan.customSpeed = 0
                 }
-                SMCHelper.shared.setFanSpeed(fan.id, speed: 0)
-                self?.fan.customSpeed = 0
             }
             self?.toggleControlView(false)
         }
         buttons.turbo = { [weak self] in
             if let fan = self?.fan {
-                if self?.fan.mode != .forced {
-                    self?.fan.mode = .forced
-                    SMCHelper.shared.setFanMode(fan.id, mode: FanMode.forced.rawValue)
+                Task {
+                    if self?.fan.mode != .forced {
+                        self?.fan.mode = .forced
+                        await SMCHelper.shared.setFanMode(fan.id, mode: FanMode.forced.rawValue)
+                    }
+                    await SMCHelper.shared.setFanSpeed(fan.id, speed: Int(fan.maxSpeed))
+                    self?.fan.customSpeed = Int(fan.maxSpeed)
                 }
-                SMCHelper.shared.setFanSpeed(fan.id, speed: Int(fan.maxSpeed))
-                self?.fan.customSpeed = Int(fan.maxSpeed)
             }
             self?.toggleControlView(false)
         }
@@ -808,9 +818,7 @@ internal class FanView: NSStackView {
             if Task.isCancelled { return }
             
             let id = self.fan.id
-            await Task.detached(priority: .userInitiated) {
-                SMCHelper.shared.setFanSpeed(id, speed: value)
-            }.value
+            await SMCHelper.shared.setFanSpeed(id, speed: value)
             
             await MainActor.run {
                 then()
@@ -868,7 +876,9 @@ internal class FanView: NSStackView {
                 Task {
                     try? await Task.sleep(nanoseconds: 3 * 1_000_000_000)
                     await MainActor.run {
-                        SMCHelper.shared.setFanMode(self.fan.id, mode: mode.rawValue)
+                        Task {
+                            await SMCHelper.shared.setFanMode(self.fan.id, mode: mode.rawValue)
+                        }
                         self.modeButtons?.setMode(mode)
                         if !mode.isAutomatic {
                             self.setSpeed(value: speed, then: {
@@ -898,7 +908,9 @@ internal class FanView: NSStackView {
         
         self.willSleepMode = mode
         self.willSleepSpeed = self.fan.customSpeed
-        SMCHelper.shared.setFanMode(fan.id, mode: FanMode.automatic.rawValue)
+        Task {
+            await SMCHelper.shared.setFanMode(fan.id, mode: FanMode.automatic.rawValue)
+        }
         self.modeButtons?.setMode(.automatic)
     }
     

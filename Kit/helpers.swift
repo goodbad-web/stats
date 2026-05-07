@@ -864,27 +864,46 @@ public class SMCHelper {
     
     private var connection: NSXPCConnection? = nil
     
-    public func setFanSpeed(_ id: Int, speed: Int) {
-        guard let helper = self.helper(nil) else { return }
-        helper.setFanSpeed(id: id, value: speed) { result in
-            if let result, !result.isEmpty {
-                NSLog("set fan speed: \(result)")
+    public func setFanSpeed(_ id: Int, speed: Int) async {
+        await withCheckedContinuation { continuation in
+            guard let helper = self.helper(nil) else {
+                continuation.resume()
+                return
+            }
+            helper.setFanSpeed(id: id, value: speed) { result in
+                if let result, !result.isEmpty {
+                    NSLog("set fan speed: \(result)")
+                }
+                continuation.resume()
             }
         }
     }
     
-    public func setFanMode(_ id: Int, mode: Int) {
-        guard let helper = self.helper(nil) else { return }
-        helper.setFanMode(id: id, mode: mode) { result in
-            if let result, !result.isEmpty {
-                NSLog("set fan mode: \(result)")
+    public func setFanMode(_ id: Int, mode: Int) async {
+        await withCheckedContinuation { continuation in
+            guard let helper = self.helper(nil) else {
+                continuation.resume()
+                return
+            }
+            helper.setFanMode(id: id, mode: mode) { result in
+                if let result, !result.isEmpty {
+                    NSLog("set fan mode: \(result)")
+                }
+                continuation.resume()
             }
         }
     }
     
-    public func resetFanControl() {
-        guard let helper = self.helper(nil) else { return }
-        helper.resetFanControl { _ in }
+    public func resetFanControl() async {
+        await withCheckedContinuation { continuation in
+            guard let helper = self.helper(nil) else {
+                continuation.resume()
+                return
+            }
+            helper.resetFanControl { _ in
+                continuation.resume()
+            }
+        }
     }
     
     public func isActive() -> Bool {

@@ -10,8 +10,15 @@
 //
 
 import Cocoa
-@preconcurrency import Kit
+import Kit
 import os
+import IOKit.pwr_mgt
+
+@_silgen_name("IOPMCopyCPUProcessorLimits")
+private func IOPMCopyCPUProcessorLimits(_ service: io_connect_t, _ limits: UnsafeMutablePointer<Unmanaged<CFDictionary>?>) -> kern_return_t
+
+@_silgen_name("IOPMFindPowerManagement")
+private func IOPMFindPowerManagement(_ masterPort: mach_port_t, _ service: UnsafeMutablePointer<io_connect_t>) -> kern_return_t
 
 private struct LoadState {
     var cpuInfo: processor_info_array_t?
@@ -535,20 +542,21 @@ public class LimitReader: Reader<CPU_Limit>, @unchecked Sendable {
         Task { @MainActor in
             let limit = await Task.detached(priority: .background) {
                 var res = CPU_Limit()
-                let output = syncShell("/usr/bin/pmset -g therm")
-                var lines = output.split(separator: "\n")
-                if lines.count > 3 {
-                    lines.removeFirst(3)
-                    lines.forEach { (line: Substring) in
-                        guard let value = Int(line.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) else { return }
-                        if line.contains("Scheduler") {
-                            res.scheduler = value
-                        } else if line.contains("CPUs") {
-                            res.cpus = value
-                        } else if line.contains("Speed") {
-                            res.speed = value
+                var service: io_connect_t = 0
+                if IOPMFindPowerManagement(kIOMainPortDefault, &service) == KERN_SUCCESS {
+                    var dict: Unmanaged<CFDictionary>?
+                    if IOPMCopyCPUProcessorLimits(service, &dict) == KERN_SUCCESS, let limits = dict?.takeRetainedValue() as? [String: Any] {
+                        if let scheduler = limits["CPU_Scheduler_Limit"] as? Int {
+                            res.scheduler = scheduler
+                        }
+                        if let cpus = limits["CPU_Available_CPUs"] as? Int {
+                            res.cpus = cpus
+                        }
+                        if let speed = limits["CPU_Speed_Limit"] as? Int {
+                            res.speed = speed
                         }
                     }
+                    IOServiceClose(service)
                 }
                 return res
             }.value
@@ -570,16 +578,13 @@ public class AverageLoadReader: Reader<CPU_AverageLoad>, @unchecked Sendable {
     nonisolated public override func read() {
         Task { @MainActor in
             let result = await Task.detached(priority: .background) {
-                let output = syncShell("/usr/bin/uptime")
-                guard let line = output.split(separator: "\n").first else { return nil as [Double]? }
-                let str = String(line).trimmingCharacters(in: .whitespaces)
-                let strFind = str.findAndCrop(pattern: "(\\d+(.|,)\\d+ *){3}$")
-                let strArr = strFind.cropped.split(separator: " ")
-                guard strArr.count == 3 else { return nil }
-                return strArr.compactMap { Double($0.replacingOccurrences(of: ",", with: ".")) }
+                var load = [Double](repeating: 0, count: 3)
+                getloadavg(&load, 3)
+                return load
             }.value
             
-            if let list = result, list.count == 3 {
+            if result.count == 3 {
+                let list = result
                 let load = CPU_AverageLoad(load1: list[0], load5: list[1], load15: list[2])
                 if let old = self.value, old == load {
                     return

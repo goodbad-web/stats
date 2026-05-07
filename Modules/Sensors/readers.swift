@@ -288,7 +288,9 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                 let hottest = updatedSensors.filter{ $0.type == .temperature && ($0.group == .CPU || $0.group == .GPU || $0.group == .hid) }.map{ $0.value }.max() ?? 0
                 if hottest > 95 {
                     if updatedSensors.filter({ $0 is Fan }).contains(where: { ($0 as? Fan)?.mode == .forced }) {
-                        SMCHelper.shared.resetFanControl()
+                        Task {
+                            await SMCHelper.shared.resetFanControl()
+                        }
                         NotificationCenter.default.post(name: .fanControlOverride, object: nil, userInfo: ["reason": "high_temp"])
                     }
                 }
@@ -297,7 +299,9 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
             let batteryAutoState = Store.shared.bool(key: "Sensors_fanBatteryAuto", defaultValue: false)
             if batteryAutoState && !self.isAC() {
                 if updatedSensors.filter({ $0 is Fan }).contains(where: { ($0 as? Fan)?.mode == .forced }) {
-                    SMCHelper.shared.resetFanControl()
+                    Task {
+                        await SMCHelper.shared.resetFanControl()
+                    }
                     NotificationCenter.default.post(name: .fanControlOverride, object: nil, userInfo: ["reason": "battery"])
                 }
             }
