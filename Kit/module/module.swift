@@ -23,12 +23,14 @@ public struct module_c {
     public var hasPreview: Bool { self.previewConfig["enabled"] as? Bool ?? false }
     
     init(in path: String) {
-        let dict: NSDictionary = NSDictionary(contentsOfFile: path)!
+        guard let dict = NSDictionary(contentsOfFile: path) else {
+            fatalError("failed to initialize module: config.plist is missing or invalid")
+        }
         
         if let name = dict["Name"] as? String {
             self.name = name
         } else {
-            fatalError("failed to initialize module, name is missing")
+            fatalError("failed to initialize module: name is missing in config.plist")
         }
         
         if let state = dict["State"] as? Bool {
@@ -47,12 +49,12 @@ public struct module_c {
             
             for widgetName in widgetsDict.allKeys {
                 if let widget = widget_t(rawValue: widgetName as! String) {
-                    let widgetDict = widgetsDict[widgetName as! String] as! NSDictionary
-                    if widgetDict["Default"] as! Bool {
+                    let widgetDict = widgetsDict[widgetName as! String] as? NSDictionary
+                    if widgetDict?["Default"] as? Bool == true {
                         self.defaultWidget = widget
                     }
                     var order = 0
-                    if let o = widgetDict["Order"] as? Int {
+                    if let o = widgetDict?["Order"] as? Int {
                         order = o
                     }
                     
@@ -88,7 +90,12 @@ public struct module_c {
         get { Store.shared.int(key: "\(self.name)_position", defaultValue: 0) }
         set { Store.shared.set(key: "\(self.name)_position", value: newValue) }
     }
-    public var userDefaults: UserDefaults? = UserDefaults(suiteName: "\(Bundle.main.object(forInfoDictionaryKey: "TeamId") as! String).eu.exelban.Stats.widgets")
+    public var userDefaults: UserDefaults? = {
+        guard let teamId = Bundle.main.object(forInfoDictionaryKey: "TeamId") as? String else {
+            return nil
+        }
+        return UserDefaults(suiteName: "\(teamId).eu.exelban.Stats.widgets")
+    }()
     
     public var popupKeyboardShortcut: [UInt16] { self.popupView?.keyboardShortcut ?? [] }
     
@@ -118,7 +125,11 @@ public struct module_c {
     ) {
         self.moduleType = moduleType
         self.portal = portal
-        self.config = module_c(in: Bundle(for: type(of: self)).path(forResource: "config", ofType: "plist")!)
+        
+        guard let path = Bundle(for: type(of: self)).path(forResource: "config", ofType: "plist") else {
+             fatalError("failed to initialize module: config.plist not found in bundle")
+        }
+        self.config = module_c(in: path)
         
         self.log = NextLog.shared.copy(category: self.config.name)
         self.settingsView = settings

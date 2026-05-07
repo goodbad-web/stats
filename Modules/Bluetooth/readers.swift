@@ -13,6 +13,7 @@ import Foundation
 @preconcurrency import Kit
 import CoreBluetooth
 import IOBluetooth
+import os
 
 private struct bleDevice: Sendable {
     var name: String?
@@ -42,12 +43,19 @@ internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBP
     static let batteryServiceUUID = CBUUID(string: "0x180F")
     static let batteryCharacteristicsUUID = CBUUID(string: "0x2A19")
     
+    private let readLock = OSAllocatedUnfairLock(initialState: false)
+    
     @MainActor public override init(_ module: ModuleType, popup: Bool = false, preview: Bool = false, history: Bool = false, callback: @escaping ([BLEDevice]?) -> Void = {_ in }) {
         super.init(module, popup: popup, preview: preview, history: history, callback: callback)
+        self.defaultInterval = 30
         self.manager = CBCentralManager(delegate: self, queue: nil)
     }
     
     nonisolated public override func read() {
+        let isReading = self.readLock.withLock { $0 }
+        guard !isReading else { return }
+        self.readLock.withLock { $0 = true }
+        
         Task { @MainActor in
             let (_, SPB, list, pmsetLevels, pairedDevices) = await Task.detached(priority: .background) {
                 let hid = self.HIDDevices()
@@ -194,6 +202,7 @@ internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBP
             }
             
             self.callback(self.devices.filter({ $0.RSSI != nil }))
+            self.readLock.withLock { $0 = false }
         }
     }
     
@@ -215,8 +224,8 @@ internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBP
                 address = addr
             } else if let addr = d.object(forKey: "SerialNumber") as? String, addr != "" {
                 address = addr
-            } else if let bleAddr = d.object(forKey: "BD_ADDR") as? Data, let addr = String(data: bleAddr, encoding: .utf8), addr != "" {
-                address = addr
+            } else if let bleAddr = d.object(forKey: "BD_ADDR") as? Data {
+                address = bleAddr.map { String(format: "%02hhx", $0) }.joined(separator: "-")
             }
             
             let vendorId = d.object(forKey: "VendorID") as? Int

@@ -116,9 +116,14 @@ internal struct SMCVal_t {
 
 extension FourCharCode {
     init(fromString str: String) {
-        precondition(str.count == 4)
+        var string = str
+        if string.count < 4 {
+            string = string.padding(toLength: 4, withPad: " ", startingAt: 0)
+        } else if string.count > 4 {
+            string = String(string.prefix(4))
+        }
         
-        self = str.utf8.reduce(0) { sum, character in
+        self = string.utf8.reduce(0) { sum, character in
             return sum << 8 | UInt32(character)
         }
     }
