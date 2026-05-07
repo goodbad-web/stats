@@ -282,7 +282,7 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
         
         var total: Int64 = 0
         for i in 0..<items.count {
-            let item = unsafeBitCast(items[i], to: CFDictionary.self)
+            let item = items[i] as! CFDictionary
             guard let group = IOReportChannelGetGroup(item)?.takeUnretainedValue() as? String,
                   group.hasPrefix("DCP"),
                   let sub = IOReportChannelGetSubGroup(item)?.takeUnretainedValue() as? String,
@@ -334,7 +334,7 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
         var found = false
         
         for i in 0..<items.count {
-            let item = unsafeBitCast(items[i], to: CFDictionary.self)
+            let item = items[i] as! CFDictionary
             
             guard let group = IOReportChannelGetGroup(item)?.takeUnretainedValue() as? String,
                   group == "Energy Model",

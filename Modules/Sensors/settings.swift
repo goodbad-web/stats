@@ -74,8 +74,9 @@ struct SensorsSettingsView: View {
     @AppStorage("Sensors_fanValue") private var fanValueState: String = "percentage"
     @AppStorage("Sensors_sensor") private var selectedSensor: String = "Average System Total"
     @AppStorage("Sensors_fanSafety") private var fanSafetyState: Bool = true
-    @AppStorage("Sensors_stack_sensor") private var selectedStackSensor: String = "All"
-    @AppStorage("Sensors_bar_chart_sensor") private var selectedBarChartSensor: String = "Fans"
+    @AppStorage("Sensors_stack_line1") private var selectedStackLine1: String = ""
+    @AppStorage("Sensors_stack_line2") private var selectedStackLine2: String = ""
+    @AppStorage("Sensors_barChart_sensors") private var selectedBarChartSensors: String = "Fans,Temp"
     @AppStorage("Sensors_fanBatteryAuto") private var fanBatteryAutoState: Bool = false
     
     var allSensors: [Sensor_p] = []
@@ -94,14 +95,27 @@ struct SensorsSettingsView: View {
         return allSensors.filter { $0.group != .unknown }
     }
     
-    var sensorTypes: [SensorType] {
-        var types: [SensorType] = []
-        sensors.forEach { s in
-            if !types.contains(s.type) {
-                types.append(s.type)
-            }
+    private var groupedSensors: [SensorType: [Sensor_p]] {
+        Dictionary(grouping: sensors, by: { $0.type })
+    }
+    
+    private var sortedSensorTypes: [SensorType] {
+        groupedSensors.keys.sorted { $0.rawValue < $1.rawValue }
+    }
+    
+    private func isBarChartSensorSelected(_ key: String) -> Bool {
+        selectedBarChartSensors.split(separator: ",").contains(String.SubSequence(key))
+    }
+    
+    private func toggleBarChartSensor(_ key: String) {
+        var keys = selectedBarChartSensors.split(separator: ",").map { String($0) }
+        if let index = keys.firstIndex(of: key) {
+            keys.remove(at: index)
+        } else {
+            keys.append(key)
         }
-        return types
+        selectedBarChartSensors = keys.joined(separator: ",")
+        onCallback()
     }
     
     var body: some View {
@@ -152,9 +166,13 @@ struct SensorsSettingsView: View {
                 }
                 
                 if widgets.contains(where: { $0 == .mini }) {
-                    Picker(localizedString("Sensor to show"), selection: $selectedSensor) {
-                        ForEach(sensors, id: \.key) { s in
-                            Text("\(localizedString(s.type.rawValue)) - \(localizedString(s.name))").tag(s.key)
+                    Picker("\(localizedString("Mini")): \(localizedString("Sensor to show"))", selection: $selectedSensor) {
+                        ForEach(sortedSensorTypes, id: \.self) { type in
+                            Section(header: Text(localizedString(type.rawValue))) {
+                                ForEach(groupedSensors[type] ?? [], id: \.key) { s in
+                                    Text(localizedString(s.name)).tag(s.key)
+                                }
+                            }
                         }
                     }
                     .onChange(of: selectedSensor) { _, newValue in
@@ -163,28 +181,44 @@ struct SensorsSettingsView: View {
                 }
                 
                 if widgets.contains(where: { $0 == .stack }) {
-                    Picker("\(localizedString("Stack")): \(localizedString("Sensor to show"))", selection: $selectedStackSensor) {
-                        Text(localizedString("All")).tag("All")
-                        ForEach(sensorTypes, id: \.self) { type in
-                            Text(localizedString(type.rawValue)).tag(type.rawValue)
+                    Section(header: Text(localizedString("Stack"))) {
+                        Picker(localizedString("Line 1"), selection: $selectedStackLine1) {
+                            Text(localizedString("None")).tag("")
+                            ForEach(sortedSensorTypes, id: \.self) { type in
+                                Section(header: Text(localizedString(type.rawValue))) {
+                                    ForEach(groupedSensors[type] ?? [], id: \.key) { s in
+                                        Text(localizedString(s.name)).tag(s.key)
+                                    }
+                                }
+                            }
                         }
-                    }
-                    .onChange(of: selectedStackSensor) { _, _ in
-                        onCallback()
+                        .onChange(of: selectedStackLine1) { _, _ in onCallback() }
+                        
+                        Picker(localizedString("Line 2"), selection: $selectedStackLine2) {
+                            Text(localizedString("None")).tag("")
+                            ForEach(sortedSensorTypes, id: \.self) { type in
+                                Section(header: Text(localizedString(type.rawValue))) {
+                                    ForEach(groupedSensors[type] ?? [], id: \.key) { s in
+                                        Text(localizedString(s.name)).tag(s.key)
+                                    }
+                                }
+                            }
+                        }
+                        .onChange(of: selectedStackLine2) { _, _ in onCallback() }
                     }
                 }
                 
                 if widgets.contains(where: { $0 == .barChart }) {
-                    Picker("\(localizedString("Bar chart")): \(localizedString("Sensor to show"))", selection: $selectedBarChartSensor) {
-                        ForEach(["Fans", "Temp"], id: \.self) {
-                            Text(localizedString($0)).tag($0)
-                        }
-                    }
-                    .onChange(of: selectedBarChartSensor) { _, _ in onCallback() }
+                    BarChartSettings(
+                        sortedSensorTypes: sortedSensorTypes,
+                        groupedSensors: groupedSensors,
+                        isBarChartSensorSelected: isBarChartSensorSelected,
+                        toggleBarChartSensor: toggleBarChartSensor
+                    )
                 }
             }
             
-            ForEach(sensorTypes, id: \.self) { type in
+            ForEach(sortedSensorTypes, id: \.self) { type in
                 Section(header: Text(localizedString(type.rawValue))) {
                     ForEach(sensors.filter { $0.type == type }, id: \.key) { sensor in
                         SensorToggleRow(sensor: sensor, onCallback: onCallback)
@@ -194,6 +228,28 @@ struct SensorsSettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+}
+
+struct BarChartSettings: View {
+    let sortedSensorTypes: [SensorType]
+    let groupedSensors: [SensorType: [Sensor_p]]
+    let isBarChartSensorSelected: (String) -> Bool
+    let toggleBarChartSensor: (String) -> Void
+    
+    var body: some View {
+        Section(header: Text(localizedString("Bar chart"))) {
+            ForEach(sortedSensorTypes, id: \.self) { type in
+                DisclosureGroup(localizedString(type.rawValue)) {
+                    ForEach(groupedSensors[type] ?? [], id: \.key) { s in
+                        Toggle(localizedString(s.name), isOn: Binding(
+                            get: { isBarChartSensorSelected(s.key) },
+                            set: { _ in toggleBarChartSensor(s.key) }
+                        ))
+                    }
+                }
+            }
+        }
     }
 }
 

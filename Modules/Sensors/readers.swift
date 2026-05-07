@@ -589,9 +589,8 @@ extension SensorsReader {
         let prevRAM = self.powers.RAM
         let prevPCI = self.powers.PCI
         
-        for i in 0..<CFArrayGetCount(items) {
-            let dict = CFArrayGetValueAtIndex(items, i)
-            let item = unsafeBitCast(dict, to: CFDictionary.self)
+        for i in 0..<items.count {
+            let item = items[i] as! CFDictionary
             
             guard let group = IOReportChannelGetGroup(item)?.takeUnretainedValue() as? String,
                   group == "Energy Model",

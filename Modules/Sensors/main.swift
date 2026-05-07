@@ -23,11 +23,14 @@ public class Sensors: Module {
         FanValue(rawValue: Store.shared.string(key: "\(self.config.name)_fanValue", defaultValue: "percentage")) ?? .percentage
     }
     
-    private var selectedStackSensor: String {
-        Store.shared.string(key: "Sensors_stack_sensor", defaultValue: "All")
+    private var selectedStackLine1: String {
+        Store.shared.string(key: "Sensors_stack_line1", defaultValue: "")
     }
-    private var selectedBarChartSensor: String {
-        Store.shared.string(key: "Sensors_bar_chart_sensor", defaultValue: "Fans")
+    private var selectedStackLine2: String {
+        Store.shared.string(key: "Sensors_stack_line2", defaultValue: "")
+    }
+    private var selectedBarChartSensors: [String] {
+        Store.shared.string(key: "Sensors_barChart_sensors", defaultValue: "Fans,Temp").split(separator: ",").map { String($0) }
     }
     private var selectedSensor: String
     
@@ -152,27 +155,21 @@ public class Sensors: Module {
                 }
             case let widget as StackWidget:
                 var list: [Stack_t] = []
-                let filter = self.selectedStackSensor
                 
-                value.sensors.forEach { (s: Sensor_p) in
-                    if s.state && (filter == "All" || s.type.rawValue == filter) {
-                        var value = s.formattedMiniValue
-                        if let f = s as? Fan {
-                            if self.fanValueState == .percentage {
-                                value = "\(f.percentage)%"
-                            }
-                        }
-                        list.append(Stack_t(key: s.key, value: value, label: localizedString(s.name)))
-                    }
+                if let s = value.sensors.first(where: { $0.key == self.selectedStackLine1 }) {
+                    list.append(self.getStackItem(s))
+                }
+                if let s = value.sensors.first(where: { $0.key == self.selectedStackLine2 }) {
+                    list.append(self.getStackItem(s))
                 }
                 
                 widget.setValues(list)
             case let widget as BarChart:
                 var flatList: [[ColorValue]] = []
-                let filter = self.selectedBarChartSensor
+                let selected = self.selectedBarChartSensors
                 
                 value.sensors.forEach { (s: Sensor_p) in
-                    if s.state && s.type.rawValue == filter {
+                    if s.state && (selected.contains(s.type.rawValue) || selected.contains(s.key)) {
                         if let f = s as? Fan {
                             flatList.append([ColorValue(((f.value*100)/f.maxSpeed)/100)])
                         } else {
@@ -190,5 +187,15 @@ public class Sensors: Module {
             default: break
             }
         }
+    }
+    
+    private func getStackItem(_ s: Sensor_p) -> Stack_t {
+        var value = s.formattedMiniValue
+        if let f = s as? Fan {
+            if self.fanValueState == .percentage {
+                value = "\(f.percentage)%"
+            }
+        }
+        return Stack_t(key: s.key, value: value, label: localizedString(s.name))
     }
 }
