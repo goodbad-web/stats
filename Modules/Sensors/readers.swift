@@ -140,8 +140,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                     if !localUnknownSensorsState && sensors[i].group == .unknown { continue }
                     
                     var newValue = SMC.shared.getValue(sensors[i].key) ?? 0
-                    if sensors[i].type == .temperature && sensors[i].group == .CPU &&
-                        (newValue < 10 || newValue > 120) {
+                    if sensors[i].type == .temperature && (newValue < 0 || newValue > 125) {
                         newValue = sensors[i].value
                     }
                     sensors[i].value = newValue

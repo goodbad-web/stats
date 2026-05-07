@@ -259,28 +259,8 @@ internal class MonochromeColor {
 
 public typealias colorZones = (orange: Double, red: Double)
 
-public extension Notification.Name {
-    static let toggleSettings = Notification.Name("toggleSettings")
-    static let toggleModule = Notification.Name("toggleModule")
-    static let togglePopup = Notification.Name("togglePopup")
-    static let toggleWidget = Notification.Name("toggleWidget")
-    static let togglePreview = Notification.Name("togglePreview")
-    static let openModuleSettings = Notification.Name("openModuleSettings")
-    static let clickInSettings = Notification.Name("clickInSettings")
-    static let refreshPublicIP = Notification.Name("refreshPublicIP")
-    static let resetTotalNetworkUsage = Notification.Name("resetTotalNetworkUsage")
-    static let syncFansControl = Notification.Name("syncFansControl")
-    static let checkFanModes = Notification.Name("checkFanModes")
-    static let fanHelperState = Notification.Name("fanHelperState")
-    static let toggleOneView = Notification.Name("toggleOneView")
-    static let widgetRearrange = Notification.Name("widgetRearrange")
-    static let moduleRearrange = Notification.Name("moduleRearrange")
-    static let pause = Notification.Name("pause")
-    static let toggleFanControl = Notification.Name("toggleFanControl")
-    static let combinedModulesPopup = Notification.Name("combinedModulesPopup")
-    static let remoteLoginSuccess = Notification.Name("remoteLoginSuccess")
-    static let remoteState = Notification.Name("remoteState")
     static let openWindow = Notification.Name("openWindow")
+    static let fanControlOverride = Notification.Name("fanControlOverride")
 }
 
 public var isARM: Bool {
@@ -410,6 +390,18 @@ public enum RAMPressure: String, Codable {
         case .warning:
             return NSColor.systemYellow
         case .critical:
+            if batteryAutoState && !self.isAC() {
+                if updatedSensors.filter({ $0 is Fan }).contains(where: { ($0 as? Fan)?.mode == .forced }) {
+                    SMCHelper.shared.resetFanControl()
+                    NotificationCenter.default.post(name: .fanControlOverride, object: nil, userInfo: ["reason": "battery"])
+                }
+            }
+            if hottest > 95 {
+                if updatedSensors.filter({ $0 is Fan }).contains(where: { ($0 as? Fan)?.mode == .forced }) {
+                    SMCHelper.shared.resetFanControl()
+                    NotificationCenter.default.post(name: .fanControlOverride, object: nil, userInfo: ["reason": "high_temp"])
+                }
+            }
             return NSColor.systemRed
         }
     }
