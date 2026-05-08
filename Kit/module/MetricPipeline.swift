@@ -53,51 +53,42 @@ public protocol MetricStore {
 public final class MetricPipeline<Value: Codable & Sendable>: @unchecked Sendable {
     public typealias Subscriber = @Sendable (MetricSnapshot<Value>) -> Void
     
-    private let stateLock = NSRecursiveLock()
-    private nonisolated(unsafe) var state = PipelineState<Value>()
+    private let stateLock = OSAllocatedUnfairLock(initialState: PipelineState<Value>())
     
     public init() {}
     
     @discardableResult
     public func subscribe(_ subscriber: @escaping Subscriber) -> UUID {
         let id = UUID()
-        self.stateLock.lock()
-        defer { self.stateLock.unlock() }
-        self.state.subscribers[id] = subscriber
+        self.stateLock.withLock { $0.subscribers[id] = subscriber }
         return id
     }
     
     public func unsubscribe(_ id: UUID) {
-        self.stateLock.lock()
-        defer { self.stateLock.unlock() }
-        self.state.subscribers.removeValue(forKey: id)
+        self.stateLock.withLock { $0.subscribers.removeValue(forKey: id) }
     }
     
     public func publish(_ snapshot: MetricSnapshot<Value>, removeDuplicates: Bool = false) {
-        self.stateLock.lock()
-        if self.state.isPublishing {
-            self.stateLock.unlock()
-            return
-        }
-        self.state.isPublishing = true
-        
-        let subscribers: [Subscriber] = {
+        let subscribers: [Subscriber] = self.stateLock.withLock { state in
+            if state.isPublishing {
+                return []
+            }
+            state.isPublishing = true
+            
             if removeDuplicates,
                let data = try? JSONEncoder().encode(snapshot.value),
-               self.state.lastData == data {
+               state.lastData == data {
+                state.isPublishing = false
                 return []
             } else if removeDuplicates {
-                self.state.lastData = try? JSONEncoder().encode(snapshot.value)
+                state.lastData = try? JSONEncoder().encode(snapshot.value)
             }
-            return Array(self.state.subscribers.values)
-        }()
-        self.stateLock.unlock()
+            return Array(state.subscribers.values)
+        }
         
+        guard !subscribers.isEmpty else { return }
         subscribers.forEach { $0(snapshot) }
-        
-        self.stateLock.lock()
-        self.state.isPublishing = false
-        self.stateLock.unlock()
+        self.stateLock.withLock { $0.isPublishing = false }
     }
 }
 
@@ -144,21 +135,16 @@ public final class RemoteMetricPublisher: @unchecked Sendable {
 }
 
 public final class MetricCache<Value: Codable & Sendable>: @unchecked Sendable {
-    private let stateLock = NSRecursiveLock()
-    private nonisolated(unsafe) var state: MetricSnapshot<Value>? = nil
+    private let stateLock = OSAllocatedUnfairLock(initialState: MetricSnapshot<Value>?(nil))
     
     public init() {}
     
     public var latest: MetricSnapshot<Value>? {
-        self.stateLock.lock()
-        defer { self.stateLock.unlock() }
-        return self.state
+        self.stateLock.withLock { $0 }
     }
     
     public func update(_ snapshot: MetricSnapshot<Value>) {
-        self.stateLock.lock()
-        defer { self.stateLock.unlock() }
-        self.state = snapshot
+        self.stateLock.withLock { $0 = snapshot }
     }
 }
 

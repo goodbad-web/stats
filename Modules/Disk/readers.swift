@@ -405,7 +405,11 @@ private actor DiskReaderWorker {
 }
 
 internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
-    internal nonisolated(unsafe) var list: Disks = Disks()
+    private let listLock = OSAllocatedUnfairLock(initialState: Disks())
+    internal var list: Disks {
+        get { self.listLock.withLock { $0 } }
+        set { self.listLock.withLock { $0 = newValue } }
+    }
     private let worker = DiskReaderWorker()
     
     private nonisolated var SMART: Bool {
@@ -452,7 +456,11 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
 }
 
 internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
-    internal nonisolated(unsafe) var list: Disks = Disks()
+    private let listLock = OSAllocatedUnfairLock(initialState: Disks())
+    internal var list: Disks {
+        get { self.listLock.withLock { $0 } }
+        set { self.listLock.withLock { $0 = newValue } }
+    }
     private let worker = DiskReaderWorker()
     
     @MainActor override func setup() {

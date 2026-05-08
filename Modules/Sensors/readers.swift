@@ -685,7 +685,11 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
         case paused
     }
 
-    internal nonisolated(unsafe) var list: Sensors_List = Sensors_List()
+    private let listLock = OSAllocatedUnfairLock(initialState: Sensors_List())
+    internal var list: Sensors_List {
+        get { self.listLock.withLock { $0 } }
+        set { self.listLock.withLock { $0 = newValue } }
+    }
     private let worker = SensorsReaderWorker()
 
     private nonisolated var hidState: Bool {

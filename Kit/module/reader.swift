@@ -63,84 +63,32 @@ private struct ReaderState<T> {
         NextLog.shared.copy(category: "\(String(describing: self))")
     }
     
-    private let stateLock = NSRecursiveLock()
-    private nonisolated(unsafe) var state = ReaderState<T>()
+    private let stateLock = OSAllocatedUnfairLock(initialState: ReaderState<T>())
     
     nonisolated public var value: T? {
-        get {
-            self.stateLock.lock()
-            defer { self.stateLock.unlock() }
-            return self.state.value
-        }
-        set {
-            self.stateLock.lock()
-            defer { self.stateLock.unlock() }
-            self.state.value = newValue
-        }
+        get { self.stateLock.withLock { $0.value } }
+        set { self.stateLock.withLock { $0.value = newValue } }
     }
     nonisolated public var active: Bool {
-        get {
-            self.stateLock.lock()
-            defer { self.stateLock.unlock() }
-            return self.state.active
-        }
-        set {
-            self.stateLock.lock()
-            defer { self.stateLock.unlock() }
-            self.state.active = newValue
-        }
+        get { self.stateLock.withLock { $0.active } }
+        set { self.stateLock.withLock { $0.active = newValue } }
     }
     nonisolated private var locked: Bool {
-        get {
-            self.stateLock.lock()
-            defer { self.stateLock.unlock() }
-            return self.state.locked
-        }
-        set {
-            self.stateLock.lock()
-            defer { self.stateLock.unlock() }
-            self.state.locked = newValue
-        }
+        get { self.stateLock.withLock { $0.locked } }
+        set { self.stateLock.withLock { $0.locked = newValue } }
     }
-    
     nonisolated private var lastDBWrite: Date? {
-        get {
-            self.stateLock.lock()
-            defer { self.stateLock.unlock() }
-            return self.state.lastDBWrite
-        }
-        set {
-            self.stateLock.lock()
-            defer { self.stateLock.unlock() }
-            self.state.lastDBWrite = newValue
-        }
+        get { self.stateLock.withLock { $0.lastDBWrite } }
+        set { self.stateLock.withLock { $0.lastDBWrite = newValue } }
     }
-    
     nonisolated public let name: String
-    
     nonisolated public var interval: Double? {
-        get {
-            self.stateLock.lock()
-            defer { self.stateLock.unlock() }
-            return self.state.interval
-        }
-        set {
-            self.stateLock.lock()
-            defer { self.stateLock.unlock() }
-            self.state.interval = newValue
-        }
+        get { self.stateLock.withLock { $0.interval } }
+        set { self.stateLock.withLock { $0.interval = newValue } }
     }
     nonisolated public var defaultInterval: Int {
-        get {
-            self.stateLock.lock()
-            defer { self.stateLock.unlock() }
-            return self.state.defaultInterval
-        }
-        set {
-            self.stateLock.lock()
-            defer { self.stateLock.unlock() }
-            self.state.defaultInterval = newValue
-        }
+        get { self.stateLock.withLock { $0.defaultInterval } }
+        set { self.stateLock.withLock { $0.defaultInterval = newValue } }
     }
     public var optional: Bool = false
     public var popup: Bool = false
@@ -184,9 +132,7 @@ private struct ReaderState<T> {
         self.configureMetricPipeline()
         self.metricStore.setup(T.self, id: self.metricID)
         if let lastValue = self.metricStore.latest(T.self, id: self.metricID) {
-            self.stateLock.lock()
-            self.state.value = lastValue
-            self.stateLock.unlock()
+            self.stateLock.withLock { $0.value = lastValue }
             
             Task { @MainActor in
                 callback(lastValue)

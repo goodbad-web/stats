@@ -21,8 +21,7 @@ private final class RepeaterBucket {
     private let interval: Int
     private let queue: DispatchQueue
     private var timer: DispatchSourceTimer?
-    private let callbacksLock = NSRecursiveLock()
-    private nonisolated(unsafe) var callbacks: [UUID: () -> Void] = [:]
+    private let callbacksLock = OSAllocatedUnfairLock(initialState: [UUID: () -> Void]())
     
     init(interval: Int) {
         self.interval = interval
@@ -30,25 +29,21 @@ private final class RepeaterBucket {
     }
     
     var isEmpty: Bool {
-        self.callbacksLock.lock()
-        defer { self.callbacksLock.unlock() }
-        return self.callbacks.isEmpty
+        self.callbacksLock.withLock { $0.isEmpty }
     }
     
     func add(id: UUID, callback: @escaping () -> Void) {
-        self.callbacksLock.lock()
-        self.callbacks[id] = callback
-        self.callbacksLock.unlock()
+        self.callbacksLock.withLock { $0[id] = callback }
         if self.timer == nil {
             self.startTimer()
         }
     }
     
     func remove(id: UUID) {
-        self.callbacksLock.lock()
-        self.callbacks.removeValue(forKey: id)
-        let isEmpty = self.callbacks.isEmpty
-        self.callbacksLock.unlock()
+        let isEmpty = self.callbacksLock.withLock { callbacks in
+            callbacks.removeValue(forKey: id)
+            return callbacks.isEmpty
+        }
         if isEmpty {
             self.timer?.cancel()
             self.timer = nil
@@ -65,9 +60,7 @@ private final class RepeaterBucket {
         )
         timer.setEventHandler { [weak self] in
             guard let self else { return }
-            self.callbacksLock.lock()
-            let list = Array(self.callbacks.values)
-            self.callbacksLock.unlock()
+            let list = self.callbacksLock.withLock { Array($0.values) }
             list.forEach { $0() }
         }
         timer.resume()
@@ -78,24 +71,24 @@ private final class RepeaterBucket {
 private final class RepeaterScheduler {
     static let shared = RepeaterScheduler()
     
-    private let lock = NSRecursiveLock()
-    private nonisolated(unsafe) var buckets: [Int: RepeaterBucket] = [:]
+    private let lock = OSAllocatedUnfairLock(initialState: [Int: RepeaterBucket]())
     
     func add(id: UUID, interval: Int, callback: @escaping () -> Void) {
-        self.lock.lock()
-        defer { self.lock.unlock() }
-        let bucket = self.buckets[interval] ?? RepeaterBucket(interval: interval)
+        let bucket = self.lock.withLock { lock in
+            let b = lock[interval] ?? RepeaterBucket(interval: interval)
+            lock[interval] = b
+            return b
+        }
         bucket.add(id: id, callback: callback)
-        self.buckets[interval] = bucket
     }
     
     func remove(id: UUID, interval: Int) {
-        self.lock.lock()
-        defer { self.lock.unlock() }
-        guard let bucket = self.buckets[interval] else { return }
-        bucket.remove(id: id)
-        if bucket.isEmpty {
-            self.buckets.removeValue(forKey: interval)
+        self.lock.withLock { lock in
+            guard let bucket = lock[interval] else { return }
+            bucket.remove(id: id)
+            if bucket.isEmpty {
+                lock.removeValue(forKey: interval)
+            }
         }
     }
 }

@@ -98,10 +98,10 @@ public struct drive: Codable, Equatable {
 }
 
 public class Disks: Codable, Equatable, RemoteType, @unchecked Sendable {
-    private nonisolated(unsafe) var _array: [drive] = []
+    private let lock = OSAllocatedUnfairLock(initialState: [drive]())
     public var array: [drive] {
-        get { self._array }
-        set { self._array = newValue }
+        get { self.lock.withLock { $0 } }
+        set { self.lock.withLock { $0 = newValue } }
     }
     
     enum CodingKeys: String, CodingKey {
@@ -121,78 +121,82 @@ public class Disks: Codable, Equatable, RemoteType, @unchecked Sendable {
     init() {}
     
     public var count: Int {
-        self._array.count
+        self.lock.withLock { $0.count }
     }
     
     public var isEmpty: Bool {
-        self._array.isEmpty
+        self.lock.withLock { $0.isEmpty }
     }
     
     public func first(where predicate: (drive) -> Bool) -> drive? {
-        return self.array.first(where: predicate)
+        return self.lock.withLock { $0.first(where: predicate) }
     }
     
     public func firstIndex(where predicate: (drive) -> Bool) -> Int? {
-        return self.array.firstIndex(where: predicate)
+        return self.lock.withLock { $0.firstIndex(where: predicate) }
     }
     
     public func map<ElementOfResult>(_ transform: (drive) -> ElementOfResult?) -> [ElementOfResult] {
-        return self.array.compactMap(transform)
+        return self.lock.withLock { $0.compactMap(transform) }
     }
     
     public func filter(where isIncluded: (drive) -> Bool) -> [drive] {
-        return self.array.filter(isIncluded)
+        return self.lock.withLock { $0.filter(isIncluded) }
     }
     
     public func reversed() -> [drive] {
-        return self.array.reversed()
+        return self.lock.withLock { $0.reversed() }
     }
     
     func forEach(_ body: (drive) -> Void) {
-        self.array.forEach(body)
+        self.lock.withLock { $0.forEach(body) }
     }
     
     public func append( _ element: drive) {
-        if !self.array.contains(where: {$0.BSDName == element.BSDName}) {
-            self.array.append(element)
+        self.lock.withLock { array in
+            if !array.contains(where: {$0.BSDName == element.BSDName}) {
+                array.append(element)
+            }
         }
     }
     
     public func remove(at index: Int) {
-        self.array.remove(at: index)
+        self.lock.withLock { $0.remove(at: index) }
     }
     
     public func sort() {
-        self.array.sort{ $1.removable }
+        self.lock.withLock { $0.sort{ $1.removable } }
     }
     
     func updateFreeSize(_ idx: Int, newValue: Int64) {
-        self.array[idx].free = newValue
+        self.lock.withLock { $0[idx].free = newValue }
     }
     
     func updateReadWrite(_ idx: Int, read: Int64, write: Int64) {
-        self.array[idx].activity.readBytes = read
-        self.array[idx].activity.writeBytes = write
+        self.lock.withLock {
+            $0[idx].activity.readBytes = read
+            $0[idx].activity.writeBytes = write
+        }
     }
     
     func updateRead(_ idx: Int, newValue: Int64) {
-        self.array[idx].activity.read = newValue
+        self.lock.withLock { $0[idx].activity.read = newValue }
     }
     
     func updateWrite(_ idx: Int, newValue: Int64) {
-        self.array[idx].activity.write = newValue
+        self.lock.withLock { $0[idx].activity.write = newValue }
     }
     
     func updateSMARTData(_ idx: Int, smart: smart_t?) {
-        self.array[idx].smart = smart
+        self.lock.withLock { $0[idx].smart = smart }
     }
     
     public func remote() -> Data? {
-        let arr = self.array.filter({ !$0.removable })
+        let arr = self.lock.withLock { $0.filter({ !$0.removable }) }
         var string = "\(arr.count),"
         for (i, v) in arr.enumerated() {
             string += v.remote()
-            if i != self.array.count {
+            if i != arr.count {
                 string += ","
             }
         }

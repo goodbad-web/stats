@@ -451,7 +451,10 @@ extension CWChannel {
 }
 
 internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked Sendable {
-    private nonisolated(unsafe) var reachability: Reachability = Reachability(start: true)
+    private let reachabilityLock = OSAllocatedUnfairLock(initialState: Reachability(start: true))
+    private var reachability: Reachability {
+        self.reachabilityLock.withLock { $0 }
+    }
     private let worker = NetworkUsageWorker()
 
     nonisolated private var primaryInterface: String {
@@ -626,21 +629,23 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
     nonisolated private var HTTPHost: String { Store.shared.string(key: "Net_HTTPHost", defaultValue: "https://google.com") }
     nonisolated private var connectivityMode: String { Store.shared.string(key: "Net_connectivityMode", defaultValue: "icmp") }
 
-    private nonisolated(unsafe) var lastHost: String = ""
-    private nonisolated(unsafe) var addr: Data? = nil
-    private nonisolated(unsafe) var prepareToken: UUID = UUID()
+    private struct ConnectivityState {
+        var lastHost: String = ""
+        var addr: Data? = nil
+        var prepareToken: UUID = UUID()
+        var socket: CFSocket? = nil
+        var socketSource: CFRunLoopSource? = nil
+        var wrapper: Network_Connectivity = Network_Connectivity(status: false)
+        var isPinging: Bool = false
+        var latency: Double? = nil
+        var previousLatency: Double? = nil
+        var jitter: Double? = nil
+        var start: DispatchTime? = nil
+        var timeoutTimer: Timer? = nil
+        var isReading: Bool = false
+    }
+    private let stateLock = OSAllocatedUnfairLock(initialState: ConnectivityState())
     private let timeout: TimeInterval = 5
-
-    private nonisolated(unsafe) var socket: CFSocket?
-    private nonisolated(unsafe) var socketSource: CFRunLoopSource?
-    private nonisolated(unsafe) var wrapper: Network_Connectivity = Network_Connectivity(status: false)
-
-    private nonisolated(unsafe) var isPinging: Bool = false
-    private nonisolated(unsafe) var latency: Double? = nil
-    private nonisolated(unsafe) var previousLatency: Double? = nil
-    private nonisolated(unsafe) var jitter: Double? = nil
-    private nonisolated(unsafe) var start: DispatchTime? = nil
-    private nonisolated(unsafe) var timeoutTimer: Timer?
 
     private struct ICMPHeader {
         var type: UInt8; var code: UInt8; var checksum: UInt16; var identifier: UInt16; var sequenceNumber: UInt16; var payload: uuid_t
@@ -669,62 +674,65 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
     @MainActor private func prepare() {
         let host = self.ICMPHost
         let token = UUID()
-        self.prepareToken = token
+        self.stateLock.withLock { $0.prepareToken = token }
 
         Task { @MainActor in
             let addr = await self.resolve(host: host)
-            guard self.prepareToken == token else { return }
-            self.addr = addr
+            let prepareToken = self.stateLock.withLock { $0.prepareToken }
+            guard prepareToken == token else { return }
+            self.stateLock.withLock { $0.addr = addr }
             self.openConn()
             self.read()
         }
     }
 
-    private let connLock = OSAllocatedUnfairLock(initialState: false)
-
     nonisolated public override func read() {
-        let isReading = self.connLock.withLock { $0 }
-        guard !isReading else { return }
-        self.connLock.withLock { $0 = true }
+        let alreadyReading = self.stateLock.withLock { state in
+            if state.isReading { return true }
+            state.isReading = true
+            return false
+        }
+        guard !alreadyReading else { return }
 
         let mode = self.connectivityMode
         let host = self.ICMPHost
 
         Task.detached(priority: .background) { [weak self] in
             guard let self else { return }
+            defer { self.stateLock.withLock { $0.isReading = false } }
 
             if mode == "http" {
                 await self.httpCheck()
             } else {
+                let s = self.stateLock.withLock { $0.socket }
                 guard !host.isEmpty else {
-                    await MainActor.run { if self.socket != nil { self.closeConn() } }
-                    self.connLock.withLock { $0 = false }
+                    await MainActor.run { if s != nil { self.closeConn() } }
                     return
                 }
                 await self.icmpCheck()
             }
 
-            var updatedWrapper = self.wrapper
-            updatedWrapper.status = !self.isPinging && self.latency != nil
-            if let l = self.latency { updatedWrapper.latency = l }
-            if let j = self.jitter { updatedWrapper.jitter = j }
+            let (isPinging, latency, jitter, currentWrapper) = self.stateLock.withLock { ($0.isPinging, $0.latency, $0.jitter, $0.wrapper) }
+            var updatedWrapper = currentWrapper
+            updatedWrapper.status = !isPinging && latency != nil
+            if let l = latency { updatedWrapper.latency = l }
+            if let j = jitter { updatedWrapper.jitter = j }
 
             if let old = self.value, old == updatedWrapper {
-                self.connLock.withLock { $0 = false }
                 return
             }
 
-            self.wrapper = updatedWrapper
+            self.stateLock.withLock { $0.wrapper = updatedWrapper }
             self.callback(updatedWrapper)
-            self.connLock.withLock { $0 = false }
         }
     }
 
     private func httpCheck() {
-        guard !self.isPinging else { return }
-        self.isPinging = true
+        let isPinging = self.stateLock.withLock { $0.isPinging }
+        guard !isPinging else { return }
+        self.stateLock.withLock { $0.isPinging = true }
         let urlString = self.HTTPHost.hasPrefix("http") ? self.HTTPHost : "https://\(self.HTTPHost)"
-        guard let url = URL(string: urlString) else { self.isPinging = false; return }
+        guard let url = URL(string: urlString) else { self.stateLock.withLock { $0.isPinging = false }; return }
 
         let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: self.timeout)
         Task {
@@ -734,44 +742,50 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
             let elapsed = Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
 
             self.updateStats(elapsed: elapsed)
-            self.isPinging = false
+            self.stateLock.withLock { $0.isPinging = false }
         }
     }
 
     private func icmpCheck() {
-        if self.socket == nil || self.lastHost != self.ICMPHost {
+        let (s, lastHost, isPinging, addr) = self.stateLock.withLock { ($0.socket, $0.lastHost, $0.isPinging, $0.addr) }
+        if s == nil || lastHost != self.ICMPHost {
             self.prepare()
             return
         }
 
-        guard !self.isPinging && self.active, let socket = self.socket, let addr = self.addr, let data = self.request() else { return }
-        self.isPinging = true
+        guard !isPinging && self.active, let socket = s, let address = addr, let data = self.request() else { return }
+        self.stateLock.withLock { $0.isPinging = true }
 
         Task {
-            self.start = DispatchTime.now()
-            CFSocketSendData(socket, addr as CFData, data as CFData, self.timeout)
+            self.stateLock.withLock { $0.start = DispatchTime.now() }
+            CFSocketSendData(socket, address as CFData, data as CFData, self.timeout)
 
             try? await Task.sleep(nanoseconds: UInt64(self.timeout * 1_000_000_000))
-            self.isPinging = false
+            self.stateLock.withLock { $0.isPinging = false }
         }
     }
 
     @MainActor func socketCallback(data: Data) {
         guard self.validateResponse(data) else { return }
         let end = DispatchTime.now()
-        let elapsed = Double(end.uptimeNanoseconds - (self.start?.uptimeNanoseconds ?? 0)) / 1_000_000
+        let start = self.stateLock.withLock { $0.start }
+        let elapsed = Double(end.uptimeNanoseconds - (start?.uptimeNanoseconds ?? 0)) / 1_000_000
         self.updateStats(elapsed: elapsed)
-        self.isPinging = false
-        self.timeoutTimer?.invalidate()
+        self.stateLock.withLock {
+            $0.isPinging = false
+            $0.timeoutTimer?.invalidate()
+        }
     }
 
-    @MainActor private func updateStats(elapsed: Double) {
-        self.latency = elapsed
-        if let prev = self.previousLatency {
-            let d = abs(elapsed - prev)
-            self.jitter = (self.jitter ?? d) + (d - (self.jitter ?? d)) / 16.0
+    private func updateStats(elapsed: Double) {
+        self.stateLock.withLock { state in
+            state.latency = elapsed
+            if let prev = state.previousLatency {
+                let d = abs(elapsed - prev)
+                state.jitter = (state.jitter ?? d) + (d - (state.jitter ?? d)) / 16.0
+            }
+            state.previousLatency = elapsed
         }
-        self.previousLatency = elapsed
     }
 
     private func validateResponse(_ data: Data) -> Bool {
@@ -788,33 +802,46 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
 
     private func openConn() {
         self.closeConn()
-        guard self.addr != nil else { return }
+        let addr = self.stateLock.withLock { $0.addr }
+        guard addr != nil else { return }
 
         let info = ConnectivityReaderWrapper(self)
         var context = CFSocketContext(version: 0, info: Unmanaged.passRetained(info).toOpaque(), retain: nil, release: { info in
             guard let info = info else { return }
             Unmanaged<ConnectivityReaderWrapper>.fromOpaque(info).release()
         }, copyDescription: nil)
-        self.socket = CFSocketCreate(kCFAllocatorDefault, AF_INET, SOCK_DGRAM, IPPROTO_ICMP, CFSocketCallBackType.dataCallBack.rawValue, { _, _, _, data, info in
+        
+        let socket = CFSocketCreate(kCFAllocatorDefault, AF_INET, SOCK_DGRAM, IPPROTO_ICMP, CFSocketCallBackType.dataCallBack.rawValue, { _, _, _, data, info in
             guard let info = info, let data = data else { return }
             let wrapper = Unmanaged<ConnectivityReaderWrapper>.fromOpaque(info).takeUnretainedValue()
             let cfdata = Unmanaged<CFData>.fromOpaque(data).takeUnretainedValue()
             wrapper.reader?.socketCallback(data: cfdata as Data)
         }, &context)
-        if let s = self.socket {
-            self.socketSource = CFSocketCreateRunLoopSource(nil, s, 0)
-            CFRunLoopAddSource(CFRunLoopGetMain(), self.socketSource, .commonModes)
+        
+        if let s = socket {
+            let source = CFSocketCreateRunLoopSource(nil, s, 0)
+            CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+            self.stateLock.withLock {
+                $0.socket = s
+                $0.socketSource = source
+            }
         }
     }
 
     private func closeConn() {
-        if let s = self.socketSource { CFRunLoopSourceInvalidate(s); self.socketSource = nil }
-        if let s = self.socket { CFSocketInvalidate(s); self.socket = nil }
-        self.timeoutTimer?.invalidate()
+        let (source, socket, timer) = self.stateLock.withLock { ($0.socketSource, $0.socket, $0.timeoutTimer) }
+        if let s = source { CFRunLoopSourceInvalidate(s) }
+        if let s = socket { CFSocketInvalidate(s) }
+        timer?.invalidate()
+        self.stateLock.withLock {
+            $0.socketSource = nil
+            $0.socket = nil
+            $0.timeoutTimer = nil
+        }
     }
 
     private func resolve(host: String) async -> Data? {
-        self.lastHost = host
+        self.stateLock.withLock { $0.lastHost = host }
         return await Task.detached(priority: .background) {
             let hostRef = CFHostCreateWithName(nil, host as CFString).takeRetainedValue()
             if CFHostStartInfoResolution(hostRef, .addresses, nil), let addrs = CFHostGetAddressing(hostRef, nil)?.takeUnretainedValue() as? [Data] {
