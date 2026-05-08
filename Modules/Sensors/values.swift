@@ -61,7 +61,7 @@ public class Sensors_List: Codable, Equatable {
             self.queue.sync{ self.list }
         }
         set {
-            self.queue.async(flags: .barrier) {
+            self.queue.sync(flags: .barrier) {
                 self.list = newValue
             }
         }

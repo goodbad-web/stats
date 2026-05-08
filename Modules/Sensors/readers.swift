@@ -176,7 +176,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
             let localLastRead = self.lastRead
             let localFirstRead = self.firstRead
             
-            let updatedSensors = await Task.detached(priority: .background) {
+            var updatedSensors = await Task.detached(priority: .background) {
                 var sensors = localSensors
                 for i in sensors.indices {
                     guard sensors[i].group != .hid && !sensors[i].isComputed else { continue }
@@ -279,10 +279,24 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                 }
                 return sensors
             }.value
-            
-            self.list.sensors = updatedSensors
-            self.lastRead = Date()
-            
+            if let (cpu, gpu, ane, ram, pci) = self.IOSensors() {
+                if let idx = updatedSensors.firstIndex(where: { $0.key == "CPU Power" }) {
+                    updatedSensors[idx].value = cpu
+                }
+                if let idx = updatedSensors.firstIndex(where: { $0.key == "GPU Power" }) {
+                    updatedSensors[idx].value = gpu
+                }
+                if let idx = updatedSensors.firstIndex(where: { $0.key == "ANE Power" }) {
+                    updatedSensors[idx].value = ane
+                }
+                if let idx = updatedSensors.firstIndex(where: { $0.key == "RAM Power" }) {
+                    updatedSensors[idx].value = ram
+                }
+                if let idx = updatedSensors.firstIndex(where: { $0.key == "PCI Power" }) {
+                    updatedSensors[idx].value = pci
+                }
+            }
+
             let safetyState = Store.shared.bool(key: "Sensors_fanSafety", defaultValue: true)
             if safetyState {
                 let hottest = updatedSensors.filter{ $0.type == .temperature && ($0.group == .CPU || $0.group == .GPU || $0.group == .hid) }.map{ $0.value }.max() ?? 0
@@ -305,32 +319,18 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                     NotificationCenter.default.post(name: .fanControlOverride, object: nil, userInfo: ["reason": "battery"])
                 }
             }
-            if let (cpu, gpu, ane, ram, pci) = self.IOSensors() {
-                if let idx = self.list.sensors.firstIndex(where: { $0.key == "CPU Power" }) {
-                    self.list.sensors[idx].value = cpu
-                }
-                if let idx = self.list.sensors.firstIndex(where: { $0.key == "GPU Power" }) {
-                    self.list.sensors[idx].value = gpu
-                }
-                if let idx = self.list.sensors.firstIndex(where: { $0.key == "ANE Power" }) {
-                    self.list.sensors[idx].value = ane
-                }
-                if let idx = self.list.sensors.firstIndex(where: { $0.key == "RAM Power" }) {
-                    self.list.sensors[idx].value = ram
-                }
-                if let idx = self.list.sensors.firstIndex(where: { $0.key == "PCI Power" }) {
-                    self.list.sensors[idx].value = pci
-                }
-            }
+
             let newList = Sensors_List()
             newList.sensors = updatedSensors
             
             if let old = self.value, old == newList {
+                self.lastRead = Date()
                 self.readLock.withLock { $0 = false }
                 return
             }
             
             self.list.sensors = updatedSensors
+            self.lastRead = Date()
             self.callback(self.list)
             self.readLock.withLock { $0 = false }
         }

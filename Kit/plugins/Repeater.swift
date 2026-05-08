@@ -36,7 +36,7 @@ internal class Repeater {
         self.timer.schedule(
             deadline: DispatchTime.now() + Double(interval),
             repeating: .seconds(interval),
-            leeway: .seconds(0)
+            leeway: .milliseconds(250)
         )
         self.timer.setEventHandler { [weak self] in
             self?.callback()

@@ -1091,7 +1091,7 @@ class MQTTManager: NSObject {
     private func startPingTimer() {
         self.stopPingTimer()
         let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
-        timer.schedule(deadline: .now() + 450, repeating: 450)
+        timer.schedule(deadline: .now() + 450, repeating: 450, leeway: .seconds(30))
         timer.setEventHandler { [weak self] in
             self?.sendPingRequest()
         }

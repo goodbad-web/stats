@@ -193,6 +193,7 @@ private struct ReaderState<T> {
     }
     
     public func setInterval(_ value: Int) {
+        guard self.interval != Double(value) else { return }
         debug("Set update interval: \(value) sec", log: self.log)
         self.interval = Double(value)
         

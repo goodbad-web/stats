@@ -11,6 +11,9 @@ import Cocoa
 import Kit
 import Sentry
 import UserNotifications
+#if canImport(MetricKit)
+import MetricKit
+#endif
 
 import CPU
 import RAM
@@ -76,6 +79,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
             options.enableAppHangTracking = true
             options.enableCaptureFailedRequests = true
         }
+#if canImport(MetricKit)
+        PowerMetricsObserver.shared.start()
+#endif
         
         Task { @MainActor in
             self.parseArguments()
@@ -107,6 +113,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
         Task {
             await SMCHelper.shared.resetFanControl()
         }
+#if canImport(MetricKit)
+        PowerMetricsObserver.shared.stop()
+#endif
         modules.forEach{ $0.terminate() }
         Remote.shared.terminate()
     }
@@ -232,3 +241,43 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
         NSWorkspace.shared.open(URL(string: "https://github.com/exelban/stats")!)
     }
 }
+
+#if canImport(MetricKit)
+private final class PowerMetricsObserver: NSObject {
+    static let shared = PowerMetricsObserver()
+
+    private var isRegistered = false
+
+    func start() {
+        guard !self.isRegistered else { return }
+        guard #available(macOS 12.0, *) else { return }
+        MXMetricManager.shared.add(self)
+        self.isRegistered = true
+    }
+
+    func stop() {
+        guard self.isRegistered else { return }
+        if #available(macOS 12.0, *) {
+            MXMetricManager.shared.remove(self)
+        }
+        self.isRegistered = false
+    }
+}
+
+@available(macOS 12.0, *)
+extension PowerMetricsObserver: MXMetricManagerSubscriber {
+    @objc(didReceiveMetricPayloads:)
+    func didReceive(_ payloads: [MXMetricPayload]) {
+        for payload in payloads {
+            let cpu = payload.cpuMetrics?.cumulativeCPUTime.value ?? 0
+            let gpu = payload.gpuMetrics?.cumulativeGPUTime.value ?? 0
+            let memory = payload.memoryMetrics?.peakMemoryUsage.value ?? 0
+            let hangBuckets = payload.applicationResponsivenessMetrics?.histogrammedApplicationHangTime.totalBucketCount ?? 0
+            let begin = String(describing: payload.timeStampBegin)
+            let end = String(describing: payload.timeStampEnd)
+            appLogger.info("MetricKit payload \(begin) - \(end)")
+            appLogger.info("cpu=\(cpu, privacy: .public)s gpu=\(gpu, privacy: .public)s peakMemory=\(memory, privacy: .public)B hangBuckets=\(hangBuckets, privacy: .public)")
+        }
+    }
+}
+#endif
