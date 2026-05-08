@@ -219,6 +219,16 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
             
             var updatedSensors = await Task.detached(priority: .background) {
                 var sensors = localSensors
+                let smcKeys = sensors.indices.compactMap { i -> String? in
+                    let s = sensors[i]
+                    if s.group != .hid && !s.isComputed && s.key != "battery_amperage" && s.key != "battery_power" {
+                        if !localUnknownSensorsState && s.group == .unknown { return nil }
+                        return s.key
+                    }
+                    return nil
+                }
+                let smcValues = await SMC.shared.getValues(smcKeys)
+                
                 for i in sensors.indices {
                     guard sensors[i].group != .hid && !sensors[i].isComputed else { continue }
                     if !localUnknownSensorsState && sensors[i].group == .unknown { continue }
@@ -232,7 +242,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                             newValue = (Double(abs(batteryData.corrected)) / 1000.0) * (Double(batteryData.voltage) / 1000.0)
                         }
                     } else {
-                        newValue = await SMC.shared.getValue(sensors[i].key) ?? 0
+                        newValue = smcValues[sensors[i].key] ?? 0
                     }
                     
                     if sensors[i].type == .temperature && (newValue < 0 || newValue > 125) {

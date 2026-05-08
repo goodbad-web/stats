@@ -51,71 +51,74 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
         guard !isReading else { return }
         self.readLock.withLock { $0 = true }
         
-        Task { @MainActor in
+        let removableState = Store.shared.bool(key: "Disk_removable", defaultValue: false)
+        let smartState = self.SMART
+        
+        Task.detached(priority: .background) { [weak self] in
+            guard let self else { return }
+            
             let keys: [URLResourceKey] = [.volumeNameKey]
-            let removableState = Store.shared.bool(key: "Disk_removable", defaultValue: false)
-            guard let paths = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]) else {
-                return
-            }
-            
-            guard let session = self.session else {
-                return
-            }
-            
-            let updatedList = await Task.detached(priority: .background) {
-                let localList = self.list
-                var active: [String] = []
-                for url in paths {
-                    if url.pathComponents.count == 1 || (url.pathComponents.count > 1 && url.pathComponents[1] == "Volumes") {
-                        if let disk = DADiskCreateFromVolumePath(kCFAllocatorDefault, session, url as CFURL) {
-                            if let diskName = DADiskGetBSDName(disk) {
-                                let BSDName: String = String(cString: diskName)
-                                active.append(BSDName)
-                                
-                                if let d = localList.first(where: { $0.BSDName == BSDName}), let idx = localList.firstIndex(where: { $0.BSDName == BSDName}) {
-                                    if d.removable && !removableState {
-                                        localList.remove(at: idx)
-                                        continue
-                                    }
-                                    
-                                    if let path = d.path {
-                                        localList.updateFreeSize(idx, newValue: self.freeDiskSpaceInBytes(path))
-                                        localList.updateSMARTData(idx, smart: self.getSMARTDetails(for: BSDName))
-                                    }
-                                    
-                                    continue
-                                }
-                                
-                                if var d = driveDetails(disk, removableState: removableState) {
-                                    if let path = d.path {
-                                        d.free = self.freeDiskSpaceInBytes(path)
-                                        d.size = self.totalDiskSpaceInBytes(path)
-                                    }
-                                    d.smart = self.getSMARTDetails(for: BSDName)
-                                    guard d.size != 0 else { continue }
-                                    localList.append(d)
-                                    localList.sort()
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                active.difference(from: localList.map{ $0.BSDName }).forEach { (BSDName: String) in
-                    if let idx = localList.firstIndex(where: { $0.BSDName == BSDName }) {
-                        localList.remove(at: idx)
-                    }
-                }
-                return localList
-            }.value
-            
-            if let old = self.value, old == updatedList {
+            guard let paths = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]),
+                  let session = self.session else {
                 self.readLock.withLock { $0 = false }
                 return
             }
             
-            self.list = updatedList
-            self.callback(self.list)
+            let localList = self.list
+            var active: [String] = []
+            for url in paths {
+                if url.pathComponents.count == 1 || (url.pathComponents.count > 1 && url.pathComponents[1] == "Volumes") {
+                    if let disk = DADiskCreateFromVolumePath(kCFAllocatorDefault, session, url as CFURL) {
+                        if let diskName = DADiskGetBSDName(disk) {
+                            let BSDName: String = String(cString: diskName)
+                            active.append(BSDName)
+                            
+                            if let d = localList.first(where: { $0.BSDName == BSDName}), let idx = localList.firstIndex(where: { $0.BSDName == BSDName}) {
+                                if d.removable && !removableState {
+                                    localList.remove(at: idx)
+                                    continue
+                                }
+                                
+                                if let path = d.path {
+                                    localList.updateFreeSize(idx, newValue: self.freeDiskSpaceInBytes(path))
+                                    if smartState {
+                                        localList.updateSMARTData(idx, smart: self.getSMARTDetails(for: BSDName))
+                                    }
+                                }
+                                
+                                continue
+                            }
+                            
+                            if var d = driveDetails(disk, removableState: removableState) {
+                                if let path = d.path {
+                                    d.free = self.freeDiskSpaceInBytes(path)
+                                    d.size = self.totalDiskSpaceInBytes(path)
+                                }
+                                if smartState {
+                                    d.smart = self.getSMARTDetails(for: BSDName)
+                                }
+                                guard d.size != 0 else { continue }
+                                localList.append(d)
+                                localList.sort()
+                            }
+                        }
+                    }
+                }
+            }
+            
+            active.difference(from: localList.map{ $0.BSDName }).forEach { (BSDName: String) in
+                if let idx = localList.firstIndex(where: { $0.BSDName == BSDName }) {
+                    localList.remove(at: idx)
+                }
+            }
+            
+            if let old = self.value, old == localList {
+                self.readLock.withLock { $0 = false }
+                return
+            }
+            
+            self.list = localList
+            self.callback(localList)
             self.readLock.withLock { $0 = false }
         }
     }

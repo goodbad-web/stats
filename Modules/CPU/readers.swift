@@ -67,10 +67,12 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
     }
     
     nonisolated public override func read() {
-        Task { @MainActor in
-            let localNumCPUs = self.numCPUs
-            let hasHT = self.hasHyperthreadingCores
-            let localCores = self.cores
+        let localNumCPUs = self.numCPUs
+        let hasHT = self.hasHyperthreadingCores
+        let localCores = self.cores
+        
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
             
             var numCPUsU: natural_t = 0
             var cpuInfo: processor_info_array_t?
@@ -83,139 +85,137 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
             
             let showHyperthratedCores = Store.shared.bool(key: "CPU_hyperhreading", defaultValue: false)
             
-            let updatedResponse = await Task.detached(priority: .userInitiated) {
-                return self.loadLock.withLock { state in
-                    if result == KERN_SUCCESS, let cpuInfo = capturedCpuInfo.info {
-                        var nextCpuInfo: processor_info_array_t? = cpuInfo
-                        defer {
-                            if let nextCpuInfo {
-                                let size: size_t = MemoryLayout<integer_t>.stride * Int(capturedNumCpuInfo)
-                                vm_deallocate(mach_task_self_, vm_address_t(bitPattern: nextCpuInfo), vm_size_t(size))
-                            }
+            let updatedResponse = self.loadLock.withLock { state in
+                if result == KERN_SUCCESS, let cpuInfo = capturedCpuInfo.info {
+                    var nextCpuInfo: processor_info_array_t? = cpuInfo
+                    defer {
+                        if let nextCpuInfo {
+                            let size: size_t = MemoryLayout<integer_t>.stride * Int(capturedNumCpuInfo)
+                            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: nextCpuInfo), vm_size_t(size))
                         }
-                        
-                        state.usagePerCore = []
-                        
-                        for i in 0 ..< Int32(localNumCPUs) {
-                            var inUse: Int32
-                            var total: Int32
-                            if let prevCpuInfo = state.prevCpuInfo {
-                                inUse = cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_USER)]
-                                    - prevCpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_USER)]
-                                    + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_SYSTEM)]
-                                    - prevCpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_SYSTEM)]
-                                    + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_NICE)]
-                                    - prevCpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_NICE)]
-                                total = inUse + (cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_IDLE)]
-                                    - prevCpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_IDLE)])
-                            } else {
-                                inUse = cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_USER)]
-                                    + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_SYSTEM)]
-                                    + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_NICE)]
-                                total = inUse + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_IDLE)]
-                            }
-                            
-                            if total != 0 {
-                                let usage = Double(inUse) / Double(total)
-                                if usage.isFinite {
-                                    state.usagePerCore.append(usage)
-                                }
-                            }
-                        }
-                        
-                        if showHyperthratedCores || !hasHT {
-                            state.response.usagePerCore = state.usagePerCore
-                        } else {
-                            var i = 0
-                            state.response.usagePerCore = []
-                            while i < Int(state.usagePerCore.count/2) {
-                                let a = i * 2
-                                if state.usagePerCore.indices.contains(a) && state.usagePerCore.indices.contains(a+1) {
-                                    let averaged = (state.usagePerCore[a] + state.usagePerCore[a+1]) / 2
-                                    if averaged.isFinite {
-                                        state.response.usagePerCore.append(averaged)
-                                    }
-                                }
-                                i += 1
-                            }
-                        }
-                        
-                        if let prevCpuInfo = state.prevCpuInfo {
-                            let prevCpuInfoSize: size_t = MemoryLayout<integer_t>.stride * Int(state.numPrevCpuInfo)
-                            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prevCpuInfo), vm_size_t(prevCpuInfoSize))
-                        }
-                        
-                        state.prevCpuInfo = nextCpuInfo
-                        state.numPrevCpuInfo = capturedNumCpuInfo
-                        nextCpuInfo = nil
                     }
                     
-                    if let cpuInfoData = cpuInfoData {
-                        let userDiff = Double(cpuInfoData.cpu_ticks.0 &- state.previousInfo.cpu_ticks.0)
-                        let sysDiff  = Double(cpuInfoData.cpu_ticks.1 &- state.previousInfo.cpu_ticks.1)
-                        let idleDiff = Double(cpuInfoData.cpu_ticks.2 &- state.previousInfo.cpu_ticks.2)
-                        let niceDiff = Double(cpuInfoData.cpu_ticks.3 &- state.previousInfo.cpu_ticks.3)
-                        let totalTicks = sysDiff + userDiff + niceDiff + idleDiff
-                        
-                        if totalTicks.isFinite && totalTicks > 0 {
-                            let system = sysDiff / totalTicks
-                            let user = userDiff / totalTicks
-                            let idle = idleDiff / totalTicks
-                            
-                            if system.isFinite { state.response.systemLoad = system }
-                            if user.isFinite { state.response.userLoad = user }
-                            if idle.isFinite { state.response.idleLoad = idle }
+                    state.usagePerCore = []
+                    
+                    for i in 0 ..< Int32(localNumCPUs) {
+                        var inUse: Int32
+                        var total: Int32
+                        if let prevCpuInfo = state.prevCpuInfo {
+                            inUse = cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_USER)]
+                                - prevCpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_USER)]
+                                + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_SYSTEM)]
+                                - prevCpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_SYSTEM)]
+                                + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_NICE)]
+                                - prevCpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_NICE)]
+                            total = inUse + (cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_IDLE)]
+                                - prevCpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_IDLE)])
+                        } else {
+                            inUse = cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_USER)]
+                                + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_SYSTEM)]
+                                + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_NICE)]
+                            total = inUse + cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_IDLE)]
                         }
                         
-                        state.previousInfo = cpuInfoData
-                        let totalUsage = state.response.systemLoad + state.response.userLoad
-                        if totalUsage.isFinite {
-                            state.response.totalUsage = totalUsage
-                        }
-                        
-                        if let cores = localCores {
-                            let eCoresList: [Double] = cores.filter({ $0.type == .efficiency }).enumerated().compactMap { (i, c) -> Double? in
-                                if state.response.usagePerCore.indices.contains(Int(c.id)) {
-                                    return state.response.usagePerCore[Int(c.id)]
-                                }
-                                return i < state.usagePerCore.count ? state.usagePerCore[i] : 0
-                            }
-                            let pCoresList: [Double] = cores.filter({ $0.type == .performance }).enumerated().compactMap { (i, c) -> Double? in
-                                if state.response.usagePerCore.indices.contains(Int(c.id)) {
-                                    return state.response.usagePerCore[Int(c.id)]
-                                }
-                                return i < state.usagePerCore.count ? state.usagePerCore[i] : 0
-                            }
-                            let sCoresList: [Double] = cores.filter({ $0.type == .super }).enumerated().compactMap { (i, c) -> Double? in
-                                if state.response.usagePerCore.indices.contains(Int(c.id)) {
-                                    return state.response.usagePerCore[Int(c.id)]
-                                }
-                                return i < state.usagePerCore.count ? state.usagePerCore[i] : 0
-                            }
-                            
-                            if !eCoresList.isEmpty {
-                                let usage = eCoresList.reduce(0, +)/Double(eCoresList.count)
-                                if usage.isFinite {
-                                    state.response.usageECores = usage
-                                }
-                            }
-                            if !pCoresList.isEmpty {
-                                let usage = pCoresList.reduce(0, +)/Double(pCoresList.count)
-                                if usage.isFinite {
-                                    state.response.usagePCores = usage
-                                }
-                            }
-                            if !sCoresList.isEmpty {
-                                let usage = sCoresList.reduce(0, +)/Double(sCoresList.count)
-                                if usage.isFinite {
-                                    state.response.usageSCores = usage
-                                }
+                        if total != 0 {
+                            let usage = Double(inUse) / Double(total)
+                            if usage.isFinite {
+                                state.usagePerCore.append(usage)
                             }
                         }
                     }
-                    return state.response
+                    
+                    if showHyperthratedCores || !hasHT {
+                        state.response.usagePerCore = state.usagePerCore
+                    } else {
+                        var i = 0
+                        state.response.usagePerCore = []
+                        while i < Int(state.usagePerCore.count/2) {
+                            let a = i * 2
+                            if state.usagePerCore.indices.contains(a) && state.usagePerCore.indices.contains(a+1) {
+                                let averaged = (state.usagePerCore[a] + state.usagePerCore[a+1]) / 2
+                                if averaged.isFinite {
+                                    state.response.usagePerCore.append(averaged)
+                                }
+                            }
+                            i += 1
+                        }
+                    }
+                    
+                    if let prevCpuInfo = state.prevCpuInfo {
+                        let prevCpuInfoSize: size_t = MemoryLayout<integer_t>.stride * Int(state.numPrevCpuInfo)
+                        vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prevCpuInfo), vm_size_t(prevCpuInfoSize))
+                    }
+                    
+                    state.prevCpuInfo = nextCpuInfo
+                    state.numPrevCpuInfo = capturedNumCpuInfo
+                    nextCpuInfo = nil
                 }
-            }.value
+                
+                if let cpuInfoData = cpuInfoData {
+                    let userDiff = Double(cpuInfoData.cpu_ticks.0 &- state.previousInfo.cpu_ticks.0)
+                    let sysDiff  = Double(cpuInfoData.cpu_ticks.1 &- state.previousInfo.cpu_ticks.1)
+                    let idleDiff = Double(cpuInfoData.cpu_ticks.2 &- state.previousInfo.cpu_ticks.2)
+                    let niceDiff = Double(cpuInfoData.cpu_ticks.3 &- state.previousInfo.cpu_ticks.3)
+                    let totalTicks = sysDiff + userDiff + niceDiff + idleDiff
+                    
+                    if totalTicks.isFinite && totalTicks > 0 {
+                        let system = sysDiff / totalTicks
+                        let user = userDiff / totalTicks
+                        let idle = idleDiff / totalTicks
+                        
+                        if system.isFinite { state.response.systemLoad = system }
+                        if user.isFinite { state.response.userLoad = user }
+                        if idle.isFinite { state.response.idleLoad = idle }
+                    }
+                    
+                    state.previousInfo = cpuInfoData
+                    let totalUsage = state.response.systemLoad + state.response.userLoad
+                    if totalUsage.isFinite {
+                        state.response.totalUsage = totalUsage
+                    }
+                    
+                    if let cores = localCores {
+                        let eCoresList: [Double] = cores.filter({ $0.type == .efficiency }).enumerated().compactMap { (i, c) -> Double? in
+                            if state.response.usagePerCore.indices.contains(Int(c.id)) {
+                                return state.response.usagePerCore[Int(c.id)]
+                            }
+                            return i < state.usagePerCore.count ? state.usagePerCore[i] : 0
+                        }
+                        let pCoresList: [Double] = cores.filter({ $0.type == .performance }).enumerated().compactMap { (i, c) -> Double? in
+                            if state.response.usagePerCore.indices.contains(Int(c.id)) {
+                                return state.response.usagePerCore[Int(c.id)]
+                            }
+                            return i < state.usagePerCore.count ? state.usagePerCore[i] : 0
+                        }
+                        let sCoresList: [Double] = cores.filter({ $0.type == .super }).enumerated().compactMap { (i, c) -> Double? in
+                            if state.response.usagePerCore.indices.contains(Int(c.id)) {
+                                return state.response.usagePerCore[Int(c.id)]
+                            }
+                            return i < state.usagePerCore.count ? state.usagePerCore[i] : 0
+                        }
+                        
+                        if !eCoresList.isEmpty {
+                            let usage = eCoresList.reduce(0, +)/Double(eCoresList.count)
+                            if usage.isFinite {
+                                state.response.usageECores = usage
+                            }
+                        }
+                        if !pCoresList.isEmpty {
+                            let usage = pCoresList.reduce(0, +)/Double(pCoresList.count)
+                            if usage.isFinite {
+                                state.response.usagePCores = usage
+                            }
+                        }
+                        if !sCoresList.isEmpty {
+                            let usage = sCoresList.reduce(0, +)/Double(sCoresList.count)
+                            if usage.isFinite {
+                                state.response.usageSCores = usage
+                            }
+                        }
+                    }
+                }
+                return state.response
+            }
             
             if let old = self.value, old == updatedResponse {
                 return
@@ -314,20 +314,9 @@ public class TemperatureReader: Reader<Double>, @unchecked Sendable {
         Task { @MainActor in
             let localList = self.list
             let temp = await Task.detached(priority: .background) {
-                var temperature: Double? = nil
-                
-                var total: Double = 0
-                var counter: Double = 0
-                for key in localList {
-                    if let value = await SMC.shared.getValue(key) {
-                        total += value
-                        counter += 1
-                    }
-                }
-                if total != 0 && counter != 0 {
-                    temperature = total / counter
-                }
-                return temperature
+                let smcValues = await SMC.shared.getValues(localList)
+                let values = smcValues.values.filter { $0 != 0 }
+                return values.isEmpty ? nil : values.reduce(0, +) / Double(values.count)
             }.value
             
             self.callback(temp)
@@ -387,86 +376,83 @@ public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
     }
     
     nonisolated public override func read() {
-        Task { @MainActor in
-            let isAlreadyReading = self.freqLock.withLock { $0.isReading }
-            guard !isAlreadyReading, (!self.eCoreFreqs.isEmpty || !self.sCoreFreqs.isEmpty) && !self.pCoreFreqs.isEmpty, self.channels != nil, self.subscription != nil else { return }
+        let isAlreadyReading = self.freqLock.withLock { $0.isReading }
+        guard !isAlreadyReading, (!self.eCoreFreqs.isEmpty || !self.sCoreFreqs.isEmpty) && !self.pCoreFreqs.isEmpty, self.channels != nil, self.subscription != nil else { return }
+        
+        self.freqLock.withLock { $0.isReading = true }
+        
+        let minECoreFreq = Double(self.eCoreFreqs.min() ?? 0)
+        let minPCoreFreq = Double(self.pCoreFreqs.min() ?? 0)
+        let minSCoreFreq = Double(self.sCoreFreqs.min() ?? 0)
+        
+        Task.detached(priority: .background) {
+            guard let next = self.getSample() else {
+                self.freqLock.withLock { $0.isReading = false }
+                return
+            }
             
-            self.freqLock.withLock { $0.isReading = true }
+            let prev = self.freqLock.withLock {
+                let old = $0.prev
+                $0.prev = next
+                return old
+            }
             
-            let minECoreFreq = Double(self.eCoreFreqs.min() ?? 0)
-            let minPCoreFreq = Double(self.pCoreFreqs.min() ?? 0)
-            let minSCoreFreq = Double(self.sCoreFreqs.min() ?? 0)
+            guard let prev = prev, let diffCF = IOReportCreateSamplesDelta(prev.samples, next.samples, nil) else {
+                self.freqLock.withLock { $0.isReading = false }
+                return
+            }
             
-            Task.detached(priority: .background) {
-                guard let next = self.getSample() else {
-                    self.freqLock.withLock { $0.isReading = false }
-                    return
+            let diff = diffCF.takeRetainedValue()
+            let samples = self.collectIOSamples(data: diff)
+            
+            var eCore: [Double] = []
+            var pCore: [Double] = []
+            var sCore: [Double] = []
+            
+            for sample in samples {
+                guard sample.group == "CPU Stats" else { continue }
+                if sample.channel.contains("ECPU") {
+                    eCore.append(self.calculateFrequencies(dict: sample.delta, freqs: self.eCoreFreqs))
                 }
-                
-                let prev = self.freqLock.withLock {
-                    let old = $0.prev
-                    $0.prev = next
-                    return old
+                if sample.channel.contains(self.sCoreCount == 0 ? "PCPU" : "MCPU") {
+                    pCore.append(self.calculateFrequencies(dict: sample.delta, freqs: self.pCoreFreqs))
                 }
-                
-                guard let prev = prev, let diffCF = IOReportCreateSamplesDelta(prev.samples, next.samples, nil) else {
-                    self.freqLock.withLock { $0.isReading = false }
-                    return
-                }
-                
-                let diff = diffCF.takeRetainedValue()
-                let samples = self.collectIOSamples(data: diff)
-                
-                var eCore: [Double] = []
-                var pCore: [Double] = []
-                var sCore: [Double] = []
-                
-                for sample in samples {
-                    guard sample.group == "CPU Stats" else { continue }
-                    if sample.channel.contains("ECPU") {
-                        eCore.append(self.calculateFrequencies(dict: sample.delta, freqs: self.eCoreFreqs))
+                if self.sCoreCount != 0 {
+                    if sample.channel.contains("PCPU") {
+                        sCore.append(self.calculateFrequencies(dict: sample.delta, freqs: self.sCoreFreqs))
                     }
-                    if sample.channel.contains(self.sCoreCount == 0 ? "PCPU" : "MCPU") {
-                        pCore.append(self.calculateFrequencies(dict: sample.delta, freqs: self.pCoreFreqs))
-                    }
-                    if self.sCoreCount != 0 {
-                        if sample.channel.contains("PCPU") {
-                            sCore.append(self.calculateFrequencies(dict: sample.delta, freqs: self.sCoreFreqs))
-                        }
-                    }
-                }
-                
-                let eFreq: Double? = eCore.isEmpty ? nil : max(eCore.reduce(0.0, +) / Double(eCore.count), minECoreFreq)
-                let pFreq: Double? = pCore.isEmpty ? nil : max(pCore.reduce(0.0, +) / Double(pCore.count), minPCoreFreq)
-                let sFreq: Double? = sCore.isEmpty ? nil : max(sCore.reduce(0.0, +) / Double(sCore.count), minSCoreFreq)
-                
-                var activeCores: Double = 0
-                var totalFreq: Double = 0
-                
-                if let freq = eFreq {
-                    activeCores += self.eCoreCount
-                    totalFreq += freq * self.eCoreCount
-                }
-                if let freq = pFreq {
-                    activeCores += self.pCoreCount
-                    totalFreq += freq * self.pCoreCount
-                }
-                if let freq = sFreq {
-                    activeCores += self.sCoreCount
-                    totalFreq += freq * self.sCoreCount
-                }
-                let value: Double? = activeCores > 0 ? totalFreq / activeCores : nil
-                
-                let result = CPU_Frequency(value: value, eCore: eFreq, pCore: pFreq, sCore: sFreq)
-                await MainActor.run {
-                    if let old = self.value, old == result {
-                        self.freqLock.withLock { $0.isReading = false }
-                        return
-                    }
-                    self.callback(result)
-                    self.freqLock.withLock { $0.isReading = false }
                 }
             }
+            
+            let eFreq: Double? = eCore.isEmpty ? nil : max(eCore.reduce(0.0, +) / Double(eCore.count), minECoreFreq)
+            let pFreq: Double? = pCore.isEmpty ? nil : max(pCore.reduce(0.0, +) / Double(pCore.count), minPCoreFreq)
+            let sFreq: Double? = sCore.isEmpty ? nil : max(sCore.reduce(0.0, +) / Double(sCore.count), minSCoreFreq)
+            
+            var activeCores: Double = 0
+            var totalFreq: Double = 0
+            
+            if let freq = eFreq {
+                activeCores += self.eCoreCount
+                totalFreq += freq * self.eCoreCount
+            }
+            if let freq = pFreq {
+                activeCores += self.pCoreCount
+                totalFreq += freq * self.pCoreCount
+            }
+            if let freq = sFreq {
+                activeCores += self.sCoreCount
+                totalFreq += freq * self.sCoreCount
+            }
+            let value: Double? = activeCores > 0 ? totalFreq / activeCores : nil
+            
+            let result = CPU_Frequency(value: value, eCore: eFreq, pCore: pFreq, sCore: sFreq)
+            
+            if let old = self.value, old == result {
+                self.freqLock.withLock { $0.isReading = false }
+                return
+            }
+            self.callback(result)
+            self.freqLock.withLock { $0.isReading = false }
         }
     }
     

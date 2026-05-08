@@ -53,6 +53,7 @@ private struct ReaderState<T> {
     var value: T?
     var active: Bool = false
     var locked: Bool = true
+    var lastDBWrite: Date?
 }
 
 @MainActor open class Reader<T: Codable & Sendable>: NSObject, ReaderInternal_p, @unchecked Sendable {
@@ -105,8 +106,6 @@ private struct ReaderState<T> {
     private var userInterval: Int?
     private var effectiveInterval: Int?
     private var activityMode: ReaderActivityMode = .active
-    
-    private var lastDBWrite: Date? = nil
     
     private var alignWorkItem: DispatchWorkItem?
     private let alignQueue = DispatchQueue(label: "eu.exelban.readerAlignQueue")
@@ -276,15 +275,17 @@ private struct ReaderState<T> {
         self.pipeline.subscribe { [weak self] snapshot in
             guard let self else { return }
             
-            Task { @MainActor in
-                if let ts = self.lastDBWrite,
-                   let interval = self.interval,
-                   Date().timeIntervalSince(ts) <= interval * 10 {
-                    return
-                }
-                
+            let interval = self.interval ?? Double(self.defaultInterval)
+            let now = Date()
+            
+            if let ts = self.state.withLock({ $0.lastDBWrite }),
+               now.timeIntervalSince(ts) <= interval * 10 {
+                return
+            }
+            
+            self.state.withLock { $0.lastDBWrite = now }
+            Task.detached(priority: .background) {
                 self.metricStore.save(snapshot, force: false)
-                self.lastDBWrite = Date()
             }
         }
         self.pipeline.subscribe { [weak self] snapshot in

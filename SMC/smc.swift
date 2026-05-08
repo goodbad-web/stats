@@ -220,6 +220,16 @@ public actor SMC {
         return self._getValueUnsafe(key)
     }
     
+    public func getValues(_ keys: [String]) -> [String: Double] {
+        var results: [String: Double] = [:]
+        for key in keys {
+            if let val = self._getValueUnsafe(key) {
+                results[key] = val
+            }
+        }
+        return results
+    }
+    
     public func getStringValue(_ key: String) -> String? {
         var val: SMCVal_t = SMCVal_t(key)
         if read(&val) != kIOReturnSuccess || val.dataSize == 0 { return nil }

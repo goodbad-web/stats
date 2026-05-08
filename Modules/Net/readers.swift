@@ -227,46 +227,50 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
         guard !isReading else { return }
         self.readLock.withLock { $0 = true }
         
-        Task { @MainActor in
+        let readerType = self.reader
+        let interfaceID = self.interfaceID
+        let currentUsage = self.usage
+        let vpnMode = self.VPNMode
+        
+        Task.detached(priority: .background) { [weak self] in
+            guard let self else { return }
+            
             await self.updateDetails()
             
-            let readerType = self.reader
-            let interfaceID = self.interfaceID
-            let currentUsage = self.usage
-            
-            let currentBandwidth = await Task.detached(priority: .background) {
-                if readerType == "interface" {
-                    return self.readInterfaceBandwidth(interfaceID: interfaceID)
-                } else {
-                    return self.readProcessBandwidth()
-                }
-            }.value
-            
-            if self.usage.bandwidth.upload != 0 {
-                self.usage.bandwidth.upload = currentBandwidth.upload - currentUsage.bandwidth.upload
-            }
-            if self.usage.bandwidth.download != 0 {
-                self.usage.bandwidth.download = currentBandwidth.download - currentUsage.bandwidth.download
+            let currentBandwidth: Bandwidth
+            if readerType == "interface" {
+                currentBandwidth = self.readInterfaceBandwidth(interfaceID: interfaceID)
+            } else {
+                currentBandwidth = self.readProcessBandwidth()
             }
             
-            self.usage.bandwidth.upload = max(self.usage.bandwidth.upload, 0)
-            self.usage.bandwidth.download = max(self.usage.bandwidth.download, 0)
-            
-            self.usage.total.upload += self.usage.bandwidth.upload
-            self.usage.total.download += self.usage.bandwidth.download
-            self.usage.status = self.reachability.isReachable
-            
-            if self.vpnConnection && self.VPNMode {
-                self.usage.bandwidth.upload /= 2
-                self.usage.bandwidth.download /= 2
+            var updatedUsage = currentUsage
+            if updatedUsage.bandwidth.upload != 0 {
+                updatedUsage.bandwidth.upload = currentBandwidth.upload - currentUsage.bandwidth.upload
+            }
+            if updatedUsage.bandwidth.download != 0 {
+                updatedUsage.bandwidth.download = currentBandwidth.download - currentUsage.bandwidth.download
             }
             
-            if let old = self.value, old == self.usage {
+            updatedUsage.bandwidth.upload = max(updatedUsage.bandwidth.upload, 0)
+            updatedUsage.bandwidth.download = max(updatedUsage.bandwidth.download, 0)
+            
+            updatedUsage.total.upload += updatedUsage.bandwidth.upload
+            updatedUsage.total.download += updatedUsage.bandwidth.download
+            updatedUsage.status = self.reachability.isReachable
+            
+            if self.vpnConnection && vpnMode {
+                updatedUsage.bandwidth.upload /= 2
+                updatedUsage.bandwidth.download /= 2
+            }
+            
+            if let old = self.value, old == updatedUsage {
                 self.readLock.withLock { $0 = false }
                 return
             }
             
-            self.callback(self.usage)
+            self.usage = updatedUsage
+            self.callback(updatedUsage)
             self.readLock.withLock { $0 = false }
             
             self.usage.bandwidth.upload = currentBandwidth.upload
@@ -613,31 +617,40 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
         guard !isReading else { return }
         self.connLock.withLock { $0 = true }
         
-        Task { @MainActor in
-            if self.connectivityMode == "http" {
-                self.httpCheck()
+        let mode = self.connectivityMode
+        let host = self.ICMPHost
+        
+        Task.detached(priority: .background) { [weak self] in
+            guard let self else { return }
+            
+            if mode == "http" {
+                await self.httpCheck()
             } else {
-                guard !self.ICMPHost.isEmpty else {
-                    if self.socket != nil { self.closeConn() }
+                guard !host.isEmpty else {
+                    await MainActor.run { if self.socket != nil { self.closeConn() } }
+                    self.connLock.withLock { $0 = false }
                     return
                 }
-                self.icmpCheck()
+                await self.icmpCheck()
             }
             
-            self.wrapper.status = !self.isPinging && self.latency != nil
-            if let l = self.latency { self.wrapper.latency = l }
-            if let j = self.jitter { self.wrapper.jitter = j }
-            if let old = self.value, old == self.wrapper {
+            var updatedWrapper = self.wrapper
+            updatedWrapper.status = !self.isPinging && self.latency != nil
+            if let l = self.latency { updatedWrapper.latency = l }
+            if let j = self.jitter { updatedWrapper.jitter = j }
+            
+            if let old = self.value, old == updatedWrapper {
                 self.connLock.withLock { $0 = false }
                 return
             }
             
-            self.callback(self.wrapper)
+            self.wrapper = updatedWrapper
+            self.callback(updatedWrapper)
             self.connLock.withLock { $0 = false }
         }
     }
     
-    @MainActor private func httpCheck() {
+    private func httpCheck() {
         guard !self.isPinging else { return }
         self.isPinging = true
         let urlString = self.HTTPHost.hasPrefix("http") ? self.HTTPHost : "https://\(self.HTTPHost)"
@@ -655,7 +668,7 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
         }
     }
     
-    @MainActor private func icmpCheck() {
+    private func icmpCheck() {
         if self.socket == nil { self.prepare() }
         if self.lastHost != self.ICMPHost { self.prepare() }
         
