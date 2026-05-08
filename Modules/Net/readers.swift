@@ -27,6 +27,18 @@ private struct PublicIPAddressResponse: Decodable, Sendable {
     let country: String?
 }
 
+private struct NetworkUsageReadConfig: Sendable {
+    let readerType: String
+    let interfaceID: String
+    let vpnMode: Bool
+    let vpnConnection: Bool
+    let isReachable: Bool
+}
+
+private struct NetworkUsageReadResult: Sendable {
+    let usage: Network_Usage
+}
+
 private func runNettop() -> String? {
     let task = Process()
     task.executableURL = URL(fileURLWithPath: "/usr/bin/nettop")
@@ -48,6 +60,310 @@ private func runNettop() -> String? {
     guard task.terminationStatus == 0 else { return nil }
     let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
     return String(data: outputData, encoding: .utf8)
+}
+
+private func primaryNetworkInterface() -> String {
+    if let global = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString),
+       let name = (global as? [String: Any])?["PrimaryInterface"] as? String {
+        return name
+    }
+    return ""
+}
+
+private func networkBytesInfo(_ pointer: UnsafeMutablePointer<ifaddrs>) -> (upload: Int64, download: Int64)? {
+    guard let addrPtr = pointer.pointee.ifa_addr, addrPtr.pointee.sa_family == UInt8(AF_LINK) else { return nil }
+    guard let raw = pointer.pointee.ifa_data else { return nil }
+    let data = raw.assumingMemoryBound(to: if_data.self)
+    return (upload: Int64(data.pointee.ifi_obytes), download: Int64(data.pointee.ifi_ibytes))
+}
+
+private func readInterfaceBandwidth(interfaceID: String) -> Bandwidth {
+    var interfaceAddresses: UnsafeMutablePointer<ifaddrs>? = nil
+    var totalUpload: Int64 = 0
+    var totalDownload: Int64 = 0
+    guard getifaddrs(&interfaceAddresses) == 0 else {
+        return Bandwidth()
+    }
+    defer { freeifaddrs(interfaceAddresses) }
+
+    var pointer = interfaceAddresses
+    while pointer != nil {
+        defer { pointer = pointer?.pointee.ifa_next }
+        guard let p = pointer else { break }
+
+        if String(cString: p.pointee.ifa_name) != interfaceID {
+            continue
+        }
+
+        if let info = networkBytesInfo(p) {
+            totalUpload += info.upload
+            totalDownload += info.download
+        }
+    }
+
+    return Bandwidth(upload: totalUpload, download: totalDownload)
+}
+
+private func readProcessBandwidth() -> Bandwidth {
+    guard let output = runNettop() else { return Bandwidth() }
+
+    var totalUpload: Int64 = 0
+    var totalDownload: Int64 = 0
+    var firstLine = false
+    output.enumerateLines { (line, _) in
+        if !firstLine {
+            firstLine = true
+            return
+        }
+        let parsedLine = line.split(separator: ",")
+        guard parsedLine.count >= 3 else { return }
+        if let download = Int64(parsedLine[1]) { totalDownload += download }
+        if let upload = Int64(parsedLine[2]) { totalUpload += upload }
+    }
+    return Bandwidth(upload: totalUpload, download: totalDownload)
+}
+
+private actor NetworkUsageWorker {
+    private var usage = Network_Usage()
+    private var lastDetailsReadTS: Date = .distantPast
+    private var isReading = false
+
+    func restore(_ cachedUsage: Network_Usage) {
+        self.usage = cachedUsage
+        self.usage.bandwidth = Bandwidth()
+    }
+
+    func read(config: NetworkUsageReadConfig) async -> NetworkUsageReadResult? {
+        guard !self.isReading else { return nil }
+        self.isReading = true
+        defer { self.isReading = false }
+
+        await self.updateDetails(interfaceID: config.interfaceID)
+
+        let currentBandwidth: Bandwidth = config.readerType == "interface" ?
+            readInterfaceBandwidth(interfaceID: config.interfaceID) :
+            readProcessBandwidth()
+
+        var updatedUsage = self.usage
+        if updatedUsage.bandwidth.upload != 0 {
+            updatedUsage.bandwidth.upload = currentBandwidth.upload - self.usage.bandwidth.upload
+        }
+        if updatedUsage.bandwidth.download != 0 {
+            updatedUsage.bandwidth.download = currentBandwidth.download - self.usage.bandwidth.download
+        }
+
+        updatedUsage.bandwidth.upload = max(updatedUsage.bandwidth.upload, 0)
+        updatedUsage.bandwidth.download = max(updatedUsage.bandwidth.download, 0)
+        updatedUsage.total.upload += updatedUsage.bandwidth.upload
+        updatedUsage.total.download += updatedUsage.bandwidth.download
+        updatedUsage.status = config.isReachable
+
+        if config.vpnConnection && config.vpnMode {
+            updatedUsage.bandwidth.upload /= 2
+            updatedUsage.bandwidth.download /= 2
+        }
+
+        self.usage = updatedUsage
+        self.usage.bandwidth = currentBandwidth
+        return NetworkUsageReadResult(usage: updatedUsage)
+    }
+
+    func refreshReachable(interfaceID: String, publicIPEnabled: Bool) async -> Network_Usage {
+        await self.getPublicIP(enabled: publicIPEnabled)
+        await self.updateDetails(interfaceID: interfaceID, force: true)
+        await self.updateWiFiDetails(interfaceID: interfaceID)
+        return self.usage
+    }
+
+    func resetUnreachable(interfaceID: String) async -> Network_Usage {
+        await self.updateWiFiDetails(interfaceID: interfaceID)
+        self.usage.reset()
+        return self.usage
+    }
+
+    func refreshPublicIP(enabled: Bool) async -> Network_Usage {
+        self.usage.raddr.v4 = nil
+        self.usage.raddr.v6 = nil
+        await self.getPublicIP(enabled: enabled)
+        return self.usage
+    }
+
+    func resetTotalUsage() -> Network_Usage {
+        self.usage.total = Bandwidth()
+        return self.usage
+    }
+
+    func updateWiFi(interfaceID: String) async -> Network_Usage {
+        await self.updateWiFiDetails(interfaceID: interfaceID)
+        return self.usage
+    }
+
+    private func updateDetails(interfaceID: String, force: Bool = false) async {
+        guard interfaceID != "" else { return }
+        let now = Date()
+        if !force && now.timeIntervalSince(self.lastDetailsReadTS) < 15 { return }
+
+        var res = (interface: nil as Network_interface?, connectionType: .other as Network_t, dns: [] as [String])
+        let interfaces = (SCNetworkInterfaceCopyAll() as? [SCNetworkInterface]) ?? []
+        for interface in interfaces {
+            guard let bsName = SCNetworkInterfaceGetBSDName(interface),
+                  let type = SCNetworkInterfaceGetInterfaceType(interface),
+                  let displayName = SCNetworkInterfaceGetLocalizedDisplayName(interface),
+                  let address = SCNetworkInterfaceGetHardwareAddressString(interface) else {
+                continue
+            }
+
+            let bsdName = bsName as String
+            if bsdName == interfaceID {
+                res.interface = Network_interface(displayName: displayName as String, BSDName: bsdName, address: address as String)
+                switch type {
+                case kSCNetworkInterfaceTypeEthernet: res.connectionType = .ethernet
+                case kSCNetworkInterfaceTypeIEEE80211, kSCNetworkInterfaceTypeWWAN: res.connectionType = .wifi
+                case kSCNetworkInterfaceTypeBluetooth: res.connectionType = .bluetooth
+                default: res.connectionType = .other
+                }
+            }
+        }
+
+        if let prefs = SCPreferencesCreate(nil, "Stats" as CFString, nil),
+           let services = SCNetworkServiceCopyAll(prefs) as? [SCNetworkService] {
+            for service in services {
+                guard let interface = SCNetworkServiceGetInterface(service),
+                      let name = SCNetworkInterfaceGetBSDName(interface),
+                      name as String == interfaceID,
+                      let serviceID = SCNetworkServiceGetServiceID(service) else {
+                    continue
+                }
+                let key = "State:/Network/Service/\(serviceID)/DNS" as CFString
+                if let settings = SCDynamicStoreCopyValue(nil, key) as? [String: Any] {
+                    res.dns = settings["ServerAddresses"] as? [String] ?? []
+                }
+            }
+        }
+
+        self.usage.interface = res.interface
+        self.usage.connectionType = res.connectionType
+        self.usage.dns = res.dns
+
+        if self.usage.wifiDetails.ssid != nil && (self.usage.wifiDetails.ssid == "" || self.usage.wifiDetails.ssid == "<redacted>") {
+            self.usage.wifiDetails.ssid = nil
+        }
+        if self.usage.connectionType == .wifi && (self.usage.wifiDetails.ssid == nil || self.usage.wifiDetails.ssid == "") {
+            await self.updateWiFiDetails(interfaceID: interfaceID)
+        }
+        self.lastDetailsReadTS = Date()
+    }
+
+    private func updateWiFiDetails(interfaceID: String) async {
+        var details = Network_wifi()
+        if let interface = CWWiFiClient.shared().interface(withName: interfaceID) {
+            details.ssid = interface.ssid()
+            if details.ssid == nil || details.ssid == "" {
+                if let cfg = interface.configuration(),
+                   let set = (cfg.value(forKey: "networkProfiles") as? NSOrderedSet),
+                   let first = set.firstObject as? CWNetworkProfile,
+                   let raw = first.ssid,
+                   !raw.isEmpty {
+                    details.ssid = raw
+                        .replacingOccurrences(of: "’", with: "'")
+                        .replacingOccurrences(of: "‘", with: "'")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+            details.bssid = interface.bssid()
+            details.countryCode = interface.countryCode()
+            details.RSSI = interface.rssiValue()
+            details.noise = interface.noiseMeasurement()
+            details.standard = interface.activePHYMode().description
+            details.mode = interface.interfaceMode().description
+            details.security = interface.security().description
+            if let ch = interface.wlanChannel() {
+                details.channel = ch.description
+                details.channelBand = ch.channelBand.description
+                details.channelWidth = ch.channelWidth.description
+                details.channelNumber = ch.channelNumber.description
+            }
+        }
+        self.usage.wifiDetails = details
+    }
+
+    private func getPublicIP(enabled: Bool) async {
+        guard enabled else { return }
+
+        async let ipv4 = Self.fetchPublicIP()
+        async let ipv6 = Self.fetchPublicIP()
+        let v4 = await ipv4
+        let v6 = await ipv6
+
+        if let ip = v4?.ipv4 ?? v6?.ipv4 {
+            self.usage.raddr.v4 = ip
+        }
+        if let ip = v6?.ipv6 ?? v4?.ipv6 {
+            self.usage.raddr.v6 = ip
+        }
+        if let cc = v4?.country ?? v6?.country {
+            self.usage.raddr.countryCode = cc
+        }
+    }
+
+    private static func fetchPublicIP() async -> PublicIPAddressResponse? {
+        guard let url = URL(string: "https://api.mac-stats.com/ip") else { return nil }
+
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 5)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Stats", forHTTPHeaderField: "User-Agent")
+
+        let configuration: URLSessionConfiguration = {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.waitsForConnectivity = false
+            configuration.timeoutIntervalForRequest = 5
+            configuration.timeoutIntervalForResource = 5
+            configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+            configuration.urlCache = nil
+            return configuration
+        }()
+
+        do {
+            let session = URLSession(configuration: configuration)
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            return try? JSONDecoder().decode(PublicIPAddressResponse.self, from: data)
+        } catch {
+            return nil
+        }
+    }
+}
+
+private actor NetworkProcessWorker {
+    private var isReading = false
+
+    func read() -> [Network_Process]? {
+        guard !self.isReading else { return nil }
+        self.isReading = true
+        defer { self.isReading = false }
+
+        var list: [Network_Process] = []
+        guard let output = runNettop() else { return list }
+        var firstLine = false
+        output.enumerateLines { (line, _) in
+            if !firstLine {
+                firstLine = true
+                return
+            }
+            let parsedLine = line.split(separator: ",")
+            guard parsedLine.count >= 3 else { return }
+            let name = String(parsedLine[0])
+            let download = Int64(parsedLine[1]) ?? 0
+            let upload = Int64(parsedLine[2]) ?? 0
+            if let index = list.firstIndex(where: { $0.name == name }) {
+                list[index].download += Int(download)
+                list[index].upload += Int(upload)
+            } else {
+                list.append(Network_Process(name: name, download: Int(download), upload: Int(upload)))
+            }
+        }
+        return list.sorted { ($0.download + $0.upload) > ($1.download + $1.upload) }
+    }
 }
 
 // swiftlint:disable control_statement
@@ -136,424 +452,164 @@ extension CWChannel {
 
 internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked Sendable {
     private nonisolated(unsafe) var reachability: Reachability = Reachability(start: true)
-    private nonisolated(unsafe) var _usage: Network_Usage = Network_Usage()
-    nonisolated public var usage: Network_Usage {
-        get { self._usage }
-        set { self._usage = newValue }
-    }
-    
+    private let worker = NetworkUsageWorker()
+
     nonisolated private var primaryInterface: String {
-        if let global = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString), let name = (global as? [String: Any])?["PrimaryInterface"] as? String {
-            return name
-        }
-        return ""
+        primaryNetworkInterface()
     }
-    
+
     nonisolated private var interfaceID: String {
         get { Store.shared.string(key: "Network_interface", defaultValue: self.primaryInterface) }
         set { Store.shared.set(key: "Network_interface", value: newValue) }
     }
-    
+
     nonisolated private var reader: String {
         Store.shared.string(key: "Network_reader", defaultValue: "interface")
     }
-    
+
     nonisolated private var vpnConnection: Bool {
         if let settings = CFNetworkCopySystemProxySettings()?.takeRetainedValue() as? [String: Any], let scopes = settings["__SCOPED__"] as? [String: Any] {
             return !scopes.filter({ $0.key.contains("tap") || $0.key.contains("tun") || $0.key.contains("ppp") || $0.key.contains("ipsec") || $0.key.contains("ipsec0")}).isEmpty
         }
         return false
     }
-    
+
     nonisolated private var VPNMode: Bool {
         Store.shared.bool(key: "Network_VPNMode", defaultValue: false)
     }
-    
+
     private var publicIPState: Bool {
         Store.shared.bool(key: "Network_publicIP", defaultValue: true)
     }
-    
+
     private let wifiClient = CWWiFiClient.shared()
-    private nonisolated(unsafe) var lastDetailsReadTS: Date = .distantPast
-    
+
     @MainActor public override func setup() {
         self.reachability.reachable = {
             Task { @MainActor in
                 if self.active {
-                    await self.getPublicIP()
-                    await self.updateDetails()
-                    await self.updateWiFiDetails()
+                    _ = await self.worker.refreshReachable(
+                        interfaceID: self.interfaceID,
+                        publicIPEnabled: self.publicIPState
+                    )
                 }
             }
         }
         self.reachability.unreachable = {
             Task { @MainActor in
                 if self.active {
-                    await self.updateWiFiDetails()
-                    self.usage.reset()
-                    self.callback(self.usage)
+                    let usage = await self.worker.resetUnreachable(interfaceID: self.interfaceID)
+                    self.callback(usage)
                 }
             }
         }
-        
+
         NotificationCenter.default.addObserver(self, selector: #selector(refreshPublicIP), name: .refreshPublicIP, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(resetTotalNetworkUsage(_:)), name: .resetTotalNetworkUsage, object: nil)
-        
+
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             if self.active {
-                await self.getPublicIP()
-                await self.updateDetails()
+                _ = await self.worker.refreshReachable(
+                    interfaceID: self.interfaceID,
+                    publicIPEnabled: self.publicIPState
+                )
             }
         }
-        
+
         if let usage = self.value {
-            self.usage = usage
-            self.usage.bandwidth = Bandwidth()
+            Task {
+                await self.worker.restore(usage)
+            }
         }
-        
+
         self.wifiClient.delegate = self
         self.startListeningForWifiEvents()
     }
-    
+
     @MainActor public override func terminate() {
         self.reachability.stop()
         self.stopListeningForWifiEvents()
     }
-    
-    private let readLock = OSAllocatedUnfairLock(initialState: false)
-    
+
     nonisolated public override func read() {
-        let isReading = self.readLock.withLock { $0 }
-        guard !isReading else { return }
-        self.readLock.withLock { $0 = true }
-        
-        let readerType = self.reader
-        let interfaceID = self.interfaceID
-        let currentUsage = self.usage
-        let vpnMode = self.VPNMode
-        
-        Task.detached(priority: .background) { [weak self] in
+        let config = NetworkUsageReadConfig(
+            readerType: self.reader,
+            interfaceID: self.interfaceID,
+            vpnMode: self.VPNMode,
+            vpnConnection: self.vpnConnection,
+            isReachable: self.reachability.isReachable
+        )
+        let worker = self.worker
+
+        Task { [weak self] in
             guard let self else { return }
-            
-            await self.updateDetails()
-            
-            let currentBandwidth: Bandwidth
-            if readerType == "interface" {
-                currentBandwidth = self.readInterfaceBandwidth(interfaceID: interfaceID)
-            } else {
-                currentBandwidth = self.readProcessBandwidth()
-            }
-            
-            var updatedUsage = currentUsage
-            if updatedUsage.bandwidth.upload != 0 {
-                updatedUsage.bandwidth.upload = currentBandwidth.upload - currentUsage.bandwidth.upload
-            }
-            if updatedUsage.bandwidth.download != 0 {
-                updatedUsage.bandwidth.download = currentBandwidth.download - currentUsage.bandwidth.download
-            }
-            
-            updatedUsage.bandwidth.upload = max(updatedUsage.bandwidth.upload, 0)
-            updatedUsage.bandwidth.download = max(updatedUsage.bandwidth.download, 0)
-            
-            updatedUsage.total.upload += updatedUsage.bandwidth.upload
-            updatedUsage.total.download += updatedUsage.bandwidth.download
-            updatedUsage.status = self.reachability.isReachable
-            
-            if self.vpnConnection && vpnMode {
-                updatedUsage.bandwidth.upload /= 2
-                updatedUsage.bandwidth.download /= 2
-            }
-            
-            if let old = self.value, old == updatedUsage {
-                self.readLock.withLock { $0 = false }
-                return
-            }
-            let resultUsage = updatedUsage
-            await MainActor.run {
-                self.usage = resultUsage
-                self.callback(resultUsage)
-                
-                self.usage.bandwidth.upload = currentBandwidth.upload
-                self.usage.bandwidth.download = currentBandwidth.download
-            }
-            self.readLock.withLock { $0 = false }
+            guard let result = await worker.read(config: config) else { return }
+            guard self.value != result.usage else { return }
+            self.callback(result.usage)
         }
-    }
-    
-    nonisolated private func readInterfaceBandwidth(interfaceID: String) -> Bandwidth {
-        var interfaceAddresses: UnsafeMutablePointer<ifaddrs>? = nil
-        var totalUpload: Int64 = 0
-        var totalDownload: Int64 = 0
-        guard getifaddrs(&interfaceAddresses) == 0 else {
-            return Bandwidth()
-        }
-        
-        var pointer = interfaceAddresses
-        while pointer != nil {
-            defer { pointer = pointer?.pointee.ifa_next }
-            guard let p = pointer else { break }
-            
-            if String(cString: p.pointee.ifa_name) != interfaceID {
-                continue
-            }
-            
-            if let info = self.getBytesInfo(p) {
-                totalUpload += info.upload
-                totalDownload += info.download
-            }
-        }
-        freeifaddrs(interfaceAddresses)
-        
-        return Bandwidth(upload: totalUpload, download: totalDownload)
-    }
-    
-    nonisolated private func readProcessBandwidth() -> Bandwidth {
-        guard let output = runNettop() else { return Bandwidth() }
-
-        var totalUpload: Int64 = 0
-        var totalDownload: Int64 = 0
-        var firstLine = false
-        output.enumerateLines { (line, _) in
-            if !firstLine {
-                firstLine = true
-                return
-            }
-            let parsedLine = line.split(separator: ",")
-            guard parsedLine.count >= 3 else { return }
-            if let download = Int64(parsedLine[1]) { totalDownload += download }
-            if let upload = Int64(parsedLine[2]) { totalUpload += upload }
-        }
-        return Bandwidth(upload: totalUpload, download: totalDownload)
     }
 
-    @MainActor private func updateDetails() async {
-        guard self.interfaceID != "" else { return }
-        let now = Date()
-        if now.timeIntervalSince(self.lastDetailsReadTS) < 15 { return }
-        
-        let interfaceID = self.interfaceID
-        let details = await Task.detached(priority: .background) {
-            var res = (interface: nil as Network_interface?, connectionType: .other as Network_t, dns: [] as [String])
-            
-            let interfaces = (SCNetworkInterfaceCopyAll() as? [SCNetworkInterface]) ?? []
-            for interface in interfaces {
-                guard let bsName = SCNetworkInterfaceGetBSDName(interface),
-                      let type = SCNetworkInterfaceGetInterfaceType(interface),
-                      let displayName = SCNetworkInterfaceGetLocalizedDisplayName(interface),
-                      let address = SCNetworkInterfaceGetHardwareAddressString(interface) else {
-                    continue
-                }
-                
-                let bsdName = bsName as String
-                if bsdName == interfaceID {
-                    res.interface = Network_interface(displayName: displayName as String, BSDName: bsdName, address: address as String)
-                    switch type {
-                    case kSCNetworkInterfaceTypeEthernet: res.connectionType = .ethernet
-                    case kSCNetworkInterfaceTypeIEEE80211, kSCNetworkInterfaceTypeWWAN: res.connectionType = .wifi
-                    case kSCNetworkInterfaceTypeBluetooth: res.connectionType = .bluetooth
-                    default: res.connectionType = .other
-                    }
-                }
-            }
-            
-            if let prefs = SCPreferencesCreate(nil, "Stats" as CFString, nil), let services = SCNetworkServiceCopyAll(prefs) as? [SCNetworkService] {
-                for service in services {
-                    if let interface = SCNetworkServiceGetInterface(service), let name = SCNetworkInterfaceGetBSDName(interface), name as String == interfaceID,
-                       let serviceID = SCNetworkServiceGetServiceID(service) {
-                        let key = "State:/Network/Service/\(serviceID)/DNS" as CFString
-                        if let settings = SCDynamicStoreCopyValue(nil, key) as? [String: Any] {
-                            res.dns = settings["ServerAddresses"] as? [String] ?? []
-                        }
-                    }
-                }
-            }
-            return res
-        }.value
-        
-        self.usage.interface = details.interface
-        self.usage.connectionType = details.connectionType
-        self.usage.dns = details.dns
-        
-        if self.usage.wifiDetails.ssid != nil && (self.usage.wifiDetails.ssid == "" || self.usage.wifiDetails.ssid == "<redacted>") {
-            self.usage.wifiDetails.ssid = nil
-        }
-        if self.usage.connectionType == .wifi && (self.usage.wifiDetails.ssid == nil || self.usage.wifiDetails.ssid == "") {
-            await self.updateWiFiDetails()
-        }
-        self.lastDetailsReadTS = Date()
-    }
-    
-    @MainActor private func updateWiFiDetails() async {
-        let interfaceID = self.interfaceID
-        let wifiDetails = await Task.detached(priority: .background) {
-            var details = Network_wifi()
-            if let interface = CWWiFiClient.shared().interface(withName: interfaceID) {
-                details.ssid = interface.ssid()
-                if details.ssid == nil || details.ssid == "" {
-                    if let cfg = interface.configuration(), let set = (cfg.value(forKey: "networkProfiles") as? NSOrderedSet),
-                       let first = set.firstObject as? CWNetworkProfile, let raw = first.ssid, !raw.isEmpty {
-                        details.ssid = raw.replacingOccurrences(of: "’", with: "'").replacingOccurrences(of: "‘", with: "'").trimmingCharacters(in: .whitespacesAndNewlines)
-                    }
-                }
-                details.bssid = interface.bssid()
-                details.countryCode = interface.countryCode()
-                details.RSSI = interface.rssiValue()
-                details.noise = interface.noiseMeasurement()
-                details.standard = interface.activePHYMode().description
-                details.mode = interface.interfaceMode().description
-                details.security = interface.security().description
-                if let ch = interface.wlanChannel() {
-                    details.channel = ch.description
-                    details.channelBand = ch.channelBand.description
-                    details.channelWidth = ch.channelWidth.description
-                    details.channelNumber = ch.channelNumber.description
-                }
-            }
-            return details
-        }.value
-        self.usage.wifiDetails = wifiDetails
-    }
-    
-    @MainActor private func getPublicIP() async {
-        guard self.publicIPState else { return }
-        
-        let result = await Task.detached(priority: .background) {
-            async let ipv4 = Self.fetchPublicIP()
-            async let ipv6 = Self.fetchPublicIP()
-            let v4 = await ipv4
-            let v6 = await ipv6
-            return (ipv4: v4?.ipv4 ?? v6?.ipv4, ipv6: v6?.ipv6 ?? v4?.ipv6, country: v4?.country ?? v6?.country)
-        }.value
-        
-        if let ip = result.ipv4 {
-            self.usage.raddr.v4 = ip
-        }
-        if let ip = result.ipv6 {
-            self.usage.raddr.v6 = ip
-        }
-        if let cc = result.country {
-            self.usage.raddr.countryCode = cc
-        }
-    }
-    
-    nonisolated private static func fetchPublicIP() async -> PublicIPAddressResponse? {
-        guard let url = URL(string: "https://api.mac-stats.com/ip") else { return nil }
-
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 5)
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("Stats", forHTTPHeaderField: "User-Agent")
-
-        let configuration: URLSessionConfiguration = {
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.waitsForConnectivity = false
-            configuration.timeoutIntervalForRequest = 5
-            configuration.timeoutIntervalForResource = 5
-            configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-            configuration.urlCache = nil
-            return configuration
-        }()
-
-        do {
-            let session = URLSession(configuration: configuration)
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
-            return try? JSONDecoder().decode(PublicIPAddressResponse.self, from: data)
-        } catch {
-            return nil
-        }
-    }
-    
-    nonisolated private func getBytesInfo(_ pointer: UnsafeMutablePointer<ifaddrs>) -> (upload: Int64, download: Int64)? {
-        guard let addrPtr = pointer.pointee.ifa_addr, addrPtr.pointee.sa_family == UInt8(AF_LINK) else { return nil }
-        guard let raw = pointer.pointee.ifa_data else { return nil }
-        let data = raw.assumingMemoryBound(to: if_data.self)
-        return (upload: Int64(data.pointee.ifi_obytes), download: Int64(data.pointee.ifi_ibytes))
-    }
-    
     @objc func refreshPublicIP() {
         Task { @MainActor in
-            self.usage.raddr.v4 = nil
-            self.usage.raddr.v6 = nil
-            await self.getPublicIP()
+            _ = await self.worker.refreshPublicIP(enabled: self.publicIPState)
         }
     }
     
     @MainActor func refreshPublicIPFromScheduler() async {
-        self.usage.raddr.v4 = nil
-        self.usage.raddr.v6 = nil
-        await self.getPublicIP()
+        _ = await self.worker.refreshPublicIP(enabled: self.publicIPState)
     }
-    
+
     @objc func resetTotalNetworkUsage(_ notification: Notification) {
         if notification.userInfo?["skipReader"] as? Bool == true {
             return
         }
-        
+
         Task { @MainActor in
             self.resetTotalNetworkUsageFromScheduler()
         }
     }
-    
+
     @MainActor func resetTotalNetworkUsageFromScheduler() {
-        self.usage.total = Bandwidth()
-        self.save(self.usage)
+        Task {
+            let usage = await self.worker.resetTotalUsage()
+            self.save(usage)
+        }
     }
-    
+
     private func startListeningForWifiEvents() {
         try? self.wifiClient.startMonitoringEvent(with: .ssidDidChange)
     }
-    
+
     private func stopListeningForWifiEvents() {
         try? self.wifiClient.stopMonitoringEvent(with: .ssidDidChange)
     }
-    
+
     public func ssidDidChangeForWiFiInterface(withName interfaceName: String) {
-        Task { @MainActor in await self.updateWiFiDetails() }
+        Task { @MainActor in
+            _ = await self.worker.updateWiFi(interfaceID: self.interfaceID)
+        }
     }
 }
 
 public class ProcessReader: Reader<[Network_Process]>, @unchecked Sendable {
+    private let worker = NetworkProcessWorker()
+
     public override func setup() {
         self.defaultInterval = 5
         self.setInterval(Store.shared.int(key: "Net_updateInterval", defaultValue: 5))
     }
-    
-    private let processLock = OSAllocatedUnfairLock(initialState: false)
-    
+
     nonisolated public override func read() {
-        let isReading = self.processLock.withLock { $0 }
-        guard !isReading else { return }
-        self.processLock.withLock { $0 = true }
-        
-        Task { @MainActor in
-            let processes = await Task.detached(priority: .background) {
-                var list: [Network_Process] = []
-                guard let output = runNettop() else { return list }
-                var firstLine = false
-                output.enumerateLines { (line, _) in
-                    if !firstLine { firstLine = true; return }
-                    let parsedLine = line.split(separator: ",")
-                    guard parsedLine.count >= 3 else { return }
-                    let name = String(parsedLine[0])
-                    let download = Int64(parsedLine[1]) ?? 0
-                    let upload = Int64(parsedLine[2]) ?? 0
-                    if let index = list.firstIndex(where: { $0.name == name }) {
-                        list[index].download += Int(download)
-                        list[index].upload += Int(upload)
-                    } else {
-                        list.append(Network_Process(name: name, download: Int(download), upload: Int(upload)))
-                    }
-                }
-                return list.sorted { ($0.download + $0.upload) > ($1.download + $1.upload) }
-            }.value
+        let worker = self.worker
+
+        Task { [weak self] in
+            guard let self, let processes = await worker.read() else { return }
             if let old = self.value, old == processes {
-                self.processLock.withLock { $0 = false }
                 return
             }
-            
+
             self.callback(processes)
-            self.processLock.withLock { $0 = false }
         }
     }
 }
@@ -569,37 +625,37 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
     nonisolated private var ICMPHost: String { Store.shared.string(key: "Net_ICMPHost", defaultValue: "1.1.1.1") }
     nonisolated private var HTTPHost: String { Store.shared.string(key: "Net_HTTPHost", defaultValue: "https://google.com") }
     nonisolated private var connectivityMode: String { Store.shared.string(key: "Net_connectivityMode", defaultValue: "icmp") }
-    
+
     private nonisolated(unsafe) var lastHost: String = ""
     private nonisolated(unsafe) var addr: Data? = nil
     private nonisolated(unsafe) var prepareToken: UUID = UUID()
     private let timeout: TimeInterval = 5
-    
+
     private nonisolated(unsafe) var socket: CFSocket?
     private nonisolated(unsafe) var socketSource: CFRunLoopSource?
     private nonisolated(unsafe) var wrapper: Network_Connectivity = Network_Connectivity(status: false)
-    
+
     private nonisolated(unsafe) var isPinging: Bool = false
     private nonisolated(unsafe) var latency: Double? = nil
     private nonisolated(unsafe) var previousLatency: Double? = nil
     private nonisolated(unsafe) var jitter: Double? = nil
     private nonisolated(unsafe) var start: DispatchTime? = nil
     private nonisolated(unsafe) var timeoutTimer: Timer?
-    
+
     private struct ICMPHeader {
         var type: UInt8; var code: UInt8; var checksum: UInt16; var identifier: UInt16; var sequenceNumber: UInt16; var payload: uuid_t
     }
-    
+
     private struct IPHeader {
         var versionAndHeaderLength: UInt8; var differentiatedServices: UInt8; var totalLength: UInt16; var identification: UInt16; var flagsAndFragmentOffset: UInt16
         var timeToLive: UInt8; var `protocol`: UInt8; var headerChecksum: UInt16; var sourceAddress: (UInt8, UInt8, UInt8, UInt8); var destinationAddress: (UInt8, UInt8, UInt8, UInt8)
     }
-    
+
     @MainActor public override func setup() {
         self.setInterval(Store.shared.int(key: "Net_updateICMPInterval", defaultValue: 1))
         self.prepare()
     }
-    
+
     public override func stop() {
         super.stop()
         self.closeConn()
@@ -609,7 +665,7 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
         super.pause()
         self.closeConn()
     }
-    
+
     @MainActor private func prepare() {
         let host = self.ICMPHost
         let token = UUID()
@@ -623,20 +679,20 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
             self.read()
         }
     }
-    
+
     private let connLock = OSAllocatedUnfairLock(initialState: false)
-    
+
     nonisolated public override func read() {
         let isReading = self.connLock.withLock { $0 }
         guard !isReading else { return }
         self.connLock.withLock { $0 = true }
-        
+
         let mode = self.connectivityMode
         let host = self.ICMPHost
-        
+
         Task.detached(priority: .background) { [weak self] in
             guard let self else { return }
-            
+
             if mode == "http" {
                 await self.httpCheck()
             } else {
@@ -647,59 +703,59 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
                 }
                 await self.icmpCheck()
             }
-            
+
             var updatedWrapper = self.wrapper
             updatedWrapper.status = !self.isPinging && self.latency != nil
             if let l = self.latency { updatedWrapper.latency = l }
             if let j = self.jitter { updatedWrapper.jitter = j }
-            
+
             if let old = self.value, old == updatedWrapper {
                 self.connLock.withLock { $0 = false }
                 return
             }
-            
+
             self.wrapper = updatedWrapper
             self.callback(updatedWrapper)
             self.connLock.withLock { $0 = false }
         }
     }
-    
+
     private func httpCheck() {
         guard !self.isPinging else { return }
         self.isPinging = true
         let urlString = self.HTTPHost.hasPrefix("http") ? self.HTTPHost : "https://\(self.HTTPHost)"
         guard let url = URL(string: urlString) else { self.isPinging = false; return }
-        
+
         let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: self.timeout)
         Task {
             let startTime = DispatchTime.now()
             _ = try? await URLSession.shared.data(for: request)
             let endTime = DispatchTime.now()
             let elapsed = Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
-            
+
             self.updateStats(elapsed: elapsed)
             self.isPinging = false
         }
     }
-    
+
     private func icmpCheck() {
         if self.socket == nil || self.lastHost != self.ICMPHost {
             self.prepare()
             return
         }
-        
+
         guard !self.isPinging && self.active, let socket = self.socket, let addr = self.addr, let data = self.request() else { return }
         self.isPinging = true
-        
+
         Task {
             self.start = DispatchTime.now()
             CFSocketSendData(socket, addr as CFData, data as CFData, self.timeout)
-            
+
             try? await Task.sleep(nanoseconds: UInt64(self.timeout * 1_000_000_000))
             self.isPinging = false
         }
     }
-    
+
     @MainActor func socketCallback(data: Data) {
         guard self.validateResponse(data) else { return }
         let end = DispatchTime.now()
@@ -708,7 +764,7 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
         self.isPinging = false
         self.timeoutTimer?.invalidate()
     }
-    
+
     @MainActor private func updateStats(elapsed: Double) {
         self.latency = elapsed
         if let prev = self.previousLatency {
@@ -717,19 +773,19 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
         }
         self.previousLatency = elapsed
     }
-    
+
     private func validateResponse(_ data: Data) -> Bool {
         guard data.count >= MemoryLayout<ICMPHeader>.size + MemoryLayout<IPHeader>.size else { return false }
         let headerOffset = 20 // simplified
         let icmpHeader = data.withUnsafeBytes { $0.load(fromByteOffset: headerOffset, as: ICMPHeader.self) }
         return UUID(uuid: icmpHeader.payload) == self.fingerprint
     }
-    
+
     private func request() -> Data? {
         var header = ICMPHeader(type: 8, code: 0, checksum: 0, identifier: identifier.bigEndian, sequenceNumber: 0, payload: fingerprint.uuid)
         return Data(bytes: &header, count: MemoryLayout<ICMPHeader>.size)
     }
-    
+
     private func openConn() {
         self.closeConn()
         guard self.addr != nil else { return }
@@ -750,13 +806,13 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
             CFRunLoopAddSource(CFRunLoopGetMain(), self.socketSource, .commonModes)
         }
     }
-    
+
     private func closeConn() {
         if let s = self.socketSource { CFRunLoopSourceInvalidate(s); self.socketSource = nil }
         if let s = self.socket { CFSocketInvalidate(s); self.socket = nil }
         self.timeoutTimer?.invalidate()
     }
-    
+
     private func resolve(host: String) async -> Data? {
         self.lastHost = host
         return await Task.detached(priority: .background) {

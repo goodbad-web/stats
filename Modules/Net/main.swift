@@ -14,14 +14,14 @@ import Kit
 import SystemConfiguration
 import WidgetKit
 
-public enum Network_t: String, Codable {
+public enum Network_t: String, Codable, Sendable {
     case wifi
     case ethernet
     case bluetooth
     case other
 }
 
-public struct Network_interface: Codable, Equatable {
+public struct Network_interface: Codable, Equatable, Sendable {
     var status: Bool = false
     var displayName: String = ""
     var BSDName: String = ""
@@ -37,7 +37,7 @@ public struct Network_interface: Codable, Equatable {
     }
 }
 
-public struct Network_addr: Codable, Equatable {
+public struct Network_addr: Codable, Equatable, Sendable {
     var v4: String? = nil
     var v6: String? = nil
     var countryCode: String? = nil
@@ -49,7 +49,7 @@ public struct Network_addr: Codable, Equatable {
     }
 }
 
-public struct Network_wifi: Codable, Equatable {
+public struct Network_wifi: Codable, Equatable, Sendable {
     var countryCode: String? = nil
     var ssid: String? = nil
     var bssid: String? = nil
@@ -88,7 +88,7 @@ public struct Network_wifi: Codable, Equatable {
     }
 }
 
-public struct Bandwidth: Codable, Equatable {
+public struct Bandwidth: Codable, Equatable, Sendable {
     var upload: Int64 = 0
     var download: Int64 = 0
 
@@ -98,7 +98,7 @@ public struct Bandwidth: Codable, Equatable {
     }
 }
 
-public struct Network_Usage: Codable, Equatable, RemoteType {
+public struct Network_Usage: Codable, Equatable, RemoteType, Sendable {
     var bandwidth: Bandwidth = Bandwidth()
     var total: Bandwidth = Bandwidth()
     
@@ -146,7 +146,7 @@ public struct Network_Usage: Codable, Equatable, RemoteType {
     }
 }
 
-public struct Network_Connectivity: Codable, Equatable {
+public struct Network_Connectivity: Codable, Equatable, Sendable {
     var status: Bool = false
     var latency: Double = 0
     var jitter: Double = 0
