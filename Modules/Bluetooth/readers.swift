@@ -337,16 +337,16 @@ internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBP
                 if !list.contains(where: {$0.address == v.address}) { list.append(v) }
             }
             
+            let finalList = list
             await MainActor.run {
                 let identifiers = self.deviceLock.withLock { $0.devices.compactMap({ $0.uuid }) }
                 let peripherals = self.manager.retrievePeripherals(withIdentifiers: identifiers)
                 let isScanning = self.manager.isScanning
+                let batteryUUID = DevicesReader.batteryServiceUUID
                 
-                var toConnect: [CBPeripheral] = []
-                
-                self.deviceLock.withLock { state in
+                let (toConnect, toInitialize, result) = self.deviceLock.withLock { state in
                     results.paired.forEach { (device: ioDevice) in
-                        guard let data = list.first(where: { $0.address == device.address }) else { return }
+                        guard let data = finalList.first(where: { $0.address == device.address }) else { return }
                         
                         let rssi = device.rssi == 127 ? nil : Int(device.rssi)
                         if let idx = state.devices.firstIndex(where: { $0.address == data.address }) {
@@ -372,17 +372,18 @@ internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBP
                         ))
                     }
                     
+                    var connectList: [CBPeripheral] = []
+                    var initList: [CBPeripheral] = []
                     peripherals.forEach { (p: CBPeripheral) in
                         guard let idx = state.devices.firstIndex(where: { $0.uuid == p.identifier }) else { return }
                         if state.devices[idx].peripheral == nil { state.devices[idx].peripheral = p }
                         
                         if p.state == .disconnected {
-                            if isScanning { toConnect.append(p) }
+                            if isScanning { connectList.append(p) }
                         } else if p.state == .disconnecting {
                             state.devicesToRemove.append(p.identifier)
                         } else if p.state == .connected && !state.devices[idx].isPeripheralInitialized {
-                            p.delegate = self
-                            p.discoverServices([DevicesReader.batteryServiceUUID])
+                            initList.append(p)
                             state.devices[idx].isPeripheralInitialized = true
                         }
                     }
@@ -427,12 +428,20 @@ internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBP
                         ))
                     }
                     
-                    let result = state.devices.filter({ $0.RSSI != nil })
-                    if let old = self.value, old == result { return }
+                    return (connectList, initList, state.devices.filter({ $0.RSSI != nil }))
+                }
+                
+                if let old = self.value, old != result {
+                    self.callback(result)
+                } else if self.value == nil {
                     self.callback(result)
                 }
                 
                 toConnect.forEach { self.manager.connect($0, options: nil) }
+                toInitialize.forEach { p in
+                    p.delegate = self
+                    p.discoverServices([batteryUUID])
+                }
             }
         }
     }

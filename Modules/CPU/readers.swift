@@ -162,7 +162,7 @@ private actor CPUReaderWorker {
                 vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prevCpuInfo), vm_size_t(prevCpuInfoSize))
             }
             
-            let size: size_t = MemoryLayout<integer_t>.stride * Int(numCpuInfo)
+            _ = MemoryLayout<integer_t>.stride * Int(numCpuInfo)
             let newPrev = UnsafeMutablePointer<integer_t>.allocate(capacity: Int(numCpuInfo))
             newPrev.initialize(from: cpuInfo, count: Int(numCpuInfo))
             self.prevCpuInfo = newPrev
@@ -402,7 +402,7 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
         let scope = self.scopeLock.withLock { $0 }
         let worker = self.worker
         
-        Task {
+        Task(priority: .background) {
             defer { self.readLock.withLock { $0 = false } }
             if let updatedResponse = await worker.readLoad(scope: scope) {
                 if let old = self.value, old == updatedResponse {
@@ -437,7 +437,7 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
         let limit = self.numberOfProcesses
         let worker = self.worker
         
-        Task {
+        Task(priority: .background) {
             defer { self.readLock.withLock { $0 = false } }
             if limit == 0 { return }
             let processes = await worker.getTopProcesses(limit: limit)
@@ -478,11 +478,11 @@ public class TemperatureReader: Reader<Double>, @unchecked Sendable {
         guard !isReading else { return }
         self.readLock.withLock { $0 = true }
         
-        let localList = Self.list
         let worker = self.worker
         
-        Task {
+        Task(priority: .background) {
             defer { self.readLock.withLock { $0 = false } }
+            let localList = await MainActor.run { Self.list }
             if let temp = await worker.readTemperature(list: localList) {
                 self.callback(temp)
             }
@@ -507,7 +507,7 @@ public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
         self.readLock.withLock { $0 = true }
         
         let worker = self.worker
-        Task {
+        Task(priority: .background) {
             defer { self.readLock.withLock { $0 = false } }
             if let result = await worker.readFrequency() {
                 if let old = self.value, old == result {

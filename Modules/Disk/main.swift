@@ -10,6 +10,7 @@
 //
 
 import Cocoa
+import os
 @preconcurrency import Kit
 import WidgetKit
 
@@ -161,7 +162,7 @@ public class Disks: Codable, Equatable, RemoteType, @unchecked Sendable {
     }
     
     public func remove(at index: Int) {
-        self.lock.withLock { $0.remove(at: index) }
+        _ = self.lock.withLock { $0.remove(at: index) }
     }
     
     public func sort() {

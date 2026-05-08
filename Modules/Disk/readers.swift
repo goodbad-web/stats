@@ -429,11 +429,11 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
             removableState: Store.shared.bool(key: "Disk_removable", defaultValue: false),
             smartState: self.SMART
         )
-        let localList = self.list
         let worker = self.worker
 
         Task { [weak self] in
             guard let self else { return }
+            let localList = await MainActor.run { self.list }
             let updatedList = await worker.readCapacity(config: config, currentList: localList)
             
             if let old = self.value, old == updatedList {
@@ -441,8 +441,10 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
                 return
             }
             
-            self.list = updatedList
-            self.callback(updatedList)
+            await MainActor.run {
+                self.list = updatedList
+                self.callback(updatedList)
+            }
             self.readLock.withLock { $0 = false }
         }
     }
@@ -479,11 +481,11 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
         
         let interval = Int64(self.interval ?? 1)
         let removableState = Store.shared.bool(key: "Disk_removable", defaultValue: false)
-        let localList = self.list
         let worker = self.worker
 
         Task { [weak self] in
             guard let self else { return }
+            let localList = await MainActor.run { self.list }
             let updatedList = await worker.readActivity(currentInterval: interval, removableState: removableState, currentList: localList)
             
             if let old = self.value, old == updatedList {
@@ -491,8 +493,10 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
                 return
             }
             
-            self.list = updatedList
-            self.callback(updatedList)
+            await MainActor.run {
+                self.list = updatedList
+                self.callback(updatedList)
+            }
             self.activityLock.withLock { $0 = false }
         }
     }

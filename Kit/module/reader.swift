@@ -49,7 +49,7 @@ public protocol ReaderInternal_p {
     func read()
 }
 
-private struct ReaderState<T> {
+struct ReaderState<T> {
     var value: T?
     var active: Bool = false
     var locked: Bool = true
@@ -58,12 +58,14 @@ private struct ReaderState<T> {
     var defaultInterval: Int = 1
 }
 
+private let efficiencyQueue = DispatchQueue(label: "eu.exelban.Stats.Efficiency", qos: .background)
+
 @MainActor open class Reader<T: Codable & Sendable>: NSObject, ReaderInternal_p, @unchecked Sendable {
     nonisolated public var log: NextLog {
         NextLog.shared.copy(category: "\(String(describing: self))")
     }
     
-    private let stateLock = OSAllocatedUnfairLock(initialState: ReaderState<T>())
+    let stateLock = OSAllocatedUnfairLock(initialState: ReaderState<T>())
     
     nonisolated public var value: T? {
         get { self.stateLock.withLock { $0.value } }
@@ -112,8 +114,6 @@ private struct ReaderState<T> {
     private var userInterval: Int?
     private var effectiveInterval: Int?
     private var activityMode: ReaderActivityMode = .active
-    
-    private static let efficiencyQueue = DispatchQueue(label: "eu.exelban.Stats.Efficiency", qos: .background)
     
     private var alignWorkItem: DispatchWorkItem?
     private let alignQueue = DispatchQueue(label: "eu.exelban.readerAlignQueue")
@@ -183,7 +183,7 @@ private struct ReaderState<T> {
     
     open func start() {
         if (self.popup || self.preview) && self.locked {
-            Self.efficiencyQueue.async {
+            efficiencyQueue.async {
                 self.read()
             }
             return
@@ -194,12 +194,12 @@ private struct ReaderState<T> {
                 self.startAlignedRepeater()
             } else {
                 self.startNormalRepeater()
-                Self.efficiencyQueue.async { self.read() }
+                efficiencyQueue.async { self.read() }
                 self.repeatTask?.start()
             }
             self.initlizalized = true
         } else if (self.popup || self.sleep) && !self.active {
-            Self.efficiencyQueue.async { self.read() }
+            efficiencyQueue.async { self.read() }
             self.repeatTask?.start()
         } else {
             self.repeatTask?.start()

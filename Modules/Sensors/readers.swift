@@ -657,7 +657,6 @@ private actor SensorsReaderWorker {
             (self.powers.Media - prevMedia) / elapsed
         )
     }
-
     
     static private func m1Preset(type: SensorType) -> (Int32, Int32, Int32) {
         var page: Int32 = 0
@@ -772,12 +771,15 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
 
         let scope = self.readScopeLock.withLock { $0 }
         let unknownState = self.unknownSensorsStateLock.withLock { $0 }
-        let hidState = self.hidState
-        let localSensors = self.list.sensors
         let worker = self.worker
-
-        Task { [weak self] in
+        
+        Task(priority: .background) { [weak self] in
             guard let self else { return }
+            
+            let (hidState, localSensors) = await MainActor.run {
+                (self.hidState, self.list.sensors)
+            }
+            
             let updatedSensors = await worker.read(
                 scope: scope, 
                 unknownSensorsState: unknownState, 

@@ -369,7 +369,7 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
         let currentGPUs = self.gpus
         let worker = self.worker
         
-        Task {
+        Task(priority: .background) {
             defer { self.readLock.withLock { $0 = false } }
             let updatedGPUs = await worker.read(currentGPUs: currentGPUs)
             

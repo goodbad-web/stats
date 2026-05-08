@@ -830,14 +830,14 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
     }
 
     private func closeConn() {
-        let (source, socket, timer) = self.stateLock.withLock { ($0.socketSource, $0.socket, $0.timeoutTimer) }
-        if let s = source { CFRunLoopSourceInvalidate(s) }
-        if let s = socket { CFSocketInvalidate(s) }
-        timer?.invalidate()
-        self.stateLock.withLock {
-            $0.socketSource = nil
-            $0.socket = nil
-            $0.timeoutTimer = nil
+        self.stateLock.withLock { state in
+            if let s = state.socketSource { CFRunLoopSourceInvalidate(s) }
+            if let s = state.socket { CFSocketInvalidate(s) }
+            state.timeoutTimer?.invalidate()
+            
+            state.socketSource = nil
+            state.socket = nil
+            state.timeoutTimer = nil
         }
     }
 
