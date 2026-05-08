@@ -11,6 +11,7 @@
 
 import Kit
 import Cocoa
+import os
 
 public enum SensorGroup: String, Codable {
     case CPU = "CPU"
@@ -53,18 +54,11 @@ public protocol Sensor_p {
 }
 
 public class Sensors_List: Codable, Equatable {
-    private var queue: DispatchQueue = DispatchQueue(label: "eu.exelban.Stats.Sensors.SynchronizedArray", attributes: .concurrent)
+    private let lock = OSAllocatedUnfairLock(initialState: [Sensor_p]())
     
-    private var list: [Sensor_p] = []
     public var sensors: [Sensor_p] {
-        get {
-            self.queue.sync{ self.list }
-        }
-        set {
-            self.queue.sync(flags: .barrier) {
-                self.list = newValue
-            }
-        }
+        get { self.lock.withLock { $0 } }
+        set { self.lock.withLock { $0 = newValue } }
     }
     
     private enum CodingKeys: String, CodingKey {
