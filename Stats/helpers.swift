@@ -110,16 +110,33 @@ extension AppDelegate {
             NSApp.setActivationPolicy(dockIconStatus)
         }
         
+        self.scheduleSupportActivity()
+        self.scheduleUpdateActivity()
+    }
+    
+    private func scheduleSupportActivity() {
         self.checkIfShouldShowSupportWindow()
         self.supportActivity.interval = 60 * 60 * 24 * 30
         self.supportActivity.repeats = true
-        self.supportActivity.schedule { (completion: @escaping NSBackgroundActivityScheduler.CompletionHandler) in
+        self.supportActivity.schedule { [weak self] (completion: @escaping NSBackgroundActivityScheduler.CompletionHandler) in
+            guard let self else {
+                completion(.finished)
+                return
+            }
+            
+            if self.supportActivity.shouldDefer {
+                completion(.deferred)
+                return
+            }
+            
             DispatchQueue.main.async {
                 self.checkIfShouldShowSupportWindow()
+                completion(.finished)
             }
-            completion(NSBackgroundActivityScheduler.Result.finished)
         }
-        
+    }
+    
+    private func scheduleUpdateActivity() {
         if let updateInterval = AppUpdateInterval(rawValue: Store.shared.string(key: "update-interval", defaultValue: AppUpdateInterval.silent.rawValue)) {
             self.updateActivity.invalidate()
             self.updateActivity.repeats = true
@@ -140,10 +157,21 @@ extension AppDelegate {
             }
             
             self.updateActivity.schedule { [weak self] (completion: @escaping NSBackgroundActivityScheduler.CompletionHandler) in
-                Task { @MainActor in
-                    self?.checkForNewVersion()
+                guard let self else {
+                    completion(.finished)
+                    return
                 }
-                completion(NSBackgroundActivityScheduler.Result.finished)
+                
+                if self.updateActivity.shouldDefer {
+                    completion(.deferred)
+                    return
+                }
+                
+                Task { @MainActor in
+                    self.checkForNewVersion(allowSilentInstall: false) {
+                        completion(.finished)
+                    }
+                }
             }
         }
     }
@@ -164,31 +192,37 @@ extension AppDelegate {
         Store.shared.set(key: "setupProcess", value: true)
     }
     
-    internal func checkForNewVersion(silent: Bool = false) {
+    internal func checkForNewVersion(silent: Bool = false, allowSilentInstall: Bool = true, completion: (() -> Void)? = nil) {
         updater.check { result, error in
             if error != nil {
                 debug("error updater.check(): \(error!.localizedDescription)")
+                completion?()
                 return
             }
             
             guard error == nil, let version: version_s = result else {
                 debug("download error(): \(error!.localizedDescription)")
+                completion?()
                 return
             }
             
             if !version.newest {
+                completion?()
                 return
             }
             
-            if silent {
+            if silent && allowSilentInstall {
                 if let url = URL(string: version.url) {
                     updater.download(url, completion: { path in
                         updater.install(path: path) { error in
                             if let error {
                                 showAlert("Error update Stats", error, .critical)
                             }
+                            completion?()
                         }
                     })
+                } else {
+                    completion?()
                 }
                 return
             }
@@ -218,6 +252,7 @@ extension AppDelegate {
                         self.showUpdateWindow(version: version)
                         error_msg("unknown notification setting")
                     }
+                    completion?()
                 }
             }
         }

@@ -21,6 +21,12 @@ struct ipResponse: Decodable {
     var cc: String
 }
 
+private struct PublicIPAddressResponse: Decodable, Sendable {
+    let ipv4: String?
+    let ipv6: String?
+    let country: String?
+}
+
 // swiftlint:disable control_statement
 extension CWPHYMode: @retroactive CustomStringConvertible {
     public var description: String {
@@ -150,7 +156,7 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
         self.reachability.reachable = {
             Task { @MainActor in
                 if self.active {
-                    self.getPublicIP()
+                    await self.getPublicIP()
                     await self.updateDetails()
                     await self.updateWiFiDetails()
                 }
@@ -167,12 +173,12 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
         }
         
         NotificationCenter.default.addObserver(self, selector: #selector(refreshPublicIP), name: .refreshPublicIP, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(resetTotalNetworkUsage), name: .resetTotalNetworkUsage, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(resetTotalNetworkUsage(_:)), name: .resetTotalNetworkUsage, object: nil)
         
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             if self.active {
-                self.getPublicIP()
+                await self.getPublicIP()
                 await self.updateDetails()
             }
         }
@@ -394,31 +400,46 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
         self.usage.wifiDetails = wifiDetails
     }
     
-    @MainActor private func getPublicIP() {
+    @MainActor private func getPublicIP() async {
         guard self.publicIPState else { return }
         
-        struct Addr_s: Decodable {
-            let ipv4: String?
-            let ipv6: String?
-            let country: String?
+        let result = await Task.detached(priority: .background) {
+            let ipv4 = Self.fetchPublicIP(["-s", "-4", "--max-time", "5", "https://api.mac-stats.com/ip"])
+            let ipv6 = Self.fetchPublicIP(["-s", "-6", "--max-time", "5", "https://api.mac-stats.com/ip"])
+            return (ipv4: ipv4?.ipv4, ipv6: ipv6?.ipv6, country: ipv4?.country ?? ipv6?.country)
+        }.value
+        
+        if let ip = result.ipv4 {
+            self.usage.raddr.v4 = ip
+        }
+        if let ip = result.ipv6 {
+            self.usage.raddr.v6 = ip
+        }
+        if let cc = result.country {
+            self.usage.raddr.countryCode = cc
+        }
+    }
+    
+    nonisolated private static func fetchPublicIP(_ arguments: [String]) -> PublicIPAddressResponse? {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        task.arguments = arguments
+        
+        let outputPipe = Pipe()
+        task.standardOutput = outputPipe
+        task.standardError = Pipe()
+        
+        do {
+            try task.run()
+        } catch {
+            return nil
         }
         
-        Task.detached(priority: .background) {
-            if let response = syncShell("curl -s -4 https://api.mac-stats.com/ip").data(using: .utf8),
-               let addr = try? JSONDecoder().decode(Addr_s.self, from: response) {
-                await MainActor.run {
-                    if let ip = addr.ipv4 { self.usage.raddr.v4 = ip }
-                    if let cc = addr.country { self.usage.raddr.countryCode = cc }
-                }
-            }
-            if let response = syncShell("curl -s -6 https://api.mac-stats.com/ip").data(using: .utf8),
-               let addr = try? JSONDecoder().decode(Addr_s.self, from: response) {
-                await MainActor.run {
-                    if let ip = addr.ipv6 { self.usage.raddr.v6 = ip }
-                    if let cc = addr.country { self.usage.raddr.countryCode = cc }
-                }
-            }
-        }
+        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+        
+        guard task.terminationStatus == 0 else { return nil }
+        return try? JSONDecoder().decode(PublicIPAddressResponse.self, from: outputData)
     }
     
     nonisolated private func getBytesInfo(_ pointer: UnsafeMutablePointer<ifaddrs>) -> (upload: Int64, download: Int64)? {
@@ -432,15 +453,29 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
         Task { @MainActor in
             self.usage.raddr.v4 = nil
             self.usage.raddr.v6 = nil
-            self.getPublicIP()
+            await self.getPublicIP()
         }
     }
     
-    @objc func resetTotalNetworkUsage() {
-        Task { @MainActor in
-            self.usage.total = Bandwidth()
-            self.save(self.usage)
+    @MainActor func refreshPublicIPFromScheduler() async {
+        self.usage.raddr.v4 = nil
+        self.usage.raddr.v6 = nil
+        await self.getPublicIP()
+    }
+    
+    @objc func resetTotalNetworkUsage(_ notification: Notification) {
+        if notification.userInfo?["skipReader"] as? Bool == true {
+            return
         }
+        
+        Task { @MainActor in
+            self.resetTotalNetworkUsageFromScheduler()
+        }
+    }
+    
+    @MainActor func resetTotalNetworkUsageFromScheduler() {
+        self.usage.total = Bandwidth()
+        self.save(self.usage)
     }
     
     private func startListeningForWifiEvents() {

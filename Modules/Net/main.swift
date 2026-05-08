@@ -461,14 +461,24 @@ public class Network: Module {
         }
         
         self.ipUpdater.repeats = true
-        self.ipUpdater.schedule { (completion: @escaping NSBackgroundActivityScheduler.CompletionHandler) in
+        self.ipUpdater.schedule { [weak self] (completion: @escaping NSBackgroundActivityScheduler.CompletionHandler) in
+            guard let self else {
+                completion(.finished)
+                return
+            }
+            
+            if self.ipUpdater.shouldDefer {
+                completion(.deferred)
+                return
+            }
+            
             Task { @MainActor in
                 guard self.enabled && self.isAvailable() else {
                     completion(.finished)
                     return
                 }
                 debug("going to automatically refresh IP address...")
-                NotificationCenter.default.post(name: .refreshPublicIP, object: nil, userInfo: nil)
+                await self.usageReader?.refreshPublicIPFromScheduler()
                 completion(.finished)
             }
         }
@@ -487,7 +497,17 @@ public class Network: Module {
         }
         
         self.usageReseter.repeats = true
-        self.usageReseter.schedule { (completion: @escaping NSBackgroundActivityScheduler.CompletionHandler) in
+        self.usageReseter.schedule { [weak self] (completion: @escaping NSBackgroundActivityScheduler.CompletionHandler) in
+            guard let self else {
+                completion(.finished)
+                return
+            }
+            
+            if self.usageReseter.shouldDefer {
+                completion(.deferred)
+                return
+            }
+            
             Task { @MainActor in
                 guard self.enabled && self.isAvailable() else {
                     completion(.finished)
@@ -495,7 +515,8 @@ public class Network: Module {
                 }
                 
                 debug("going to reset the usage...")
-                NotificationCenter.default.post(name: .resetTotalNetworkUsage, object: nil, userInfo: nil)
+                self.usageReader?.resetTotalNetworkUsageFromScheduler()
+                NotificationCenter.default.post(name: .resetTotalNetworkUsage, object: nil, userInfo: ["skipReader": true])
                 completion(.finished)
             }
         }
