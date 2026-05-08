@@ -184,7 +184,6 @@ public class LineChartView: ChartView {
     private var zeroValue: Double
     private let legendDateFormatter = DateFormatter()
     
-    private var cursor: NSPoint? = nil
     private var stop: Bool = false
     
     private var hostingView: NSHostingView<LineChartContent>?
@@ -232,7 +231,6 @@ public class LineChartView: ChartView {
             options: [
                 .activeAlways,
                 .mouseEnteredAndExited,
-                .mouseMoved,
                 .inVisibleRect
             ],
             owner: self, userInfo: nil
@@ -434,30 +432,6 @@ public class LineChartView: ChartView {
             self.yLegend = y
         }
         self.displayIfVisible()
-    }
-    
-    public override func mouseEntered(with event: NSEvent) {
-        guard self.tooltipEnabledSnapshot else { return }
-        self.cursor = convert(event.locationInWindow, from: nil)
-        self.needsDisplay = true
-    }
-    
-    public override func mouseMoved(with event: NSEvent) {
-        guard self.tooltipEnabledSnapshot else { return }
-        self.cursor = convert(event.locationInWindow, from: nil)
-        self.needsDisplay = true
-    }
-    
-    public override func mouseDragged(with event: NSEvent) {
-        guard self.tooltipEnabledSnapshot else { return }
-        self.cursor = convert(event.locationInWindow, from: nil)
-        self.needsDisplay = true
-    }
-    
-    public override func mouseExited(with event: NSEvent) {
-        guard self.tooltipEnabledSnapshot else { return }
-        self.cursor = nil
-        self.needsDisplay = true
     }
     
     public override func mouseDown(with: NSEvent) {
@@ -813,50 +787,59 @@ public class ColumnChartView: ChartView {
         let partitionSize: CGSize = CGSize(width: (self.frame.width - (count*spacing)) / count, height: self.frame.height)
         let blockSize = CGSize(width: partitionSize.width-(spacing*2), height: ((partitionSize.height - spacing - 1)/CGFloat(blocks))-1)
         
-        var list: [(value: Double, path: NSBezierPath)] = []
+        var list: [(value: Double, rect: NSRect)] = []
         var x: CGFloat = 0
+        
+        let backgroundPath = NSBezierPath()
+        var coloredPaths: [NSColor: NSBezierPath] = [:]
+        let inactiveColor = NSColor.controlBackgroundColor.withAlphaComponent(0.4)
+        let inactivePath = NSBezierPath()
+
         for i in 0..<values.count {
-            let partition = NSBezierPath(
-                roundedRect: NSRect(x: x, y: 0, width: partitionSize.width, height: partitionSize.height),
-                xRadius: 3, yRadius: 3
-            )
-            NSColor.underPageBackgroundColor.withAlphaComponent(0.5).setFill()
-            partition.fill()
-            partition.close()
+            let partitionRect = NSRect(x: x, y: 0, width: partitionSize.width, height: partitionSize.height)
+            backgroundPath.append(NSBezierPath(roundedRect: partitionRect, xRadius: 3, yRadius: 3))
             
             let value = values[i]
             let color = value.color ?? .controlAccentColor
             let activeBlockNum = Int(round(value.value*Double(blocks)))
             let h = value.value*(partitionSize.height-spacing)
             
+            if coloredPaths[color] == nil {
+                coloredPaths[color] = NSBezierPath()
+            }
+
             if dirtyRect.height < 30 && h != 0 {
-                let block = NSBezierPath(
-                    roundedRect: NSRect(x: x+spacing, y: 1, width: partitionSize.width-(spacing*2), height: h),
-                    xRadius: 1, yRadius: 1
-                )
-                color.setFill()
-                block.fill()
-                block.close()
+                coloredPaths[color]?.append(NSBezierPath(roundedRect: NSRect(x: x+spacing, y: 1, width: partitionSize.width-(spacing*2), height: h), xRadius: 1, yRadius: 1))
             } else {
                 var y: CGFloat = spacing
                 for b in 0..<blocks {
-                    let block = NSBezierPath(
-                        roundedRect: NSRect(x: x+spacing, y: y, width: blockSize.width, height: blockSize.height),
-                        xRadius: 1, yRadius: 1
-                    )
-                    (activeBlockNum <= b ? NSColor.controlBackgroundColor.withAlphaComponent(0.4) : color).setFill()
-                    block.fill()
-                    block.close()
+                    let blockRect = NSRect(x: x+spacing, y: y, width: blockSize.width, height: blockSize.height)
+                    if activeBlockNum <= b {
+                        inactivePath.append(NSBezierPath(roundedRect: blockRect, xRadius: 1, yRadius: 1))
+                    } else {
+                        coloredPaths[color]?.append(NSBezierPath(roundedRect: blockRect, xRadius: 1, yRadius: 1))
+                    }
                     y += blockSize.height + 1
                 }
             }
             
             x += partitionSize.width + spacing
-            list.append((value: value.value, path: partition))
+            list.append((value: value.value, rect: partitionRect))
+        }
+
+        NSColor.underPageBackgroundColor.withAlphaComponent(0.5).setFill()
+        backgroundPath.fill()
+        
+        inactiveColor.setFill()
+        inactivePath.fill()
+        
+        for (color, path) in coloredPaths {
+            color.setFill()
+            path.fill()
         }
         
         if let p = self.cursor {
-            let matchingBlock = list.first(where: { $0.path.contains(p) })
+            let matchingBlock = list.first(where: { $0.rect.contains(p) })
             if let block = matchingBlock {
                 let value = "\(Int(block.value.rounded(toPlaces: 2) * 100))%"
                 let width: CGFloat = block.value == 1 ? 38 : block.value > 0.1 ? 32 : 24
