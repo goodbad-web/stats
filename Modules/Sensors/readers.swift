@@ -54,6 +54,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
             let list = await self.sensors()
             await MainActor.run {
                 self.list.sensors = list
+                self.callback(self.list)
             }
         }
     }

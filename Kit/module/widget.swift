@@ -229,6 +229,24 @@ open class WidgetWrapper: NSView, widget_p {
             f()
             return
         }
+        
+        if let button = self.statusBarButton, let action = button.action {
+            NSApp.sendAction(action, to: button.target, from: button)
+            return
+        }
+        
+        super.mouseDown(with: event)
+    }
+    
+    private var statusBarButton: NSStatusBarButton? {
+        var view = self.superview
+        while let current = view {
+            if let button = current as? NSStatusBarButton {
+                return button
+            }
+            view = current.superview
+        }
+        return nil
     }
 }
 

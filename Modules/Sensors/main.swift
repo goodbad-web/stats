@@ -18,6 +18,7 @@ public class Sensors: Module {
     private let settingsView: Settings
     private let portalView: Portal
     private let notificationsView: Notifications
+    private var sensorViewKeys: Set<String> = []
     
     private var fanValueState: FanValue {
         FanValue(rawValue: Store.shared.string(key: "\(self.config.name)_fanValue", defaultValue: "percentage")) ?? .percentage
@@ -54,10 +55,7 @@ public class Sensors: Module {
             self?.usageCallback(value)
         }
         
-        self.settingsView.setList(self.sensorsReader?.list.sensors)
-        self.popupView.setup(self.sensorsReader?.list.sensors)
-        self.portalView.setup(self.sensorsReader?.list.sensors)
-        self.notificationsView.setup(self.sensorsReader?.list.sensors)
+        self.setupSensorDependentViews(self.sensorsReader?.list.sensors)
         
         self.settingsView.callback = { [weak self] in
             self?.sensorsReader?.read()
@@ -68,19 +66,13 @@ public class Sensors: Module {
         self.settingsView.HIDcallback = { [weak self] in
             Task { @MainActor in
                 self?.sensorsReader?.HIDCallback()
-                self?.popupView.setup(self?.sensorsReader?.list.sensors)
-                self?.portalView.setup(self?.sensorsReader?.list.sensors)
-                self?.settingsView.setList(self?.sensorsReader?.list.sensors)
-                self?.notificationsView.setup(self?.sensorsReader?.list.sensors)
+                self?.setupSensorDependentViews(self?.sensorsReader?.list.sensors, force: true)
             }
         }
         self.settingsView.unknownCallback = { [weak self] in
             Task { @MainActor in
                 self?.sensorsReader?.unknownCallback()
-                self?.popupView.setup(self?.sensorsReader?.list.sensors)
-                self?.portalView.setup(self?.sensorsReader?.list.sensors)
-                self?.settingsView.setList(self?.sensorsReader?.list.sensors)
-                self?.notificationsView.setup(self?.sensorsReader?.list.sensors)
+                self?.setupSensorDependentViews(self?.sensorsReader?.list.sensors, force: true)
             }
         }
         self.selectedSensor = Store.shared.string(key: "\(ModuleType.sensors.stringValue)_sensor", defaultValue: self.selectedSensor)
@@ -128,7 +120,9 @@ public class Sensors: Module {
     }
     
     private func usageCallback(_ raw: Sensors_List?) {
-        guard let value = raw, self.enabled else { return }
+        guard let value = raw else { return }
+        self.setupSensorDependentViews(value.sensors)
+        guard self.enabled else { return }
         
         self.popupView.usageCallback(value.sensors)
         self.portalView.usageCallback(value.sensors)
@@ -198,6 +192,19 @@ public class Sensors: Module {
         let fanSafetyState = Store.shared.bool(key: "Sensors_fanSafety", defaultValue: true)
         let batteryAutoState = Store.shared.bool(key: "Sensors_fanBatteryAuto", defaultValue: false)
         return fanSafetyState || batteryAutoState ? .passive : .paused
+    }
+
+    private func setupSensorDependentViews(_ sensors: [Sensor_p]?, force: Bool = false) {
+        guard let sensors, !sensors.isEmpty else { return }
+
+        let keys = Set(sensors.map(\.key))
+        guard force || keys != self.sensorViewKeys else { return }
+
+        self.settingsView.setList(sensors)
+        self.popupView.setup(sensors)
+        self.portalView.setup(sensors)
+        self.notificationsView.setup(sensors)
+        self.sensorViewKeys = keys
     }
     
     private func getStackItem(_ s: Sensor_p) -> Stack_t {
