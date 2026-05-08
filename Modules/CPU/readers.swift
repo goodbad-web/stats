@@ -158,8 +158,7 @@ private actor CPUReaderWorker {
             }
             
             if let prevCpuInfo = self.prevCpuInfo {
-                let prevCpuInfoSize: size_t = MemoryLayout<integer_t>.stride * Int(self.numPrevCpuInfo)
-                vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prevCpuInfo), vm_size_t(prevCpuInfoSize))
+                prevCpuInfo.deallocate()
             }
             
             _ = MemoryLayout<integer_t>.stride * Int(numCpuInfo)
