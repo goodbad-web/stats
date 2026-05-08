@@ -179,7 +179,10 @@ public class LineChartView: ChartView {
     }
     
     public init(frame: NSRect = .zero, num: Int, suffix: String = "%", color: NSColor = .controlAccentColor, scale: Scale = .none, fixedScale: Double = 1, zeroValue: Double = 0.01) {
-        self.points = Array(repeating: nil, count: max(num, 1))
+        let now = Date()
+        self.points = (0..<num).map { i in
+            DoubleValue(0, ts: now.addingTimeInterval(Double(i - num)))
+        }
         self.suffix = suffix
         self.color = color
         self.scale = scale
@@ -383,11 +386,16 @@ public class NetworkChartView: ChartView {
     
     public init(frame: NSRect, num: Int, minMax: Bool = true, reversedOrder: Bool = false,
                 outColor: NSColor = .systemRed, inColor: NSColor = .systemBlue, scale: Scale = .none, fixedScale: Double = 1) {
+        let now = Date()
         self.reversedOrder = reversedOrder
         self.inColor = inColor
         self.outColor = outColor
-        self.inPoints = Array(repeating: nil, count: max(num, 1))
-        self.outPoints = Array(repeating: nil, count: max(num, 1))
+        self.inPoints = (0..<num).map { i in
+            DoubleValue(0, ts: now.addingTimeInterval(Double(i - num)))
+        }
+        self.outPoints = (0..<num).map { i in
+            DoubleValue(0, ts: now.addingTimeInterval(Double(i - num)))
+        }
         
         super.init(frame: frame, queueLabel: "eu.exelban.Stats.Charts.Network")
         
@@ -901,6 +909,9 @@ public struct LineChartContent: View {
     }
     
     public var body: some View {
+        let maxVal = points.map { $0.value }.max() ?? 0
+        let domainMax = max(fixedScale, maxVal)
+        
         Chart(points) { point in
             AreaMark(
                 x: .value("Time", point.ts),
@@ -918,9 +929,9 @@ public struct LineChartContent: View {
         }
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
-        .chartYScale(domain: 0...max(fixedScale, points.map { $0.value }.max() ?? 1))
+        .chartYScale(domain: 0...domainMax)
         .overlay(alignment: .topLeading) {
-            if minMax, let maxVal = points.map({ $0.value }).max() {
+            if minMax, maxVal > 0 {
                 Text("\(Int(maxVal * 100))\(suffix)")
                     .font(.system(size: 9, weight: .light))
                     .foregroundStyle(.secondary)
@@ -939,24 +950,30 @@ public struct BarChartContent: View {
         self.horizontal = horizontal
     }
     
+    @ViewBuilder
     public var body: some View {
-        Chart {
-            ForEach(Array(values.enumerated()), id: \.offset) { barIndex, bar in
-                ForEach(Array(bar.enumerated()), id: \.offset) { _, item in
+        let content = Chart {
+            ForEach(values.indices, id: \.self) { barIndex in
+                let bar = values[barIndex]
+                ForEach(bar.indices, id: \.self) { itemIndex in
+                    let item = bar[itemIndex]
+                    let barLabel = "Bar \(barIndex)"
+                    let itemColor: Color = item.color != nil ? Color(item.color!) : Color.accentColor
+                    
                     if horizontal {
                         BarMark(
                             x: .value("Value", item.value),
-                            y: .value("Bar", "Bar \(barIndex)"),
+                            y: .value("Bar", barLabel),
                             stacking: .standard
                         )
-                        .foregroundStyle(item.color != nil ? Color(item.color!) : .accentColor)
+                        .foregroundStyle(itemColor)
                     } else {
                         BarMark(
-                            x: .value("Bar", "Bar \(barIndex)"),
+                            x: .value("Bar", barLabel),
                             y: .value("Value", item.value),
                             stacking: .standard
                         )
-                        .foregroundStyle(item.color != nil ? Color(item.color!) : .accentColor)
+                        .foregroundStyle(itemColor)
                     }
                 }
             }
@@ -964,6 +981,12 @@ public struct BarChartContent: View {
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
         .padding(0)
+        
+        if horizontal {
+            content.chartXScale(domain: 0.0...1.0)
+        } else {
+            content.chartYScale(domain: 0.0...1.0)
+        }
     }
 }
 

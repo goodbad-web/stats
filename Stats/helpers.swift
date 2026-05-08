@@ -119,17 +119,17 @@ extension AppDelegate {
         self.supportActivity.interval = 60 * 60 * 24 * 30
         self.supportActivity.repeats = true
         self.supportActivity.schedule { [weak self] (completion: @escaping NSBackgroundActivityScheduler.CompletionHandler) in
-            guard let self else {
-                completion(.finished)
-                return
-            }
-            
-            if self.supportActivity.shouldDefer {
-                completion(.deferred)
-                return
-            }
-            
             DispatchQueue.main.async {
+                guard let self else {
+                    completion(.finished)
+                    return
+                }
+                
+                if self.supportActivity.shouldDefer {
+                    completion(.deferred)
+                    return
+                }
+                
                 self.checkIfShouldShowSupportWindow()
                 completion(.finished)
             }
@@ -157,17 +157,17 @@ extension AppDelegate {
             }
             
             self.updateActivity.schedule { [weak self] (completion: @escaping NSBackgroundActivityScheduler.CompletionHandler) in
-                guard let self else {
-                    completion(.finished)
-                    return
-                }
-                
-                if self.updateActivity.shouldDefer {
-                    completion(.deferred)
-                    return
-                }
-                
                 Task { @MainActor in
+                    guard let self else {
+                        completion(.finished)
+                        return
+                    }
+                    
+                    if self.updateActivity.shouldDefer {
+                        completion(.deferred)
+                        return
+                    }
+                    
                     self.checkForNewVersion(allowSilentInstall: false) {
                         completion(.finished)
                     }

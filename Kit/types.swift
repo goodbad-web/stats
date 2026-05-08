@@ -13,11 +13,12 @@ import Cocoa
 
 public struct DoubleValue: Identifiable, Sendable {
     public var id: UUID = UUID()
-    public var ts: Date = Date()
+    public var ts: Date
     public let value: Double
     
-    public init(_ value: Double = 0) {
+    public init(_ value: Double = 0, ts: Date = Date()) {
         self.value = value
+        self.ts = ts
     }
 }
 extension [DoubleValue] {

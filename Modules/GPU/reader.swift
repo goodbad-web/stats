@@ -20,7 +20,6 @@ public struct device {
     public var used: Bool
 }
 
-
 private func maxANEPower(for platform: Platform?) -> Double {
     switch platform {
     case .m1, .m1Pro, .m1Max:       return 2.0
@@ -99,13 +98,12 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
                     var cores: Int? = nil
                     
                     let ioClass = IOClass.lowercased()
-                    var predictModel = ""
                     var type: GPU_types = .unknown
                     
                     let utilization: Int? = stats["Device Utilization %"] as? Int ?? stats["GPU Activity(%)"] as? Int ?? nil
                     let renderUtilization: Int? = stats["Renderer Utilization %"] as? Int ?? nil
                     let tilerUtilization: Int? = stats["Tiler Utilization %"] as? Int ?? nil
-                    var temperature: Int? = stats["Temperature(C)"] as? Int ?? nil
+                    let temperature: Int? = stats["Temperature(C)"] as? Int ?? nil
                     let fanSpeed: Int? = stats["Fan Speed(%)"] as? Int ?? nil
                     let coreClock: Int? = stats["Core Clock(MHz)"] as? Int ?? nil
                     let memoryClock: Int? = stats["Memory Clock(MHz)"] as? Int ?? nil

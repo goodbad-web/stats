@@ -408,7 +408,7 @@ private final class LineChartWidgetConfiguration: BaseWidgetConfiguration {
 
     @objc private func toggleFrame(_ sender: NSControl) {
         guard let widget else { return }
-        var frame = controlState(sender)
+        let frame = controlState(sender)
         var box = widget.configurationState().box
         self.writeBool("frame", value: frame)
 
