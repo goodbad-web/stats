@@ -12,6 +12,8 @@
 import Cocoa
 import SwiftUI
 import Charts
+import Metal
+import QuartzCore
 
 internal func scaleValue(scale: Scale = .linear, value: Double, maxValue: Double, zeroValue: Double, maxHeight: CGFloat, limit: Double) -> CGFloat {
     var value = value
@@ -149,7 +151,9 @@ public class ChartView: NSView {
     }
     
     internal var usesSwiftUIRendering: Bool { false }
+    internal var usesMetalRendering: Bool { false }
     internal func updateSwiftUI() {}
+    internal func updateMetal() {}
 }
 
 private func colorValuesEqual(_ lhs: [ColorValue], _ rhs: [ColorValue], tolerance: Double = 0.0001) -> Bool {
@@ -187,6 +191,7 @@ public class LineChartView: ChartView {
     private var stop: Bool = false
     
     private var hostingView: NSHostingView<LineChartContent>?
+    private var metalView: LineChartMetalView?
     
     private var tooltipEnabledSnapshot: Bool {
         self.read { self.isTooltipEnabled }
@@ -224,6 +229,11 @@ public class LineChartView: ChartView {
             hostingView.autoresizingMask = [.width, .height]
             self.addSubview(hostingView)
             self.hostingView = hostingView
+        } else {
+            let metalView = LineChartMetalView(frame: self.bounds)
+            metalView.autoresizingMask = [.width, .height]
+            self.addSubview(metalView)
+            self.metalView = metalView
         }
         
         self.addTrackingArea(NSTrackingArea(
@@ -316,6 +326,15 @@ public class LineChartView: ChartView {
     }
 
     override var usesSwiftUIRendering: Bool { self.hostingView != nil }
+    override var usesMetalRendering: Bool { self.metalView != nil }
+    
+    override func updateMetal() {
+        self.metalView?.update(
+            points: self.read { self.points.compactMap { $0?.value } },
+            color: self.read { self.color },
+            fixedScale: self.read { self.fixedScale }
+        )
+    }
     
     public override func updateTrackingAreas() {
         self.trackingAreas.forEach({ self.removeTrackingArea($0) })
@@ -335,6 +354,7 @@ public class LineChartView: ChartView {
     public override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         self.hostingView?.frame = NSRect(origin: .zero, size: newSize)
+        self.metalView?.frame = NSRect(origin: .zero, size: newSize)
     }
     
     public func addValue(_ value: DoubleValue) {
@@ -343,7 +363,11 @@ public class LineChartView: ChartView {
             self.points.remove(at: 0)
             self.points.append(value)
         }
-        self.displayIfVisible()
+        if self.usesMetalRendering {
+            self.updateMetal()
+        } else {
+            self.displayIfVisible()
+        }
     }
     
     public func addValue(_ value: Double) {

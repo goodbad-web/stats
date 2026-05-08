@@ -79,15 +79,15 @@
 		5CE7E7972C318513006BC92C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5CE7E7962C318513006BC92C /* Assets.xcassets */; };
 		5CE7E79C2C318513006BC92C /* WidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5CE7E78A2C318512006BC92C /* WidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		5CE7E7A42C318C33006BC92C /* widgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CE7E7A32C318C33006BC92C /* widgets.swift */; };
+		5CF000012FAD000000000001 /* MetricPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF000112FAD000000000001 /* MetricPipeline.swift */; };
+		5CF000022FAD000000000001 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF000122FAD000000000001 /* SettingsStore.swift */; };
+		5CF000032FAD000000000001 /* AppEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF000132FAD000000000001 /* AppEvent.swift */; };
 		5CF2210D2B1E7EAF006C583F /* notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF2210C2B1E7EAF006C583F /* notifications.swift */; };
 		5CF221132B1E8078006C583F /* notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF221122B1E8078006C583F /* notifications.swift */; };
 		5CF221152B1F4792006C583F /* notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF221142B1F4792006C583F /* notifications.swift */; };
 		5CF221172B1F4ACB006C583F /* notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF221162B1F4ACB006C583F /* notifications.swift */; };
 		5CF221192B1F8B90006C583F /* notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF221182B1F8B90006C583F /* notifications.swift */; };
 		5CF2211B2B1F8CEF006C583F /* notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF2211A2B1F8CEF006C583F /* notifications.swift */; };
-		5CF000012FAD000000000001 /* MetricPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF000112FAD000000000001 /* MetricPipeline.swift */; };
-		5CF000022FAD000000000001 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF000122FAD000000000001 /* SettingsStore.swift */; };
-		5CF000032FAD000000000001 /* AppEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF000132FAD000000000001 /* AppEvent.swift */; };
 		5CFE492A29264DF1000F2856 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CFE492929264DF1000F2856 /* main.swift */; };
 		5CFE493929265055000F2856 /* protocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CFE493829265055000F2856 /* protocol.swift */; };
 		5CFE493B292650F8000F2857 /* eu.exelban.Stats.SMC.Helper.plist in Copy Files */ = {isa = PBXBuildFile; fileRef = 5CFE493B292650F8000F2856 /* eu.exelban.Stats.SMC.Helper.plist */; };
@@ -98,6 +98,8 @@
 		5EC1B2E52E2FEAFB007042A6 /* UnitedWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EC1B2E42E2FEAFB007042A6 /* UnitedWidget.swift */; };
 		5EE8037F29C36BDD0063D37D /* portal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EE8037E29C36BDD0063D37D /* portal.swift */; };
 		68CEDC982FAD5AA10049008C /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 68CEDC972FAD5AA10049008C /* Sentry */; };
+		68CEDDFE2FAE1D1D0049008C /* MetalWidget.metal in Sources */ = {isa = PBXBuildFile; fileRef = 68CEDDFD2FAE1D1D0049008C /* MetalWidget.metal */; };
+		68CEDE002FAE1F2B0049008C /* MetalWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68CEDDFF2FAE1F2B0049008C /* MetalWidget.swift */; };
 		9A045EB72594F8D100ED58F2 /* Dashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A045EB62594F8D100ED58F2 /* Dashboard.swift */; };
 		9A11AAD6266FD77F000C1C05 /* Bluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9A11AACF266FD77F000C1C05 /* Bluetooth.framework */; };
 		9A11AAD7266FD77F000C1C05 /* Bluetooth.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9A11AACF266FD77F000C1C05 /* Bluetooth.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -588,15 +590,15 @@
 		5CE7E7982C318513006BC92C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		5CE7E7992C318513006BC92C /* Widgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Widgets.entitlements; sourceTree = "<group>"; };
 		5CE7E7A32C318C33006BC92C /* widgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = widgets.swift; sourceTree = "<group>"; };
+		5CF000112FAD000000000001 /* MetricPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricPipeline.swift; sourceTree = "<group>"; };
+		5CF000122FAD000000000001 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		5CF000132FAD000000000001 /* AppEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEvent.swift; sourceTree = "<group>"; };
 		5CF2210C2B1E7EAF006C583F /* notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = notifications.swift; sourceTree = "<group>"; };
 		5CF221122B1E8078006C583F /* notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = notifications.swift; sourceTree = "<group>"; };
 		5CF221142B1F4792006C583F /* notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = notifications.swift; sourceTree = "<group>"; };
 		5CF221162B1F4ACB006C583F /* notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = notifications.swift; sourceTree = "<group>"; };
 		5CF221182B1F8B90006C583F /* notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = notifications.swift; sourceTree = "<group>"; };
 		5CF2211A2B1F8CEF006C583F /* notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = notifications.swift; sourceTree = "<group>"; };
-		5CF000112FAD000000000001 /* MetricPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricPipeline.swift; sourceTree = "<group>"; };
-		5CF000122FAD000000000001 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
-		5CF000132FAD000000000001 /* AppEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEvent.swift; sourceTree = "<group>"; };
 		5CFE492729264DF1000F2856 /* eu.exelban.Stats.SMC.Helper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = eu.exelban.Stats.SMC.Helper; sourceTree = BUILT_PRODUCTS_DIR; };
 		5CFE492929264DF1000F2856 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		5CFE493829265055000F2856 /* protocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = protocol.swift; sourceTree = "<group>"; };
@@ -608,6 +610,8 @@
 		5EE8037E29C36BDD0063D37D /* portal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = portal.swift; sourceTree = "<group>"; };
 		62BA5F74254810C8009D0AC2 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
 		63A07F97275018DF00352C46 /* ca */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ca; path = ca.lproj/Localizable.strings; sourceTree = "<group>"; };
+		68CEDDFD2FAE1D1D0049008C /* MetalWidget.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = MetalWidget.metal; sourceTree = "<group>"; };
+		68CEDDFF2FAE1F2B0049008C /* MetalWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalWidget.swift; sourceTree = "<group>"; };
 		7A19DAE52552C326001B192F /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/Localizable.strings; sourceTree = "<group>"; };
 		9068FE5F25AC4516006FCAA6 /* cs */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = cs; path = cs.lproj/Localizable.strings; sourceTree = "<group>"; };
 		9585D8482830523E007EC0D7 /* sl */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = sl; path = sl.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -1077,6 +1081,8 @@
 		9A28498D2666AE3400EC1F6D /* module */ = {
 			isa = PBXGroup;
 			children = (
+				68CEDDFF2FAE1F2B0049008C /* MetalWidget.swift */,
+				68CEDDFD2FAE1D1D0049008C /* MetalWidget.metal */,
 				9A2847742666AA5000EC1F6D /* module.swift */,
 				9A2847762666AA5000EC1F6D /* popup.swift */,
 				9A2847782666AA5000EC1F6D /* widget.swift */,
@@ -2107,11 +2113,13 @@
 				9A9B8C9D27149A3700218374 /* Tachometer.swift in Sources */,
 				9A2847652666AA2700EC1F6D /* Memory.swift in Sources */,
 				9A2847642666AA2700EC1F6D /* Battery.swift in Sources */,
+				68CEDDFE2FAE1D1D0049008C /* MetalWidget.metal in Sources */,
 				9A28480B2666AB3000EC1F6D /* Charts.swift in Sources */,
 				9A2847632666AA2700EC1F6D /* Mini.swift in Sources */,
 				5CF2210D2B1E7EAF006C583F /* notifications.swift in Sources */,
 				9A6EEBBE2685259500897371 /* Logger.swift in Sources */,
 				5C4E8BC72B6EF98800F148B6 /* DB.swift in Sources */,
+				68CEDE002FAE1F2B0049008C /* MetalWidget.swift in Sources */,
 				5CF000022FAD000000000001 /* SettingsStore.swift in Sources */,
 				9A2847602666AA2700EC1F6D /* NetworkChart.swift in Sources */,
 				5C23BC0429A014AC00DBA990 /* portal.swift in Sources */,
@@ -2752,6 +2760,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = NO;
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
@@ -2812,7 +2821,6 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_LDFLAGS = "";
-				ARCHS = arm64;
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -2826,6 +2834,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = NO;
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
@@ -2879,7 +2888,6 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				OTHER_LDFLAGS = "";
-				ARCHS = arm64;
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
