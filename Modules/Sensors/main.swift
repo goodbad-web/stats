@@ -260,7 +260,7 @@ public class Sensors: Module {
         }
 
         if Store.shared.bool(key: "Sensors_fanSafety", defaultValue: true) {
-            scope.include(type: .temperature)
+            scope.include(type: .temperature, includeHID: false)
             scope.include(type: .fan)
             scope.needsFanMode = true
         }

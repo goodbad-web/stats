@@ -89,14 +89,12 @@ public class Portal: NSStackView, Portal_p {
         }
     }
     
-    public func usageCallback(_ values: [Sensor_p]) {
-        Task { @MainActor in
-            if self.window?.isVisible ?? false {
-                values.forEach { (s: Sensor_p) in
-                    if let v = self.list[s.key] as? ValueSensorView {
-                        v.update(s.formattedPopupValue)
-                    }
-                }
+    @MainActor public func usageCallback(_ values: [Sensor_p]) {
+        guard self.window?.isVisible ?? false else { return }
+
+        values.forEach { (s: Sensor_p) in
+            if let v = self.list[s.key] as? ValueSensorView {
+                v.update(s.formattedPopupValue)
             }
         }
     }

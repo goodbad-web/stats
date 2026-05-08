@@ -51,11 +51,11 @@ internal struct SensorsReadScope: Equatable, Sendable {
         self.expandComputedDependencies(for: key)
     }
 
-    internal mutating func include(type: SensorType) {
+    internal mutating func include(type: SensorType, includeHID: Bool = true) {
         self.types.insert(type.rawValue)
-        if type == .temperature {
+        if includeHID && type == .temperature {
             self.hidTypes.insert(SensorType.temperature.rawValue)
-        } else if type == .voltage {
+        } else if includeHID && type == .voltage {
             self.hidTypes.insert(SensorType.voltage.rawValue)
         } else if type == .power {
             self.needsIOSensors = true

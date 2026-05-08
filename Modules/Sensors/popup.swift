@@ -198,27 +198,25 @@ internal class Popup: PopupWrapper {
         self.recalculateHeight()
     }
     
-    internal func usageCallback(_ values: [Sensor_p]) {
-        Task { @MainActor in
-            guard self.window?.isVisible ?? false else { return }
+    @MainActor internal func usageCallback(_ values: [Sensor_p]) {
+        guard self.window?.isVisible ?? false else { return }
 
-            values.forEach { (s: Sensor_p) in
-                if let sensor = self.list[s.key] as? SensorView, sensor.hasOpenChart {
-                    sensor.addHistoryPoint(s)
-                }
+        values.forEach { (s: Sensor_p) in
+            if let sensor = self.list[s.key] as? SensorView, sensor.hasOpenChart {
+                sensor.addHistoryPoint(s)
             }
-            
-            values.forEach { (s: Sensor_p) in
-                switch self.list[s.key] {
-                case let fan as FanView:
-                    if let f = s as? Fan {
-                        fan.update(f)
-                    }
-                case let sensor as SensorView:
-                    sensor.update(s)
-                case .none, .some:
-                    break
+        }
+
+        values.forEach { (s: Sensor_p) in
+            switch self.list[s.key] {
+            case let fan as FanView:
+                if let f = s as? Fan {
+                    fan.update(f)
                 }
+            case let sensor as SensorView:
+                sensor.update(s)
+            case .none, .some:
+                break
             }
         }
     }
