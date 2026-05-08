@@ -19,17 +19,18 @@ private typealias IOPMFindPowerManagementFn = @convention(c) (mach_port_t, Unsaf
 private typealias IOPMCopyCPUProcessorLimitsFn = @convention(c) (io_connect_t, UnsafeMutablePointer<Unmanaged<CFDictionary>?>) -> kern_return_t
 
 private enum PowerManagementSymbols {
-    static let findPM: IOPMFindPowerManagementFn? = {
-        if let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "IOPMFindPowerManagement") {
-            return unsafeBitCast(sym, to: IOPMFindPowerManagementFn.self)
+    private static func resolve<T>(_ name: String, as _: T.Type) -> T? {
+        guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), name) else {
+            return nil
         }
-        return nil
+        return unsafeBitCast(sym, to: T.self)
+    }
+
+    static let findPM: IOPMFindPowerManagementFn? = {
+        resolve("IOPMFindPowerManagement", as: IOPMFindPowerManagementFn.self)
     }()
     static let copyLimits: IOPMCopyCPUProcessorLimitsFn? = {
-        if let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "IOPMCopyCPUProcessorLimits") {
-            return unsafeBitCast(sym, to: IOPMCopyCPUProcessorLimitsFn.self)
-        }
-        return nil
+        resolve("IOPMCopyCPUProcessorLimits", as: IOPMCopyCPUProcessorLimitsFn.self)
     }()
 }
 
@@ -85,6 +86,14 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
             let updatedResponse = await Task.detached(priority: .userInitiated) {
                 return self.loadLock.withLock { state in
                     if result == KERN_SUCCESS, let cpuInfo = capturedCpuInfo.info {
+                        var nextCpuInfo: processor_info_array_t? = cpuInfo
+                        defer {
+                            if let nextCpuInfo {
+                                let size: size_t = MemoryLayout<integer_t>.stride * Int(capturedNumCpuInfo)
+                                vm_deallocate(mach_task_self_, vm_address_t(bitPattern: nextCpuInfo), vm_size_t(size))
+                            }
+                        }
+                        
                         state.usagePerCore = []
                         
                         for i in 0 ..< Int32(localNumCPUs) {
@@ -107,7 +116,10 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
                             }
                             
                             if total != 0 {
-                                state.usagePerCore.append(Double(inUse) / Double(total))
+                                let usage = Double(inUse) / Double(total)
+                                if usage.isFinite {
+                                    state.usagePerCore.append(usage)
+                                }
                             }
                         }
                         
@@ -119,7 +131,10 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
                             while i < Int(state.usagePerCore.count/2) {
                                 let a = i * 2
                                 if state.usagePerCore.indices.contains(a) && state.usagePerCore.indices.contains(a+1) {
-                                    state.response.usagePerCore.append((state.usagePerCore[a] + state.usagePerCore[a+1]) / 2)
+                                    let averaged = (state.usagePerCore[a] + state.usagePerCore[a+1]) / 2
+                                    if averaged.isFinite {
+                                        state.response.usagePerCore.append(averaged)
+                                    }
                                 }
                                 i += 1
                             }
@@ -130,8 +145,9 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
                             vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prevCpuInfo), vm_size_t(prevCpuInfoSize))
                         }
                         
-                        state.prevCpuInfo = capturedCpuInfo.info
+                        state.prevCpuInfo = nextCpuInfo
                         state.numPrevCpuInfo = capturedNumCpuInfo
+                        nextCpuInfo = nil
                     }
                     
                     if let cpuInfoData = cpuInfoData {
@@ -141,16 +157,21 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
                         let niceDiff = Double(cpuInfoData.cpu_ticks.3 &- state.previousInfo.cpu_ticks.3)
                         let totalTicks = sysDiff + userDiff + niceDiff + idleDiff
                         
-                        let system = sysDiff / totalTicks
-                        let user = userDiff / totalTicks
-                        let idle = idleDiff / totalTicks
-                        
-                        if !system.isNaN { state.response.systemLoad = system }
-                        if !user.isNaN { state.response.userLoad = user }
-                        if !idle.isNaN { state.response.idleLoad = idle }
+                        if totalTicks.isFinite && totalTicks > 0 {
+                            let system = sysDiff / totalTicks
+                            let user = userDiff / totalTicks
+                            let idle = idleDiff / totalTicks
+                            
+                            if system.isFinite { state.response.systemLoad = system }
+                            if user.isFinite { state.response.userLoad = user }
+                            if idle.isFinite { state.response.idleLoad = idle }
+                        }
                         
                         state.previousInfo = cpuInfoData
-                        state.response.totalUsage = state.response.systemLoad + state.response.userLoad
+                        let totalUsage = state.response.systemLoad + state.response.userLoad
+                        if totalUsage.isFinite {
+                            state.response.totalUsage = totalUsage
+                        }
                         
                         if let cores = localCores {
                             let eCoresList: [Double] = cores.filter({ $0.type == .efficiency }).enumerated().compactMap { (i, c) -> Double? in
@@ -173,13 +194,22 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
                             }
                             
                             if !eCoresList.isEmpty {
-                                state.response.usageECores = eCoresList.reduce(0, +)/Double(eCoresList.count)
+                                let usage = eCoresList.reduce(0, +)/Double(eCoresList.count)
+                                if usage.isFinite {
+                                    state.response.usageECores = usage
+                                }
                             }
                             if !pCoresList.isEmpty {
-                                state.response.usagePCores = pCoresList.reduce(0, +)/Double(pCoresList.count)
+                                let usage = pCoresList.reduce(0, +)/Double(pCoresList.count)
+                                if usage.isFinite {
+                                    state.response.usagePCores = usage
+                                }
                             }
                             if !sCoresList.isEmpty {
-                                state.response.usageSCores = sCoresList.reduce(0, +)/Double(sCoresList.count)
+                                let usage = sCoresList.reduce(0, +)/Double(sCoresList.count)
+                                if usage.isFinite {
+                                    state.response.usageSCores = usage
+                                }
                             }
                         }
                     }
@@ -537,7 +567,9 @@ public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
         let itemSize = items.count
         var samples = [IOSample]()
         for index in 0..<itemSize {
-            let item = items[index] as! CFDictionary
+            let rawItem = items[index] as CFTypeRef
+            guard CFGetTypeID(rawItem) == CFDictionaryGetTypeID() else { continue }
+            let item = unsafeBitCast(rawItem, to: CFDictionary.self)
             let group = IOReportChannelGetGroup(item)?.takeUnretainedValue() ?? ("" as CFString)
             let subGroup = IOReportChannelGetSubGroup(item)?.takeUnretainedValue() ?? ("" as CFString)
             let channel = IOReportChannelGetChannelName(item)?.takeUnretainedValue() ?? ("" as CFString)

@@ -40,7 +40,7 @@
 		<key>sensors</key>
 		<dict>
 			<key>Default</key>
-			<true/>
+			<false/>
 			<key>Preview</key>
 			<dict>
 				<key>Values</key>

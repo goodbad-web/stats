@@ -647,12 +647,8 @@ public func getIOProperties(_ entry: io_registry_entry_t) -> NSDictionary? {
     if IORegistryEntryCreateCFProperties(entry, &properties, kCFAllocatorDefault, 0) != kIOReturnSuccess {
         return nil
     }
-    
-    defer {
-        properties?.release()
-    }
-    
-    return properties?.takeUnretainedValue()
+
+    return properties?.takeRetainedValue()
 }
 
 internal func getIOName(_ entry: io_registry_entry_t) -> String? {

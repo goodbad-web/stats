@@ -14,6 +14,7 @@ import Cocoa
 import IOKit.storage
 import CoreServices
 import os
+import Darwin
 
 let kIONVMeSMARTUserClientTypeID = CFUUIDGetConstantUUIDWithBytes(nil,
                                                                   0xAA, 0x0F, 0xA6, 0xF9,
@@ -388,7 +389,10 @@ private func driveDetails(_ disk: DADisk, removableState: Bool) -> drive? {
             }
             
             if let mediaUUID = dict[kDADiskDescriptionMediaUUIDKey as String] {
-                d.uuid = CFUUIDCreateString(kCFAllocatorDefault, (mediaUUID as! CFUUID)) as String
+                let rawUUID = mediaUUID as CFTypeRef
+                if CFGetTypeID(rawUUID) == CFUUIDGetTypeID() {
+                    d.uuid = CFUUIDCreateString(kCFAllocatorDefault, unsafeBitCast(rawUUID, to: CFUUID.self)) as String
+                }
             }
             if let mediaName = dict[kDADiskDescriptionVolumeNameKey as String] as? String {
                 d.mediaName = mediaName
@@ -490,6 +494,38 @@ public class ProcessReader: Reader<[Disk_process]>, @unchecked Sendable {
     }
     
     private let processLock = OSAllocatedUnfairLock(initialState: false)
+
+    nonisolated private func listPIDs() -> [pid_t] {
+        let bufferSize = proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0)
+        guard bufferSize > 0 else { return [] }
+
+        let count = Int(bufferSize) / MemoryLayout<pid_t>.size
+        guard count > 0 else { return [] }
+
+        var pids = [pid_t](repeating: 0, count: count)
+        let result = proc_listpids(UInt32(PROC_ALL_PIDS), 0, &pids, bufferSize)
+        guard result > 0 else { return [] }
+        return pids.filter { $0 > 0 }
+    }
+
+    nonisolated private func processName(for pid: pid_t) -> String {
+        var nameBuffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        let nameLength = proc_name(pid, &nameBuffer, UInt32(nameBuffer.count))
+        if nameLength > 0 {
+            let name = String(cString: nameBuffer)
+            if !name.isEmpty {
+                return name
+            }
+        }
+
+        var pathBuffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        let pathLength = proc_pidpath(pid, &pathBuffer, UInt32(pathBuffer.count))
+        if pathLength > 0 {
+            return URL(fileURLWithPath: String(cString: pathBuffer)).lastPathComponent
+        }
+
+        return "\(pid)"
+    }
     
     nonisolated public override func read() {
         let isReading = self.processLock.withLock { $0 }
@@ -499,30 +535,28 @@ public class ProcessReader: Reader<[Disk_process]>, @unchecked Sendable {
         Task { @MainActor in
             let limit = self.numberOfProcesses
             if limit == 0 {
+                self.processLock.withLock { $0 = false }
                 return
             }
             
             let currentList = self._list
             let currentInterval = Int(self.interval ?? 1)
             let (updatedList, result) = await Task.detached(priority: .background) {
-                guard let output = runProcess(path: "/bin/ps", args: ["-Aceo pid,args", "-r"]) else { return (currentList, [] as [Disk_process]) }
-                
+                let pids = self.listPIDs()
+                guard !pids.isEmpty else { return (currentList, [] as [Disk_process]) }
+
                 var snapshot = currentList
                 var processes: [Disk_process] = []
-                output.enumerateLines { (line, _) in
-                    let str = line.trimmingCharacters(in: .whitespaces)
-                    let pidFind = str.findAndCrop(pattern: "^\\d+")
-                    guard let pid = Int32(pidFind.cropped) else { return }
-                    let name = pidFind.remain.findAndCrop(pattern: "^[^ ]+").cropped
-                    
+                for pid in pids {
                     var usage = rusage_info_current()
                     let result = withUnsafeMutablePointer(to: &usage) { (ptr: UnsafeMutablePointer<rusage_info_current>) in
-                        ptr.withMemoryRebound(to: (rusage_info_t?.self), capacity: 1) {
+                        ptr.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
                             proc_pid_rusage(pid, RUSAGE_INFO_CURRENT, $0)
                         }
                     }
-                    guard result != -1 else { return }
-                    
+                    guard result != -1 else { continue }
+
+                    let name = self.processName(for: pid)
                     let bytesRead = Int(clamping: usage.ri_diskio_bytesread)
                     let bytesWritten = Int(clamping: usage.ri_diskio_byteswritten)
                     
@@ -563,25 +597,4 @@ public class ProcessReader: Reader<[Disk_process]>, @unchecked Sendable {
             self.processLock.withLock { $0 = false }
         }
     }
-}
-
-private func runProcess(path: String, args: [String] = []) -> String? {
-    let task = Process()
-    task.launchPath = path
-    task.arguments = args
-    
-    let outputPipe = Pipe()
-    defer {
-        outputPipe.fileHandleForReading.closeFile()
-    }
-    task.standardOutput = outputPipe
-    
-    do {
-        try task.run()
-    } catch {
-        return nil
-    }
-    
-    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-    return String(data: outputData, encoding: .utf8)
 }

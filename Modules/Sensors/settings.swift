@@ -72,11 +72,11 @@ struct SensorsSettingsView: View {
     @AppStorage(AppSettingsKeys.moduleBool("Sensors", "fansSync", defaultValue: false).rawValue) private var fansSyncState: Bool = false
     @AppStorage(AppSettingsKeys.moduleBool("Sensors", "unknown", defaultValue: false).rawValue) private var unknownSensorsState: Bool = false
     @AppStorage(AppSettingsKeys.moduleString("Sensors", "fanValue", defaultValue: "percentage").rawValue) private var fanValueState: String = "percentage"
-    @AppStorage(AppSettingsKeys.moduleString("Sensors", "sensor", defaultValue: "Average System Total").rawValue) private var selectedSensor: String = "Average System Total"
+    @AppStorage(AppSettingsKeys.moduleString("Sensors", "sensor", defaultValue: "Average CPU").rawValue) private var selectedSensor: String = "Average CPU"
     @AppStorage(AppSettingsKeys.moduleBool("Sensors", "fanSafety", defaultValue: true).rawValue) private var fanSafetyState: Bool = true
     @AppStorage(AppSettingsKeys.moduleString("Sensors", "stack_line1", defaultValue: "").rawValue) private var selectedStackLine1: String = ""
     @AppStorage(AppSettingsKeys.moduleString("Sensors", "stack_line2", defaultValue: "").rawValue) private var selectedStackLine2: String = ""
-    @AppStorage(AppSettingsKeys.moduleString("Sensors", "barChart_sensors", defaultValue: "Fans,Temp").rawValue) private var selectedBarChartSensors: String = "Fans,Temp"
+    @AppStorage(AppSettingsKeys.moduleString("Sensors", "barChart_sensors", defaultValue: "Fans,Temperature").rawValue) private var selectedBarChartSensors: String = "Fans,Temperature"
     @AppStorage(AppSettingsKeys.moduleBool("Sensors", "fanBatteryAuto", defaultValue: false).rawValue) private var fanBatteryAutoState: Bool = false
     
     var allSensors: [Sensor_p] = []

@@ -13,6 +13,27 @@ import Cocoa
 import Kit
 
 public class Sensors: Module {
+    private static let defaultMiniSensor = "Average CPU"
+    private static let miniSensorFallbacks = [
+        "Average CPU",
+        "Hottest CPU",
+        "Average System Total",
+        "CPU Power",
+        "GPU Power",
+        "Average SOC",
+        "Hottest SOC",
+        "Fastest fan"
+    ]
+    private static let stackSensorFallbacks = [
+        "Average CPU",
+        "Hottest CPU",
+        "Average SOC",
+        "Hottest SOC",
+        "CPU Power",
+        "GPU Power",
+        "Fastest fan"
+    ]
+
     private var sensorsReader: SensorsReader?
     private let popupView: Popup
     private let settingsView: Settings
@@ -31,7 +52,9 @@ public class Sensors: Module {
         Store.shared.string(key: "Sensors_stack_line2", defaultValue: "")
     }
     private var selectedBarChartSensors: [String] {
-        Store.shared.string(key: "Sensors_barChart_sensors", defaultValue: "Fans,Temp").split(separator: ",").map { String($0) }
+        Store.shared.string(key: "Sensors_barChart_sensors", defaultValue: "Fans,Temperature")
+            .split(separator: ",")
+            .map { String($0) == "Temp" ? SensorType.temperature.rawValue : String($0) }
     }
     private var selectedSensor: String
     
@@ -40,7 +63,7 @@ public class Sensors: Module {
         self.popupView = Popup()
         self.portalView = Portal(.sensors)
         self.notificationsView = Notifications(.sensors)
-        self.selectedSensor = Store.shared.string(key: "\(ModuleType.sensors.stringValue)_sensor", defaultValue: "Average System Total")
+        self.selectedSensor = Store.shared.string(key: "\(ModuleType.sensors.stringValue)_sensor", defaultValue: Self.defaultMiniSensor)
         
         super.init(
             moduleType: .sensors,
@@ -134,7 +157,7 @@ public class Sensors: Module {
         activeWidgets.forEach { (w: SWidget) in
             switch w.item {
             case let widget as Mini:
-                if let active = value.sensors.first(where: { $0.key == self.selectedSensor }) {
+                if let active = self.miniSensor(from: value.sensors) {
                     var value: Double = active.localValue/100
                     var unit: String = active.miniUnit
                     if let fan = active as? Fan, self.fanValueState == .percentage {
@@ -148,16 +171,7 @@ public class Sensors: Module {
                     widget.setSuffix(unit)
                 }
             case let widget as StackWidget:
-                var list: [Stack_t] = []
-                
-                if let s = value.sensors.first(where: { $0.key == self.selectedStackLine1 }) {
-                    list.append(self.getStackItem(s))
-                }
-                if let s = value.sensors.first(where: { $0.key == self.selectedStackLine2 }) {
-                    list.append(self.getStackItem(s))
-                }
-                
-                widget.setValues(list)
+                widget.setValues(self.stackSensors(from: value.sensors).map { self.getStackItem($0) })
             case let widget as BarChart:
                 var flatList: [[ColorValue]] = []
                 let selected = self.selectedBarChartSensors
@@ -192,6 +206,39 @@ public class Sensors: Module {
         let fanSafetyState = Store.shared.bool(key: "Sensors_fanSafety", defaultValue: true)
         let batteryAutoState = Store.shared.bool(key: "Sensors_fanBatteryAuto", defaultValue: false)
         return fanSafetyState || batteryAutoState ? .passive : .paused
+    }
+
+    private func miniSensor(from sensors: [Sensor_p]) -> Sensor_p? {
+        if let selected = sensors.first(where: { $0.key == self.selectedSensor }) {
+            return selected
+        }
+
+        for key in Self.miniSensorFallbacks {
+            if let sensor = sensors.first(where: { $0.key == key }) {
+                return sensor
+            }
+        }
+
+        return sensors.first(where: { $0.type == .temperature }) ??
+            sensors.first(where: { $0.type == .power }) ??
+            sensors.first(where: { $0.type == .fan })
+    }
+
+    private func stackSensors(from sensors: [Sensor_p]) -> [Sensor_p] {
+        var list: [Sensor_p] = []
+        if let sensor = sensors.first(where: { $0.key == self.selectedStackLine1 }) {
+            list.append(sensor)
+        }
+        if let sensor = sensors.first(where: { $0.key == self.selectedStackLine2 }) {
+            list.append(sensor)
+        }
+        if !list.isEmpty {
+            return list
+        }
+
+        return Self.stackSensorFallbacks.compactMap { key in
+            sensors.first(where: { $0.key == key })
+        }.prefix(2).map { $0 }
     }
 
     private func setupSensorDependentViews(_ sensors: [Sensor_p]?, force: Bool = false) {

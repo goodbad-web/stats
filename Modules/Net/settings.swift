@@ -169,9 +169,10 @@ struct NetSettingsView: View {
     
     private func loadInterfaces() {
         var list: [Network_interface] = []
-        for interface in SCNetworkInterfaceCopyAll() as NSArray {
-            if let bsdName = SCNetworkInterfaceGetBSDName(interface as! SCNetworkInterface),
-               let displayName = SCNetworkInterfaceGetLocalizedDisplayName(interface as! SCNetworkInterface) {
+        let interfaces = (SCNetworkInterfaceCopyAll() as? [SCNetworkInterface]) ?? []
+        for interface in interfaces {
+            if let bsdName = SCNetworkInterfaceGetBSDName(interface),
+               let displayName = SCNetworkInterfaceGetLocalizedDisplayName(interface) {
                 list.append(Network_interface(displayName: displayName as String, BSDName: bsdName as String))
             }
         }

@@ -311,8 +311,9 @@ public class Network: Module {
     
     public override func isAvailable() -> Bool {
         var list: [String] = []
-        for interface in SCNetworkInterfaceCopyAll() as NSArray {
-            if let displayName = SCNetworkInterfaceGetLocalizedDisplayName(interface as! SCNetworkInterface) {
+        let interfaces = (SCNetworkInterfaceCopyAll() as? [SCNetworkInterface]) ?? []
+        for interface in interfaces {
+            if let displayName = SCNetworkInterfaceGetLocalizedDisplayName(interface) {
                 list.append(displayName as String)
             }
         }

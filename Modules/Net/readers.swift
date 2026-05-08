@@ -27,6 +27,29 @@ private struct PublicIPAddressResponse: Decodable, Sendable {
     let country: String?
 }
 
+private func runNettop() -> String? {
+    let task = Process()
+    task.executableURL = URL(fileURLWithPath: "/usr/bin/nettop")
+    task.arguments = ["-P", "-L", "1", "-n", "-k", "time,interface,state,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,arch"]
+    task.environment = ["NSUnbufferedIO": "YES", "LC_ALL": "en_US.UTF-8"]
+
+    let outputPipe = Pipe()
+    let errorPipe = Pipe()
+    task.standardOutput = outputPipe
+    task.standardError = errorPipe
+
+    do {
+        try task.run()
+    } catch {
+        return nil
+    }
+
+    task.waitUntilExit()
+    guard task.terminationStatus == 0 else { return nil }
+    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+    return String(data: outputData, encoding: .utf8)
+}
+
 // swiftlint:disable control_statement
 extension CWPHYMode: @retroactive CustomStringConvertible {
     public var description: String {
@@ -279,23 +302,7 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
     }
     
     nonisolated private func readProcessBandwidth() -> Bandwidth {
-        let task = Process()
-        task.launchPath = "/usr/bin/nettop"
-        task.arguments = ["-P", "-L", "1", "-n", "-k", "time,interface,state,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,arch"]
-        task.environment = ["NSUnbufferedIO": "YES", "LC_ALL": "en_US.UTF-8"]
-        
-        let outputPipe = Pipe()
-        task.standardOutput = outputPipe
-        task.standardError = Pipe()
-        
-        do {
-            try task.run()
-        } catch {
-            return Bandwidth()
-        }
-        
-        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: outputData, encoding: .utf8), !output.isEmpty else { return Bandwidth() }
+        guard let output = runNettop() else { return Bandwidth() }
 
         var totalUpload: Int64 = 0
         var totalDownload: Int64 = 0
@@ -312,7 +319,7 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
         }
         return Bandwidth(upload: totalUpload, download: totalDownload)
     }
-    
+
     @MainActor private func updateDetails() async {
         guard self.interfaceID != "" else { return }
         let now = Date()
@@ -322,11 +329,12 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
         let details = await Task.detached(priority: .background) {
             var res = (interface: nil as Network_interface?, connectionType: .other as Network_t, dns: [] as [String])
             
-            for interface in SCNetworkInterfaceCopyAll() as NSArray {
-                guard let bsName = SCNetworkInterfaceGetBSDName(interface as! SCNetworkInterface),
-                      let type = SCNetworkInterfaceGetInterfaceType(interface as! SCNetworkInterface),
-                      let displayName = SCNetworkInterfaceGetLocalizedDisplayName(interface as! SCNetworkInterface),
-                      let address = SCNetworkInterfaceGetHardwareAddressString(interface as! SCNetworkInterface) else {
+            let interfaces = (SCNetworkInterfaceCopyAll() as? [SCNetworkInterface]) ?? []
+            for interface in interfaces {
+                guard let bsName = SCNetworkInterfaceGetBSDName(interface),
+                      let type = SCNetworkInterfaceGetInterfaceType(interface),
+                      let displayName = SCNetworkInterfaceGetLocalizedDisplayName(interface),
+                      let address = SCNetworkInterfaceGetHardwareAddressString(interface) else {
                     continue
                 }
                 
@@ -404,9 +412,11 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
         guard self.publicIPState else { return }
         
         let result = await Task.detached(priority: .background) {
-            let ipv4 = Self.fetchPublicIP(["-s", "-4", "--max-time", "5", "https://api.mac-stats.com/ip"])
-            let ipv6 = Self.fetchPublicIP(["-s", "-6", "--max-time", "5", "https://api.mac-stats.com/ip"])
-            return (ipv4: ipv4?.ipv4, ipv6: ipv6?.ipv6, country: ipv4?.country ?? ipv6?.country)
+            async let ipv4 = Self.fetchPublicIP()
+            async let ipv6 = Self.fetchPublicIP()
+            let v4 = await ipv4
+            let v6 = await ipv6
+            return (ipv4: v4?.ipv4 ?? v6?.ipv4, ipv6: v6?.ipv6 ?? v4?.ipv6, country: v4?.country ?? v6?.country)
         }.value
         
         if let ip = result.ipv4 {
@@ -420,26 +430,31 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
         }
     }
     
-    nonisolated private static func fetchPublicIP(_ arguments: [String]) -> PublicIPAddressResponse? {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
-        task.arguments = arguments
-        
-        let outputPipe = Pipe()
-        task.standardOutput = outputPipe
-        task.standardError = Pipe()
-        
+    nonisolated private static func fetchPublicIP() async -> PublicIPAddressResponse? {
+        guard let url = URL(string: "https://api.mac-stats.com/ip") else { return nil }
+
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 5)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Stats", forHTTPHeaderField: "User-Agent")
+
+        let configuration: URLSessionConfiguration = {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.waitsForConnectivity = false
+            configuration.timeoutIntervalForRequest = 5
+            configuration.timeoutIntervalForResource = 5
+            configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+            configuration.urlCache = nil
+            return configuration
+        }()
+
         do {
-            try task.run()
+            let session = URLSession(configuration: configuration)
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            return try? JSONDecoder().decode(PublicIPAddressResponse.self, from: data)
         } catch {
             return nil
         }
-        
-        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        task.waitUntilExit()
-        
-        guard task.terminationStatus == 0 else { return nil }
-        return try? JSONDecoder().decode(PublicIPAddressResponse.self, from: outputData)
     }
     
     nonisolated private func getBytesInfo(_ pointer: UnsafeMutablePointer<ifaddrs>) -> (upload: Int64, download: Int64)? {
@@ -507,7 +522,7 @@ public class ProcessReader: Reader<[Network_Process]>, @unchecked Sendable {
         Task { @MainActor in
             let processes = await Task.detached(priority: .background) {
                 var list: [Network_Process] = []
-                let output = syncShell("/usr/bin/nettop -P -L 1 -k time,interface,state,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,arch")
+                guard let output = runNettop() else { return list }
                 var firstLine = false
                 output.enumerateLines { (line, _) in
                     if !firstLine { firstLine = true; return }
