@@ -572,6 +572,7 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
     
     private nonisolated(unsafe) var lastHost: String = ""
     private nonisolated(unsafe) var addr: Data? = nil
+    private nonisolated(unsafe) var prepareToken: UUID = UUID()
     private let timeout: TimeInterval = 5
     
     private nonisolated(unsafe) var socket: CFSocket?
@@ -611,8 +612,12 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
     
     @MainActor private func prepare() {
         let host = self.ICMPHost
-        Task {
+        let token = UUID()
+        self.prepareToken = token
+
+        Task { @MainActor in
             let addr = await self.resolve(host: host)
+            guard self.prepareToken == token else { return }
             self.addr = addr
             self.openConn()
             self.read()
@@ -678,8 +683,10 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
     }
     
     private func icmpCheck() {
-        if self.socket == nil { self.prepare() }
-        if self.lastHost != self.ICMPHost { self.prepare() }
+        if self.socket == nil || self.lastHost != self.ICMPHost {
+            self.prepare()
+            return
+        }
         
         guard !self.isPinging && self.active, let socket = self.socket, let addr = self.addr, let data = self.request() else { return }
         self.isPinging = true
@@ -724,6 +731,9 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
     }
     
     private func openConn() {
+        self.closeConn()
+        guard self.addr != nil else { return }
+
         let info = ConnectivityReaderWrapper(self)
         var context = CFSocketContext(version: 0, info: Unmanaged.passRetained(info).toOpaque(), retain: nil, release: { info in
             guard let info = info else { return }
