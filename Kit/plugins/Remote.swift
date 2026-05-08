@@ -770,6 +770,7 @@ class MQTTManager: NSObject {
     private var reconnectAttempts = 0
     private var maxReconnectDelay: TimeInterval = 60.0
     private var pingTimer: DispatchSourceTimer?
+    private var reconnectTimer: DispatchSourceTimer?
     private var reachability: Reachability = Reachability(start: true)
     private let log: NextLog
     private var packetIdentifier: UInt16 = 1
@@ -802,6 +803,7 @@ class MQTTManager: NSObject {
             guard let self else { return }
             
             if status {
+                self.stopReconnectTimer()
                 self.webSocket?.cancel(with: .normalClosure, reason: nil)
                 self.webSocket = self.session?.webSocketTask(with: Remote.brokerHost, protocols: ["mqtt"])
                 self.webSocket?.resume()
@@ -814,29 +816,37 @@ class MQTTManager: NSObject {
                     Remote.shared.isAuthorized = false
                     NotificationCenter.default.post(name: .remoteState, object: nil, userInfo: ["auth": false])
                 }
-                debug("Authorization failed, retrying connection...", log: self.log)
-                self.reconnect()
+                debug("Authorization failed, stopping MQTT connection attempts", log: self.log)
             }
         }
     }
     
     public func disconnect() {
-        if self.webSocket == nil && !self.isConnected { return }
+        if self.webSocket == nil && !self.isConnected && !self.isConnecting && self.reconnectTimer == nil { return }
         self.isDisconnected = true
         self.isConnecting = false
         
-        self.sendStatus(false)
-        self.sendDisconnect()
+        if self.isConnected {
+            self.sendStatus(false)
+            self.sendDisconnect()
+        }
         
         self.webSocket?.cancel(with: .normalClosure, reason: nil)
         self.webSocket = nil
         self.isConnected = false
         self.stopPingTimer()
+        self.stopReconnectTimer()
         debug("MQTT disconnected gracefully", log: self.log)
     }
     
-    private func reconnect() {
-        guard !self.isDisconnected && !self.isReconnecting else { return }
+    deinit {
+        self.stopPingTimer()
+        self.stopReconnectTimer()
+        self.session?.invalidateAndCancel()
+    }
+    
+    private func scheduleReconnect() {
+        guard !self.isDisconnected && !self.isConnected && self.reconnectTimer == nil else { return }
         
         self.isReconnecting = true
         
@@ -846,9 +856,13 @@ class MQTTManager: NSObject {
         
         debug("Waiting \(delay) seconds before next MQTT reconnection attempt...", log: self.log)
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        let leeway = min(delay * 0.2, 5)
+        timer.schedule(deadline: .now() + delay, leeway: .milliseconds(Int(leeway * 1000)))
+        timer.setEventHandler { [weak self] in
             guard let self else { return }
             
+            self.reconnectTimer = nil
             self.isReconnecting = false
             
             guard !self.isDisconnected && !self.isConnected else {
@@ -860,6 +874,28 @@ class MQTTManager: NSObject {
             debug("Attempting MQTT reconnection #\(self.reconnectAttempts)", log: self.log)
             self.connect()
         }
+        timer.resume()
+        self.reconnectTimer = timer
+    }
+    
+    private func stopReconnectTimer() {
+        self.reconnectTimer?.cancel()
+        self.reconnectTimer = nil
+        self.isReconnecting = false
+    }
+    
+    private func failConnection(_ message: String, error: Error? = nil) {
+        if let error {
+            debug("\(message): \(error.localizedDescription)", log: self.log)
+        } else {
+            debug(message, log: self.log)
+        }
+        self.stopPingTimer()
+        self.webSocket?.cancel(with: .goingAway, reason: nil)
+        self.webSocket = nil
+        self.isConnected = false
+        self.isConnecting = false
+        self.scheduleReconnect()
     }
     
     public func sendStatus(_ value: Bool) {
@@ -872,9 +908,9 @@ class MQTTManager: NSObject {
     
     private func sendConnect() {
         let connectPacket = createConnectPacket(username: Remote.shared.id.uuidString, password: Remote.shared.auth.accessToken)
-        self.webSocket?.send(.data(connectPacket)) { error in
+        self.webSocket?.send(.data(connectPacket)) { [weak self] error in
             if let error = error {
-                print("Error sending MQTT CONNECT: \(error)")
+                self?.failConnection("Error sending MQTT CONNECT", error: error)
             }
         }
     }
@@ -886,9 +922,9 @@ class MQTTManager: NSObject {
     
     private func sendPingRequest() {
         let pingPacket = Data([MQTTPacketType.pingreq.rawValue << 4, 0])
-        self.webSocket?.send(.data(pingPacket)) { error in
+        self.webSocket?.send(.data(pingPacket)) { [weak self] error in
             if let error = error {
-                print("Error sending MQTT PINGREQ: \(error)")
+                self?.failConnection("Error sending MQTT PINGREQ", error: error)
             }
         }
     }
@@ -904,9 +940,9 @@ class MQTTManager: NSObject {
         guard self.isConnected else { return }
         
         let publishPacket = createPublishPacket(topic: topic, payload: data, retain: retain)
-        self.webSocket?.send(.data(publishPacket)) { error in
+        self.webSocket?.send(.data(publishPacket)) { [weak self] error in
             if let error = error {
-                print("Error publishing MQTT message: \(error)")
+                self?.failConnection("Error publishing MQTT message", error: error)
             }
         }
     }
@@ -915,9 +951,9 @@ class MQTTManager: NSObject {
         guard self.isConnected else { return }
         
         let subscribePacket = createSubscribePacket(topic: topic)
-        self.webSocket?.send(.data(subscribePacket)) { error in
+        self.webSocket?.send(.data(subscribePacket)) { [weak self] error in
             if let error = error {
-                print("Error subscribing to MQTT topic: \(error)")
+                self?.failConnection("Error subscribing to MQTT topic", error: error)
             }
         }
     }
@@ -1052,6 +1088,7 @@ class MQTTManager: NSObject {
             self.isConnected = true
             self.isReconnecting = false
             self.reconnectAttempts = 0
+            self.stopReconnectTimer()
             self.startPingTimer()
             self.subscribeToTopics()
             self.sendStatus(true)
@@ -1059,6 +1096,13 @@ class MQTTManager: NSObject {
             self.registerCallback?()
         } else {
             debug("MQTT connection failed with code: \(returnCode)", log: self.log)
+            self.isConnected = false
+            if returnCode == 4 || returnCode == 5 {
+                Remote.shared.isAuthorized = false
+                NotificationCenter.default.post(name: .remoteState, object: nil, userInfo: ["auth": false])
+            } else {
+                self.scheduleReconnect()
+            }
         }
     }
     
@@ -1105,10 +1149,11 @@ class MQTTManager: NSObject {
     }
     
     private func handleWebSocketError(_ error: Error) {
-        if let urlError = error as? URLError, urlError.code.rawValue == 401 {
-            Remote.shared.start()
+        if let urlError = error as? URLError, urlError.code == .userAuthenticationRequired {
+            Remote.shared.isAuthorized = false
+            NotificationCenter.default.post(name: .remoteState, object: nil, userInfo: ["auth": false])
         } else {
-            self.reconnect()
+            self.scheduleReconnect()
         }
     }
     
@@ -1151,11 +1196,12 @@ extension MQTTManager: URLSessionWebSocketDelegate {
     
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
         self.stopPingTimer()
-        self.sendStatus(false)
         self.isConnected = false
         self.isConnecting = false
         debug("MQTT WebSocket closed", log: self.log)
-        self.reconnect()
+        if closeCode != .normalClosure && !self.isDisconnected {
+            self.scheduleReconnect()
+        }
     }
     
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
@@ -1163,6 +1209,10 @@ extension MQTTManager: URLSessionWebSocketDelegate {
         if let error = error {
             if let response = task.response as? HTTPURLResponse {
                 debug("MQTT WebSocket failed: \(error.localizedDescription), status: \(response.statusCode)", log: self.log)
+                if response.statusCode == 401 || response.statusCode == 403 {
+                    Remote.shared.isAuthorized = false
+                    NotificationCenter.default.post(name: .remoteState, object: nil, userInfo: ["auth": false])
+                }
             } else {
                 debug("MQTT WebSocket failed: \(error.localizedDescription)", log: self.log)
             }
@@ -1170,8 +1220,11 @@ extension MQTTManager: URLSessionWebSocketDelegate {
         self.stopPingTimer()
         self.isConnected = false
         self.isConnecting = false
-        if !self.isDisconnected {
-            self.reconnect()
+        if error != nil && !self.isDisconnected {
+            if let response = task.response as? HTTPURLResponse, response.statusCode == 401 || response.statusCode == 403 {
+                return
+            }
+            self.scheduleReconnect()
         }
     }
 }

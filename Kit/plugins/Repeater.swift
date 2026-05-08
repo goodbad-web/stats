@@ -52,10 +52,11 @@ private final class RepeaterBucket {
     
     private func startTimer() {
         let timer = DispatchSource.makeTimerSource(queue: self.queue)
+        let leeway = min(max(self.interval / 5, 1), 5)
         timer.schedule(
             deadline: DispatchTime.now() + Double(self.interval),
             repeating: .seconds(self.interval),
-            leeway: .milliseconds(250)
+            leeway: .seconds(leeway)
         )
         timer.setEventHandler { [weak self] in
             let callbacks = self?.callbacks.withLock { Array($0.values) } ?? []
