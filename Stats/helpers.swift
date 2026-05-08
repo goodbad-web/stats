@@ -346,11 +346,11 @@ extension AppDelegate {
               let widget = module.menuBar.widgets.filter({ $0.isActive }).first,
               let window = widget.item.window else { return }
         
-        NotificationCenter.default.post(name: .togglePopup, object: nil, userInfo: [
-            "module": module.name,
-            "widget": widget.type,
-            "origin": window.frame.origin,
-            "center": window.frame.width/2
-        ])
+        AppEventCenter.shared.post(.popupToggle(
+            module: module.name,
+            origin: window.frame.origin,
+            center: window.frame.width/2,
+            widget: widget.type
+        ))
     }
 }

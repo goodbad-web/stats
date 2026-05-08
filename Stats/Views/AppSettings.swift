@@ -14,29 +14,29 @@ import Kit
 
 class ApplicationSettings: NSStackView {
     private var updateIntervalValue: String {
-        Store.shared.string(key: "update-interval", defaultValue: AppUpdateInterval.silent.rawValue)
+        UserDefaultsSettingsStore.shared.string(AppSettingsKeys.updateInterval)
     }
     
     private var temperatureUnitsValue: String {
-        get { Store.shared.string(key: "temperature_units", defaultValue: "system") }
-        set { Store.shared.set(key: "temperature_units", value: newValue) }
+        get { UserDefaultsSettingsStore.shared.string(AppSettingsKeys.temperatureUnits) }
+        set { UserDefaultsSettingsStore.shared.set(AppSettingsKeys.temperatureUnits, value: newValue) }
     }
     
     private var combinedModulesState: Bool {
-        get { Store.shared.bool(key: "CombinedModules", defaultValue: false) }
-        set { Store.shared.set(key: "CombinedModules", value: newValue) }
+        get { UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.combinedModules) }
+        set { UserDefaultsSettingsStore.shared.set(AppSettingsKeys.combinedModules, value: newValue) }
     }
     private var combinedModulesSpacing: String {
-        get { Store.shared.string(key: "CombinedModules_spacing", defaultValue: "none") }
-        set { Store.shared.set(key: "CombinedModules_spacing", value: newValue) }
+        get { UserDefaultsSettingsStore.shared.string(AppSettingsKeys.combinedModulesSpacing) }
+        set { UserDefaultsSettingsStore.shared.set(AppSettingsKeys.combinedModulesSpacing, value: newValue) }
     }
     private var combinedModulesSeparator: Bool {
-        get { Store.shared.bool(key: "CombinedModules_separator", defaultValue: false) }
-        set { Store.shared.set(key: "CombinedModules_separator", value: newValue) }
+        get { UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.combinedModulesSeparator) }
+        set { UserDefaultsSettingsStore.shared.set(AppSettingsKeys.combinedModulesSeparator, value: newValue) }
     }
     private var combinedModulesPopup: Bool {
-        get { Store.shared.bool(key: "CombinedModules_popup", defaultValue: true) }
-        set { Store.shared.set(key: "CombinedModules_popup", value: newValue) }
+        get { UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.combinedModulesPopup) }
+        set { UserDefaultsSettingsStore.shared.set(AppSettingsKeys.combinedModulesPopup, value: newValue) }
     }
     
     private var systemWidgetsUpdatesState: Bool {
@@ -103,7 +103,7 @@ class ApplicationSettings: NSStackView {
             )),
             PreferencesRow(localizedString("Show icon in dock"), component: switchView(
                 action: #selector(self.toggleDock),
-                state: Store.shared.bool(key: "dockIcon", defaultValue: false)
+                state: UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.dockIcon)
             )),
             PreferencesRow(localizedString("Start at login"), component: self.startAtLoginBtn!)
         ]))
@@ -305,7 +305,7 @@ class ApplicationSettings: NSStackView {
     
     @objc private func toggleUpdateInterval(_ sender: NSMenuItem) {
         guard let key = sender.representedObject as? String else { return }
-        Store.shared.set(key: "update-interval", value: key)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.updateInterval, value: key)
     }
     
     @objc private func toggleTemperatureUnits(_ sender: NSMenuItem) {
@@ -315,7 +315,7 @@ class ApplicationSettings: NSStackView {
     
     @objc private func toggleDock(_ sender: NSButton) {
         let state = sender.state
-        Store.shared.set(key: "dockIcon", value: state == NSControl.StateValue.on)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.dockIcon, value: state == NSControl.StateValue.on)
         let dockIconStatus = state == NSControl.StateValue.on ? NSApplication.ActivationPolicy.regular : NSApplication.ActivationPolicy.accessory
         NSApp.setActivationPolicy(dockIconStatus)
         if state == .off {
@@ -325,8 +325,8 @@ class ApplicationSettings: NSStackView {
     
     @objc private func toggleLaunchAtLogin(_ sender: NSButton) {
         LaunchAtLogin.isEnabled = sender.state == NSControl.StateValue.on
-        if !Store.shared.exist(key: "runAtLoginInitialized") {
-            Store.shared.set(key: "runAtLoginInitialized", value: true)
+        if !UserDefaultsSettingsStore.shared.exist(AppSettingsKeys.runAtLoginInitialized) {
+            UserDefaultsSettingsStore.shared.set(AppSettingsKeys.runAtLoginInitialized, value: true)
         }
     }
     
@@ -336,23 +336,23 @@ class ApplicationSettings: NSStackView {
         self.combinedModulesView?.setRowVisibility(2, newState: self.combinedModulesState)
         self.combinedModulesView?.setRowVisibility(3, newState: self.combinedModulesState)
         self.combinedModulesView?.setRowVisibility(4, newState: self.combinedModulesState)
-        NotificationCenter.default.post(name: .toggleOneView, object: nil, userInfo: nil)
+        AppEventCenter.shared.post(.toggleOneView(module: nil))
     }
     
     @objc private func toggleCombinedModulesSpacing(_ sender: NSMenuItem) {
         guard let key = sender.representedObject as? String else { return }
         self.combinedModulesSpacing = key
-        NotificationCenter.default.post(name: .moduleRearrange, object: nil, userInfo: nil)
+        AppEventCenter.shared.post(.moduleRearrange(id: nil))
     }
     
     @objc private func toggleCombinedModulesSeparator(_ sender: NSButton) {
         self.combinedModulesSeparator = sender.state == NSControl.StateValue.on
-        NotificationCenter.default.post(name: .moduleRearrange, object: nil, userInfo: nil)
+        AppEventCenter.shared.post(.moduleRearrange(id: nil))
     }
     
     @objc private func toggleCombinedModulesPopup(_ sender: NSButton) {
         self.combinedModulesPopup = sender.state == NSControl.StateValue.on
-        NotificationCenter.default.post(name: .combinedModulesPopup, object: nil, userInfo: nil)
+        AppEventCenter.shared.post(.combinedModulesPopup)
     }
     
     @objc private func importSettings() {
@@ -608,7 +608,7 @@ private class ModuleSelectorView: NSStackView {
                 }
             } else {
                 if newIdx != -1, let view = self.views[newIdx] as? ModulePreview, let id = view.identifier?.rawValue {
-                    NotificationCenter.default.post(name: .moduleRearrange, object: nil, userInfo: ["id": id])
+                    AppEventCenter.shared.post(.moduleRearrange(id: id))
                 }
                 view.mouseUp(with: event)
                 stop.pointee = true

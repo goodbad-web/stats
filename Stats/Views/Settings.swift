@@ -124,7 +124,7 @@ class SettingsWindow: NSWindow, NSWindowDelegate, NSToolbarDelegate {
         case .previewButton:
             let button = SettingsPreviewButton { [weak self] in
                 guard let moduleName = self?.activeModuleName else { return }
-                NotificationCenter.default.post(name: .togglePreview, object: nil, userInfo: ["module": moduleName])
+                AppEventCenter.shared.post(.togglePreview(module: moduleName))
             }
             self.settingsPreviewButton = button
             
@@ -185,18 +185,18 @@ class SettingsWindow: NSWindow, NSWindowDelegate, NSToolbarDelegate {
                 toggleNSControlState(self.toggleButton, state: detectedModule.enabled ? .on : .off)
                 self.toggleButton?.isHidden = false
                 self.settingsPreviewButton?.isHidden = !detectedModule.config.hasPreview
-                NotificationCenter.default.post(name: .openWindow, object: nil, userInfo: ["module": detectedModule.config.name, "state": true])
+                AppEventCenter.shared.post(.openWindow(module: detectedModule.config.name, state: true))
             } else if title == "Dashboard" {
                 view = self.dashboard
                 self.toggleButton?.isHidden = true
                 self.settingsPreviewButton?.isHidden = true
-                NotificationCenter.default.post(name: .openWindow, object: nil, userInfo: ["state": false])
+                AppEventCenter.shared.post(.openWindow(module: nil, state: false))
             } else if title == "Settings" {
                 self.settings.viewWillAppear()
                 view = self.settings
                 self.toggleButton?.isHidden = true
                 self.settingsPreviewButton?.isHidden = true
-                NotificationCenter.default.post(name: .openWindow, object: nil, userInfo: ["state": false])
+                AppEventCenter.shared.post(.openWindow(module: nil, state: false))
             }
             
             self.title = localizedString(title)
@@ -208,7 +208,7 @@ class SettingsWindow: NSWindow, NSWindowDelegate, NSToolbarDelegate {
     
     @objc private func toggleEnable(_ sender: NSControl) {
         guard let moduleName = self.activeModuleName else { return }
-        NotificationCenter.default.post(name: .toggleModule, object: nil, userInfo: ["module": moduleName, "state": controlState(sender)])
+        AppEventCenter.shared.post(.moduleToggle(module: moduleName, state: controlState(sender)))
     }
     
     @objc private func externalModuleToggle(_ notification: Notification) {
@@ -460,7 +460,7 @@ private class SidebarView: NSStackView {
         self.pauseState = !self.pauseState
         self.pauseButton?.toolTip = localizedString(self.pauseState ? "Resume the Stats" : "Pause the Stats")
         self.pauseButton?.image = self.pauseState ? self.resumeIcon : self.pauseIcon
-        NotificationCenter.default.post(name: .pause, object: nil, userInfo: ["state": self.pauseState])
+        AppEventCenter.shared.post(.pause(self.pauseState))
     }
     
     @objc func listenForPause() {

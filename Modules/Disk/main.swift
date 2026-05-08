@@ -81,7 +81,7 @@ public struct drive: Codable, Equatable {
     }
     
     public var popupState: Bool {
-        Store.shared.bool(key: "Disk_\(self.uuid)_popup", defaultValue: true)
+        UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.bool("Disk_\(self.uuid)_popup", defaultValue: true))
     }
     
     public func remote() -> String {
@@ -207,7 +207,9 @@ public class Disks: Codable, Equatable, RemoteType, @unchecked Sendable {
 
 public struct Disk_process: Process_p, Codable, Sendable, Equatable {
     public var base: DataSizeBase {
-        DataSizeBase(rawValue: Store.shared.string(key: "\(ModuleType.disk.stringValue)_base", defaultValue: "byte")) ?? .byte
+        DataSizeBase(rawValue: UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.string("\(ModuleType.disk.stringValue)_base", defaultValue: "byte")
+        )) ?? .byte
     }
     
     public var pid: Int
@@ -248,16 +250,18 @@ public class Disk: Module {
     private var processReader: ProcessReader?
     
     private var selectedMiniSensor: String {
-        Store.shared.string(key: "Disk_mini_sensor", defaultValue: "Percentage")
+        UserDefaultsSettingsStore.shared.string(AppSettingsKeys.string("Disk_mini_sensor", defaultValue: "Percentage"))
     }
     private var selectedStackSensor: String {
-        Store.shared.string(key: "Disk_stack_sensor", defaultValue: "Capacity")
+        UserDefaultsSettingsStore.shared.string(AppSettingsKeys.string("Disk_stack_sensor", defaultValue: "Capacity"))
     }
     
     private var selectedDisk: String = ""
     
     private var textValue: String {
-        Store.shared.string(key: "\(self.name)_textWidgetValue", defaultValue: "$capacity.free/$capacity.total")
+        UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.string("\(self.name)_textWidgetValue", defaultValue: "$capacity.free/$capacity.total")
+        )
     }
     
     private var systemWidgetsUpdatesState: Bool {
@@ -296,7 +300,9 @@ public class Disk: Module {
             self?.capacityReader?.read()
         }
         
-        self.selectedDisk = Store.shared.string(key: "\(ModuleType.disk.stringValue)_disk", defaultValue: self.selectedDisk)
+        self.selectedDisk = UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.string("\(ModuleType.disk.stringValue)_disk", defaultValue: self.selectedDisk)
+        )
         
         self.settingsView.selectedDiskHandler = { [weak self] value in
             self?.selectedDisk = value

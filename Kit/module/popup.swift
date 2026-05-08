@@ -29,7 +29,9 @@ open class PopupWrapper: NSStackView, Popup_p {
     
     public init(_ typ: ModuleType, frame: NSRect) {
         self.title = typ.stringValue
-        self.keyboardShortcut = Store.shared.array(key: "\(typ.stringValue)_popup_keyboardShortcut", defaultValue: []) as? [UInt16] ?? []
+        self.keyboardShortcut = UserDefaultsSettingsStore.shared.array(
+            AppSettingsKeys.modulePopupKeyboardShortcut(typ.stringValue)
+        ) as? [UInt16] ?? []
         
         super.init(frame: frame)
     }
@@ -44,7 +46,7 @@ open class PopupWrapper: NSStackView, Popup_p {
     
     open func setKeyboardShortcut(_ binding: [UInt16]) {
         self.keyboardShortcut = binding
-        Store.shared.set(key: "\(self.title)_popup_keyboardShortcut", value: binding)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.modulePopupKeyboardShortcut(self.title), value: binding)
     }
 }
 

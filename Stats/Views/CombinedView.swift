@@ -19,13 +19,13 @@ internal class CombinedView: NSObject, NSGestureRecognizerDelegate {
     private var popup: PopupWindow? = nil
     
     private var status: Bool {
-        Store.shared.bool(key: "CombinedModules", defaultValue: false)
+        UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.combinedModules)
     }
     private var spacing: CGFloat {
-        CGFloat(Int(Store.shared.string(key: "CombinedModules_spacing", defaultValue: "")) ?? 0)
+        CGFloat(Int(UserDefaultsSettingsStore.shared.string(AppSettingsKeys.combinedModulesSpacing)) ?? 0)
     }
     private var separator: Bool {
-        Store.shared.bool(key: "CombinedModules_separator", defaultValue: false)
+        UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.combinedModulesSeparator)
     }
     
     private var activeModules: [Module] {
@@ -33,8 +33,8 @@ internal class CombinedView: NSObject, NSGestureRecognizerDelegate {
     }
     
     private var combinedModulesPopup: Bool {
-        get { Store.shared.bool(key: "CombinedModules_popup", defaultValue: true) }
-        set { Store.shared.set(key: "CombinedModules_popup", value: newValue) }
+        get { UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.combinedModulesPopup) }
+        set { UserDefaultsSettingsStore.shared.set(AppSettingsKeys.combinedModulesPopup, value: newValue) }
     }
     
     override init() {
@@ -83,12 +83,12 @@ internal class CombinedView: NSObject, NSGestureRecognizerDelegate {
                 m.menuBar.widgets.forEach { w in
                     w.item.onClick = {
                         if let window = w.item.window {
-                            NotificationCenter.default.post(name: .togglePopup, object: nil, userInfo: [
-                                "module": m.name,
-                                "widget": w.type,
-                                "origin": window.frame.origin,
-                                "center": window.frame.width/2
-                            ])
+                            AppEventCenter.shared.post(.popupToggle(
+                                module: m.name,
+                                origin: window.frame.origin,
+                                center: window.frame.width/2,
+                                widget: w.type
+                            ))
                         }
                     }
                 }
@@ -189,12 +189,12 @@ internal class CombinedView: NSObject, NSGestureRecognizerDelegate {
                 m.menuBar.widgets.forEach { w in
                     w.item.onClick = {
                         if let window = w.item.window {
-                            NotificationCenter.default.post(name: .togglePopup, object: nil, userInfo: [
-                                "module": m.name,
-                                "widget": w.type,
-                                "origin": window.frame.origin,
-                                "center": window.frame.width/2
-                            ])
+                            AppEventCenter.shared.post(.popupToggle(
+                                module: m.name,
+                                origin: window.frame.origin,
+                                center: window.frame.width/2,
+                                widget: w.type
+                            ))
                         }
                     }
                 }
@@ -222,12 +222,12 @@ internal class CombinedView: NSObject, NSGestureRecognizerDelegate {
         module.menuBar.widgets.forEach { w in
             w.item.onClick = {
                 if let window = w.item.window {
-                    NotificationCenter.default.post(name: .togglePopup, object: nil, userInfo: [
-                        "module": module.name,
-                        "widget": w.type,
-                        "origin": window.frame.origin,
-                        "center": window.frame.width/2
-                    ])
+                    AppEventCenter.shared.post(.popupToggle(
+                        module: module.name,
+                        origin: window.frame.origin,
+                        center: window.frame.width/2,
+                        widget: w.type
+                    ))
                 }
             }
         }
@@ -239,7 +239,9 @@ private class Popup: NSStackView, Popup_p {
     fileprivate var sizeCallback: ((NSSize) -> Void)? = nil
     
     init() {
-        self.keyboardShortcut = Store.shared.array(key: "CombinedModules_popup_keyboardShortcut", defaultValue: []) as? [UInt16] ?? []
+        self.keyboardShortcut = UserDefaultsSettingsStore.shared.array(
+            AppSettingsKeys.combinedModulesPopupKeyboardShortcut
+        ) as? [UInt16] ?? []
         
         super.init(frame: NSRect(x: 0, y: 0, width: Constants.Popup.width, height: 0))
         
@@ -266,7 +268,7 @@ private class Popup: NSStackView, Popup_p {
     fileprivate func disappear() {}
     fileprivate func setKeyboardShortcut(_ binding: [UInt16]) {
         self.keyboardShortcut = binding
-        Store.shared.set(key: "CombinedModules_popup_keyboardShortcut", value: binding)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.combinedModulesPopupKeyboardShortcut, value: binding)
     }
     
     @objc private func reinit() {

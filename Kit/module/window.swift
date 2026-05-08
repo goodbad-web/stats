@@ -58,11 +58,11 @@ import Cocoa
     private let noNotificationsView: EmptyView = EmptyView(msg: localizedString("No notifications available in this module"))
     
     private var globalOneView: Bool {
-        Store.shared.bool(key: "OneView", defaultValue: false)
+        UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.globalOneView)
     }
     private var oneViewState: Bool {
-        get { Store.shared.bool(key: "\(self.config.pointee.name)_oneView", defaultValue: false) }
-        set { Store.shared.set(key: "\(self.config.pointee.name)_oneView", value: newValue) }
+        get { UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.moduleOneView(self.config.pointee.name)) }
+        set { UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleOneView(self.config.pointee.name), value: newValue) }
     }
     
     private var isPreviewAvailable: Bool
@@ -308,7 +308,7 @@ import Cocoa
     @objc private func toggleOneView(_ sender: NSControl) {
         guard !self.globalOneView else { return }
         self.oneViewState = controlState(sender)
-        NotificationCenter.default.post(name: .toggleOneView, object: nil, userInfo: ["module": self.config.pointee.name])
+        AppEventCenter.shared.post(.toggleOneView(module: self.config.pointee.name))
     }
     
     @objc private func listenForOneView(_ notification: Notification) {
@@ -451,7 +451,7 @@ import Cocoa
         }
         
         view.status(separatorIdx < targetIdx)
-        NotificationCenter.default.post(name: .widgetRearrange, object: nil, userInfo: ["module": self.module])
+        AppEventCenter.shared.post(.widgetRearrange(module: self.module))
     }
     
     override func mouseDown(with event: NSEvent) {
@@ -527,7 +527,7 @@ import Cocoa
                     } else if newIdx >= separatorIdx {
                         view.status(false)
                     }
-                    NotificationCenter.default.post(name: .widgetRearrange, object: nil, userInfo: ["module": self.module])
+                    AppEventCenter.shared.post(.widgetRearrange(module: self.module))
                 }
                 
                 view.mouseUp(with: event)
@@ -549,8 +549,8 @@ import Cocoa
     private let id: String
     
     fileprivate var position: Int {
-        get { Store.shared.int(key: "\(self.id)_position", defaultValue: 0) }
-        set { Store.shared.set(key: "\(self.id)_position", value: newValue) }
+        get { UserDefaultsSettingsStore.shared.int(AppSettingsKeys.widgetPreviewPosition(self.id)) }
+        set { UserDefaultsSettingsStore.shared.set(AppSettingsKeys.widgetPreviewPosition(self.id), value: newValue) }
     }
     
     fileprivate init(id: String, type: widget_t, image: NSImage, isActive: Bool, _ callback: @escaping (_ status: Bool) -> Void) {

@@ -196,26 +196,36 @@ public class Network: Module {
     private let usageReseter = NSBackgroundActivityScheduler(identifier: "eu.exelban.Stats.Network.Usage")
     
     private var widgetActivationThresholdState: Bool {
-        Store.shared.bool(key: "\(self.config.name)_widgetActivationThresholdState", defaultValue: false)
+        UserDefaultsSettingsStore.shared.bool(
+            AppSettingsKeys.bool("\(self.config.name)_widgetActivationThresholdState", defaultValue: false)
+        )
     }
     private var widgetActivationThreshold: Int {
-        Store.shared.int(key: "\(self.config.name)_widgetActivationThreshold", defaultValue: 0)
+        UserDefaultsSettingsStore.shared.int(
+            AppSettingsKeys.int("\(self.config.name)_widgetActivationThreshold", defaultValue: 0)
+        )
     }
     private var widgetActivationThresholdSize: SizeUnit {
-        SizeUnit.fromString(Store.shared.string(key: "\(self.name)_widgetActivationThresholdSize", defaultValue: SizeUnit.MB.key))
+        SizeUnit.fromString(UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.string("\(self.name)_widgetActivationThresholdSize", defaultValue: SizeUnit.MB.key)
+        ))
     }
     private var publicIPRefreshInterval: String {
-        Store.shared.string(key: "\(self.name)_publicIPRefreshInterval", defaultValue: "never")
+        UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.string("\(self.name)_publicIPRefreshInterval", defaultValue: "never")
+        )
     }
     private var selectedMiniSensor: String {
-        Store.shared.string(key: "Net_mini_sensor", defaultValue: "Download speed")
+        UserDefaultsSettingsStore.shared.string(AppSettingsKeys.string("Net_mini_sensor", defaultValue: "Download speed"))
     }
     private var selectedStackSensor: String {
-        Store.shared.string(key: "Net_stack_sensor", defaultValue: "Speed")
+        UserDefaultsSettingsStore.shared.string(AppSettingsKeys.string("Net_stack_sensor", defaultValue: "Speed"))
     }
     
     private var textValue: String {
-        Store.shared.string(key: "\(self.name)_textWidgetValue", defaultValue: "$addr.public - $status")
+        UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.string("\(self.name)_textWidgetValue", defaultValue: "$addr.public - $status")
+        )
     }
     
     private var systemWidgetsUpdatesState: Bool {
@@ -288,9 +298,15 @@ public class Network: Module {
         let hasNetworkValueWidget = activeWidgets.contains { !($0.item is Label) }
         let hasConnectivityWidget = activeWidgets.contains { $0.item is DotWidget || $0.item is TextWidget }
         
-        self.usageReader?.setActivityMode(hasNetworkValueWidget || detailVisible ? .active : .passive)
-        self.connectivityReader?.setActivityMode(hasConnectivityWidget || detailVisible ? .active : .passive)
-        self.processReader?.setActivityMode(self.isPopupVisible ? .active : .paused)
+        self.usageReader?.setActivityMode(SamplingPolicy.mode(
+            hasActiveValueWidget: hasNetworkValueWidget,
+            detailVisible: detailVisible
+        ))
+        self.connectivityReader?.setActivityMode(SamplingPolicy.mode(
+            hasActiveValueWidget: hasConnectivityWidget,
+            detailVisible: detailVisible
+        ))
+        self.processReader?.setActivityMode(SamplingPolicy.popupMode(popupVisible: self.isPopupVisible))
     }
     
     public override func isAvailable() -> Bool {
@@ -467,12 +483,12 @@ public class Network: Module {
                 return
             }
             
-            if self.ipUpdater.shouldDefer {
-                completion(.deferred)
-                return
-            }
-            
             Task { @MainActor in
+                if self.ipUpdater.shouldDefer {
+                    completion(.deferred)
+                    return
+                }
+                
                 guard self.enabled && self.isAvailable() else {
                     completion(.finished)
                     return
@@ -487,7 +503,10 @@ public class Network: Module {
     private func setUsageReset() {
         self.usageReseter.invalidate()
         
-        switch AppUpdateInterval(rawValue: Store.shared.string(key: "\(self.config.name)_usageReset", defaultValue: AppUpdateInterval.never.rawValue)) {
+        let resetInterval = UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.string("\(self.config.name)_usageReset", defaultValue: AppUpdateInterval.never.rawValue)
+        )
+        switch AppUpdateInterval(rawValue: resetInterval) {
         case .oncePerDay: self.usageReseter.interval = 60 * 60 * 24
         case .oncePerWeek: self.usageReseter.interval = 60 * 60 * 24 * 7
         case .oncePerMonth: self.usageReseter.interval = 60 * 60 * 24 * 30
@@ -503,12 +522,12 @@ public class Network: Module {
                 return
             }
             
-            if self.usageReseter.shouldDefer {
-                completion(.deferred)
-                return
-            }
-            
             Task { @MainActor in
+                if self.usageReseter.shouldDefer {
+                    completion(.deferred)
+                    return
+                }
+                
                 guard self.enabled && self.isAvailable() else {
                     completion(.finished)
                     return

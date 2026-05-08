@@ -136,10 +136,10 @@ public class GPU: Module {
     private var infoReader: InfoReader? = nil
     
     private var selectedMiniSensor: String {
-        Store.shared.string(key: "GPU_mini_sensor", defaultValue: "Utilization")
+        UserDefaultsSettingsStore.shared.string(AppSettingsKeys.string("GPU_mini_sensor", defaultValue: "Utilization"))
     }
     private var selectedStackSensor: String {
-        Store.shared.string(key: "GPU_stack_sensor", defaultValue: "Utilization/Render")
+        UserDefaultsSettingsStore.shared.string(AppSettingsKeys.string("GPU_stack_sensor", defaultValue: "Utilization/Render"))
     }
     
     private var selectedGPU: String = ""
@@ -147,7 +147,7 @@ public class GPU: Module {
     private var notificationID: String? = nil
     
     private var showType: Bool {
-        Store.shared.bool(key: "\(self.config.name)_showType", defaultValue: false)
+        UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.bool("\(self.config.name)_showType", defaultValue: false))
     }
     
     private var systemWidgetsUpdatesState: Bool {
@@ -174,7 +174,9 @@ public class GPU: Module {
         self.infoReader = InfoReader(.GPU) { [weak self] value in
             self?.infoCallback(value)
         }
-        self.selectedGPU = Store.shared.string(key: "\(self.config.name)_gpu", defaultValue: self.selectedGPU)
+        self.selectedGPU = UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.string("\(self.config.name)_gpu", defaultValue: self.selectedGPU)
+        )
         
         self.settingsView.selectedGPUHandler = { [weak self] value in
             self?.selectedGPU = value
@@ -193,7 +195,7 @@ public class GPU: Module {
     
     public override func updateReaderActivityModes() {
         let detailVisible = self.isPopupVisible || self.isSettingsWindowVisible
-        let mode: ReaderActivityMode = self.hasActiveValueWidget || detailVisible ? .active : .passive
+        let mode = SamplingPolicy.mode(hasActiveValueWidget: self.hasActiveValueWidget, detailVisible: detailVisible)
         self.infoReader?.setActivityMode(mode)
     }
     

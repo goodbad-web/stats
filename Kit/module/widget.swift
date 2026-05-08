@@ -279,16 +279,23 @@ public class SWidget {
         NextLog.shared.copy(category: self.module)
     }
     public var position: Int {
-        get { Store.shared.int(key: "\(self.module)_\(self.type)_position", defaultValue: 0) }
-        set { Store.shared.set(key: "\(self.module)_\(self.type)_position", value: newValue) }
+        get { UserDefaultsSettingsStore.shared.int(AppSettingsKeys.widgetPosition(module: self.module, widget: self.type)) }
+        set { UserDefaultsSettingsStore.shared.set(AppSettingsKeys.widgetPosition(module: self.module, widget: self.type), value: newValue) }
     }
     
     private var list: [widget_t] {
         get {
-            let string = Store.shared.string(key: "\(self.module)_widget", defaultValue: self.defaultWidget.rawValue)
+            let string = UserDefaultsSettingsStore.shared.string(
+                AppSettingsKeys.widgetList(module: self.module, defaultWidget: self.defaultWidget)
+            )
             return string.split(separator: ",").map{ (widget_t(rawValue: String($0)) ?? .unknown)}
         }
-        set { Store.shared.set(key: "\(self.module)_widget", value: newValue.map{ $0.rawValue }.joined(separator: ",")) }
+        set {
+            UserDefaultsSettingsStore.shared.set(
+                AppSettingsKeys.widgetList(module: self.module, defaultWidget: self.defaultWidget),
+                value: newValue.map{ $0.rawValue }.joined(separator: ",")
+            )
+        }
     }
     
     private var menuBarItem: NSStatusItem? = nil
@@ -343,7 +350,7 @@ public class SWidget {
             self.enable()
         }
         
-        NotificationCenter.default.post(name: .toggleWidget, object: nil, userInfo: ["module": self.module])
+        AppEventCenter.shared.post(.toggleWidget(module: self.module))
     }
     
     public func setMenuBarItem(state: Bool) {
@@ -376,12 +383,12 @@ public class SWidget {
     
     @objc private func togglePopup() {
         if let item = self.menuBarItem, let window = item.button?.window {
-            NotificationCenter.default.post(name: .togglePopup, object: nil, userInfo: [
-                "module": self.module,
-                "widget": self.type,
-                "origin": window.frame.origin,
-                "center": window.frame.width/2
-            ])
+            AppEventCenter.shared.post(.popupToggle(
+                module: self.module,
+                origin: window.frame.origin,
+                center: window.frame.width/2,
+                widget: self.type
+            ))
         }
     }
 }
@@ -395,7 +402,7 @@ public class MenuBar {
     private var queue: DispatchQueue
     
     private var combinedModules: Bool {
-        Store.shared.bool(key: "CombinedModules", defaultValue: false)
+        UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.combinedModules)
     }
     
     public var view: MenuBarView = MenuBarView()
@@ -422,7 +429,9 @@ public class MenuBar {
     init(moduleName: String) {
         self.moduleName = moduleName
         self.queue = DispatchQueue(label: "eu.exelban.Stats.MenuBar.\(moduleName)")
-        self.oneView = Store.shared.bool(key: "\(self.moduleName)_oneView", defaultValue: self.oneView)
+        self.oneView = UserDefaultsSettingsStore.shared.bool(
+            AppSettingsKeys.moduleOneView(self.moduleName, defaultValue: self.oneView)
+        )
         self.view.identifier = NSUserInterfaceItemIdentifier(rawValue: moduleName)
         
         if self.combinedModules {
@@ -530,11 +539,11 @@ public class MenuBar {
     
     @objc private func togglePopup() {
         if let item = self.menuBarItem, let window = item.button?.window {
-            NotificationCenter.default.post(name: .togglePopup, object: nil, userInfo: [
-                "module": self.moduleName,
-                "origin": window.frame.origin,
-                "center": window.frame.width/2
-            ])
+            AppEventCenter.shared.post(.popupToggle(
+                module: self.moduleName,
+                origin: window.frame.origin,
+                center: window.frame.width/2
+            ))
         }
     }
     
@@ -555,7 +564,9 @@ public class MenuBar {
             self.oneView = true
             self.setupMenuBarItem(false)
         } else if self.active {
-            self.oneView = Store.shared.bool(key: "\(self.moduleName)_oneView", defaultValue: self.oneView)
+            self.oneView = UserDefaultsSettingsStore.shared.bool(
+                AppSettingsKeys.moduleOneView(self.moduleName, defaultValue: self.oneView)
+            )
             self.setupMenuBarItem(self.oneView)
         }
         

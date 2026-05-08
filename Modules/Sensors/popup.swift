@@ -52,7 +52,7 @@ internal class Popup: PopupWrapper {
         
         self.orientation = .vertical
         self.spacing = 0
-        self.translatesAutoresizingMaskIntoConstraints = false
+        self.translatesAutoresizingMaskIntoConstraints = true
         
         self.settingsView.orientation = .vertical
         self.settingsView.spacing = Constants.Settings.margin
@@ -542,7 +542,8 @@ internal class FanView: NSStackView {
         self.controlState = Store.shared.bool(key: "Sensors_fanControl", defaultValue: true)
         
         let inset: CGFloat = 5
-        super.init(frame: NSRect(x: 0, y: 0, width: width - (inset*2), height: 0))
+        let contentWidth = max(width, Constants.Popup.width) - (inset*2)
+        super.init(frame: NSRect(x: 0, y: 0, width: contentWidth, height: 0))
         
         self.helperView = self.noHelper()
         self.controlView = self.control()
@@ -664,6 +665,7 @@ internal class FanView: NSStackView {
             width: view.frame.width,
             height: view.frame.height - 8
         ), mode: self.fan.mode)
+        buttons.translatesAutoresizingMaskIntoConstraints = false
         buttons.callback = { [weak self] (mode: FanMode) in
             if let fan = self?.fan, mode == .automatic || fan.mode != mode {
                 self?.fan.mode = mode
@@ -702,6 +704,12 @@ internal class FanView: NSStackView {
         }
         
         view.addSubview(buttons)
+        NSLayoutConstraint.activate([
+            buttons.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            buttons.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            buttons.topAnchor.constraint(equalTo: view.topAnchor, constant: 4),
+            buttons.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -4)
+        ])
         self.modeButtons = buttons
         
         return view

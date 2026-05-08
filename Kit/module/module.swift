@@ -334,10 +334,10 @@ public struct module_c {
     
     @objc private func listenForPopupToggle(_ notification: Notification) {
         guard let popup = self.popup,
-              let name = notification.userInfo?["module"] as? String,
-              let buttonOrigin = notification.userInfo?["origin"] as? CGPoint,
-              let buttonCenter = notification.userInfo?["center"] as? CGFloat,
-              self.config.name == name else {
+              let event = AppEventCenter.shared.popupToggle(from: notification),
+              let buttonOrigin = event.origin,
+              let buttonCenter = event.center,
+              self.config.name == event.module else {
             return
         }
         
@@ -345,7 +345,7 @@ public struct module_c {
         openedWindows.forEach{ $0.setIsVisible(false) }
         
         var reopen: Bool = false
-        if let widget = notification.userInfo?["widget"] as? widget_t {
+        if let widget = event.widget {
             reopen = popup.openedBy != nil && popup.openedBy != widget
             popup.openedBy = widget
         }
@@ -411,7 +411,7 @@ public struct module_c {
         }
         let isEmpty = self.menuBar.widgets.filter({ $0.isActive }).isEmpty
         if !isEmpty && !self.enabled {
-            NotificationCenter.default.post(name: .toggleModule, object: nil, userInfo: ["module": self.config.name, "state": true])
+            AppEventCenter.shared.post(.moduleToggle(module: self.config.name, state: true))
         }
         self.updateReaderActivityModes()
     }
