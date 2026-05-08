@@ -169,6 +169,7 @@ public actor SMC {
     public static let shared = SMC()
     nonisolated private let connection: IOConnection?
     private var provider: SMCProvider? = nil
+    private var keyInfoCache: [String: (size: UInt32, type: String)] = [:]
     
     private init() {
         var iterator: io_iterator_t = 0
@@ -288,21 +289,40 @@ public actor SMC {
     }
     
     fileprivate func read(_ value: UnsafeMutablePointer<SMCVal_t>) -> kern_return_t {
+        let key = value.pointee.key
+        
+        if let cached = self.keyInfoCache[key] {
+            value.pointee.dataSize = cached.size
+            value.pointee.dataType = cached.type
+        } else {
+            var input = SMCKeyData_t()
+            var output = SMCKeyData_t()
+            input.key = FourCharCode(fromString: key)
+            input.data8 = SMCKeys.readKeyInfo.rawValue
+            
+            let result = call(SMCKeys.kernelIndex.rawValue, input: &input, output: &output)
+            if result != kIOReturnSuccess || output.result != 0 {
+                return result != kIOReturnSuccess ? result : kern_return_t(output.result)
+            }
+            
+            let size = UInt32(output.keyInfo.dataSize)
+            let type = output.keyInfo.dataType.toString()
+            self.keyInfoCache[key] = (size: size, type: type)
+            
+            value.pointee.dataSize = size
+            value.pointee.dataType = type
+        }
+        
         var input = SMCKeyData_t()
         var output = SMCKeyData_t()
-        input.key = FourCharCode(fromString: value.pointee.key)
-        input.data8 = SMCKeys.readKeyInfo.rawValue
-        
-        var result = call(SMCKeys.kernelIndex.rawValue, input: &input, output: &output)
-        if result != kIOReturnSuccess || output.result != 0 { return result != kIOReturnSuccess ? result : kern_return_t(output.result) }
-        
-        value.pointee.dataSize = UInt32(output.keyInfo.dataSize)
-        value.pointee.dataType = output.keyInfo.dataType.toString()
-        input.keyInfo.dataSize = output.keyInfo.dataSize
+        input.key = FourCharCode(fromString: key)
+        input.keyInfo.dataSize = IOByteCount32(value.pointee.dataSize)
         input.data8 = SMCKeys.readBytes.rawValue
         
-        result = call(SMCKeys.kernelIndex.rawValue, input: &input, output: &output)
-        if result != kIOReturnSuccess || output.result != 0 { return result != kIOReturnSuccess ? result : kern_return_t(output.result) }
+        let result = call(SMCKeys.kernelIndex.rawValue, input: &input, output: &output)
+        if result != kIOReturnSuccess || output.result != 0 {
+            return result != kIOReturnSuccess ? result : kern_return_t(output.result)
+        }
         
         memcpy(&value.pointee.bytes, &output.bytes, Int(value.pointee.dataSize))
         return kIOReturnSuccess

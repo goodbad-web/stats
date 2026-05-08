@@ -325,7 +325,7 @@ public actor ProcessMonitor {
     private init() {}
     
     public func getTopProcesses(limit: Int, category: String) async -> [TopProcess] {
-        if let cached = self.cache[category], Date().timeIntervalSince(cached.time) < 1.0 && cached.list.count >= limit {
+        if let cached = self.cache[category], Date().timeIntervalSince(cached.time) < 2.0 && cached.list.count >= limit {
             return Array(cached.list.prefix(limit))
         }
         

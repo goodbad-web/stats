@@ -67,9 +67,27 @@ private actor GPUReaderWorker {
     
     static private func initializePower() -> (CFMutableDictionary?, IOReportSubscriptionRef?) {
         guard let channel = IOReportCopyChannelsInGroup("Energy Model" as CFString, nil, 0, 0, 0)?.takeRetainedValue() else { return (nil, nil) }
+        
         let size = CFDictionaryGetCount(channel)
-        guard let mutable = CFDictionaryCreateMutableCopy(kCFAllocatorDefault, size, channel),
-              let dict = (mutable as AnyObject) as? [String: Any], dict["IOReportChannels"] != nil else { return (nil, nil) }
+        guard let dict = channel as? [String: Any],
+              let items = dict["IOReportChannels"] as? [[String: Any]] else { return (nil, nil) }
+        
+        var filteredItems: [[String: Any]] = []
+        for item in items {
+            if let name = item["IOReportChannelName"] as? String {
+                if name.hasPrefix("ANE") || name.hasPrefix("GPU") || 
+                   name.hasSuffix("Media Energy") || name.hasPrefix("VCP") || name.hasPrefix("DCP") {
+                    filteredItems.append(item)
+                }
+            }
+        }
+        
+        if filteredItems.isEmpty { return (nil, nil) }
+        
+        var mutableDict = dict
+        mutableDict["IOReportChannels"] = filteredItems
+        guard let mutable = CFDictionaryCreateMutableCopy(kCFAllocatorDefault, size, mutableDict as CFDictionary) else { return (nil, nil) }
+        
         var sub: Unmanaged<CFMutableDictionary>?
         let subscription = IOReportCreateSubscription(nil, mutable, &sub, 0, nil)
         sub?.release()

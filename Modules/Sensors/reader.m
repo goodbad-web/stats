@@ -12,17 +12,30 @@
 #import <Foundation/Foundation.h>
 #import "bridge.h"
 
-NSDictionary*AppleSiliconSensors(int32_t page, int32_t usage, int32_t type) {
-    NSDictionary* dictionary = @{@"PrimaryUsagePage":@(page),@"PrimaryUsage":@(usage)};
+static IOHIDEventSystemClientRef sharedClient = nil;
+
+NSDictionary* AppleSiliconSensors(int32_t page, int32_t usage, int32_t type) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        sharedClient = IOHIDEventSystemClientCreate(kCFAllocatorDefault);
+    });
     
-    IOHIDEventSystemClientRef system = IOHIDEventSystemClientCreate(kCFAllocatorDefault);
-    IOHIDEventSystemClientSetMatching(system, (__bridge CFDictionaryRef)dictionary);
-    CFArrayRef services = IOHIDEventSystemClientCopyServices(system);
+    if (sharedClient == nil) {
+        return nil;
+    }
+    
+    NSDictionary* dictionary = @{
+        @"PrimaryUsagePage": @(page),
+        @"PrimaryUsage": @(usage)
+    };
+    
+    IOHIDEventSystemClientSetMatching(sharedClient, (__bridge CFDictionaryRef)dictionary);
+    CFArrayRef services = IOHIDEventSystemClientCopyServices(sharedClient);
     if (services == nil) {
         return nil;
     }
     
-    NSMutableDictionary*dict = [NSMutableDictionary dictionary];
+    NSMutableDictionary* dict = [NSMutableDictionary dictionary];
     for (int i = 0; i < CFArrayGetCount(services); i++) {
         IOHIDServiceClientRef service = (IOHIDServiceClientRef)CFArrayGetValueAtIndex(services, i);
         NSString* name = CFBridgingRelease(IOHIDServiceClientCopyProperty(service, CFSTR("Product")));
@@ -34,14 +47,14 @@ NSDictionary*AppleSiliconSensors(int32_t page, int32_t usage, int32_t type) {
         
         if (name && event) {
             double value = IOHIDEventGetFloatValue(event, IOHIDEventFieldBase(type));
-            dict[name]=@(value);
+            dict[name] = @(value);
         }
         
         CFRelease(event);
     }
     
     CFRelease(services);
-    CFRelease(system);
     
     return dict;
 }
+

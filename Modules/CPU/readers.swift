@@ -77,13 +77,6 @@ private actor CPUReaderWorker {
         self.eCoreCount = Double(SystemKit.shared.device.info.cpu?.eCores ?? 0)
         self.pCoreCount = Double(SystemKit.shared.device.info.cpu?.pCores ?? 0)
         self.sCoreCount = Double(SystemKit.shared.device.info.cpu?.sCores ?? 0)
-        
-        self.channels = Self.getChannels()
-        if let channels = self.channels {
-            var dict: Unmanaged<CFMutableDictionary>?
-            self.subscription = IOReportCreateSubscription(nil, channels, &dict, 0, nil)
-            dict?.release()
-        }
     }
     
     deinit {
@@ -230,6 +223,15 @@ private actor CPUReaderWorker {
     }
     
     func readFrequency() async -> CPU_Frequency? {
+        if self.channels == nil || self.subscription == nil {
+            self.channels = Self.getChannels()
+            if let channels = self.channels {
+                var dict: Unmanaged<CFMutableDictionary>?
+                self.subscription = IOReportCreateSubscription(nil, channels, &dict, 0, nil)
+                dict?.release()
+            }
+        }
+        
         guard (!self.eCoreFreqs.isEmpty || !self.sCoreFreqs.isEmpty) && !self.pCoreFreqs.isEmpty,
               let subscription = self.subscription, let channels = self.channels else { return nil }
         

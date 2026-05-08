@@ -571,28 +571,33 @@ private actor SensorsReaderWorker {
     }
     
     static private func getChannels() -> CFMutableDictionary? {
-        let channelNames: [(String, String?)] = [("Energy Model", nil)]
-
-        var channels: [CFDictionary] = []
-        for (gname, sname) in channelNames {
-            let channel = IOReportCopyChannelsInGroup(gname as CFString?, sname as CFString?, 0, 0, 0)
-            guard let channel = channel?.takeRetainedValue() else { continue }
-            channels.append(channel)
-        }
-
-        if channels.isEmpty { return nil }
-        let chan = channels[0]
-        for i in 1..<channels.count {
-            IOReportMergeChannels(chan, channels[i], nil)
-        }
-
-        let size = CFDictionaryGetCount(chan)
-        guard let channel = CFDictionaryCreateMutableCopy(kCFAllocatorDefault, size, chan),
-              let chanDict = (channel as AnyObject) as? [String: Any], chanDict["IOReportChannels"] != nil else {
+        guard let channels = IOReportCopyChannelsInGroup("Energy Model" as CFString, nil, 0, 0, 0)?.takeRetainedValue() else {
             return nil
         }
-
-        return channel
+        
+        let size = CFDictionaryGetCount(channels)
+        guard let dict = channels as? [String: Any],
+              let items = dict["IOReportChannels"] as? [[String: Any]] else {
+            return nil
+        }
+        
+        var filteredItems: [[String: Any]] = []
+        for item in items {
+            if let name = item["IOReportChannelName"] as? String {
+                if name.hasSuffix("CPU Energy") || name.hasSuffix("GPU Energy") || 
+                   name.hasPrefix("ANE") || name.hasPrefix("DRAM") || 
+                   (name.hasPrefix("PCI") && name.hasSuffix("Energy")) || 
+                   name.hasSuffix("Media Energy") || name.hasPrefix("VCP") || name.hasPrefix("DCP") {
+                    filteredItems.append(item)
+                }
+            }
+        }
+        
+        if filteredItems.isEmpty { return nil }
+        
+        var mutableDict = dict
+        mutableDict["IOReportChannels"] = filteredItems
+        return CFDictionaryCreateMutableCopy(kCFAllocatorDefault, size, mutableDict as CFDictionary)
     }
     private func IOSensors() -> (Double, Double, Double, Double, Double, Double)? {
         guard let reportSample = IOReportCreateSamples(self.subscription, self.channels, nil)?.takeRetainedValue(),
