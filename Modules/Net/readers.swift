@@ -600,6 +600,12 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
     }
     
     public override func stop() {
+        super.stop()
+        self.closeConn()
+    }
+
+    public override func pause() {
+        super.pause()
         self.closeConn()
     }
     

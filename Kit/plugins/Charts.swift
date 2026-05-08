@@ -136,17 +136,21 @@ public class ChartView: NSView {
         guard self.window != nil else { return }
         if Thread.isMainThread {
             self.updateSwiftUI()
+            guard !self.usesSwiftUIRendering else { return }
             self.needsDisplay = true
             self.display()
         } else {
             DispatchQueue.main.async { [weak self] in
-                self?.updateSwiftUI()
-                self?.needsDisplay = true
-                self?.window?.display()
+                guard let self, self.window != nil else { return }
+                self.updateSwiftUI()
+                guard !self.usesSwiftUIRendering else { return }
+                self.needsDisplay = true
+                self.display()
             }
         }
     }
     
+    internal var usesSwiftUIRendering: Bool { false }
     internal func updateSwiftUI() {}
 }
 
@@ -236,6 +240,8 @@ public class LineChartView: ChartView {
         )
         self.hostingView?.rootView = content
     }
+
+    override var usesSwiftUIRendering: Bool { true }
     
     public override func updateTrackingAreas() {
         self.trackingAreas.forEach({ self.removeTrackingArea($0) })
@@ -426,6 +432,8 @@ public class NetworkChartView: ChartView {
         )
         self.hostingView?.rootView = content
     }
+
+    override var usesSwiftUIRendering: Bool { true }
     
     public func addValue(upload: Double, download: Double) {
         self.write {
@@ -530,6 +538,8 @@ public class PieChartView: ChartView {
         )
         self.hostingView?.rootView = content
     }
+
+    override var usesSwiftUIRendering: Bool { true }
     
     public override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
@@ -855,6 +865,8 @@ public class BarChartView: ChartView {
         )
         self.hostingView?.rootView = content
     }
+
+    override var usesSwiftUIRendering: Bool { true }
     
     public override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
