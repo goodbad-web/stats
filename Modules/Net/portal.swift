@@ -105,7 +105,7 @@ public class Portal: PortalWrapper {
     
     public func usageCallback(_ value: Network_Usage) {
         Task { @MainActor in
-            if let chart = self.chart {
+            if self.window?.isVisible ?? false, let chart = self.chart {
                 chart.setBase(self.base)
                 chart.addValue(upload: Double(value.bandwidth.upload), download: Double(value.bandwidth.download))
                 chart.setScale(self.chartScale, Double(self.chartFixedScaleSize.toBytes(self.chartFixedScale)))

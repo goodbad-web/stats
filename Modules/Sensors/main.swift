@@ -40,6 +40,7 @@ public class Sensors: Module {
     private let portalView: Portal
     private let notificationsView: Notifications
     private var sensorViewKeys: Set<String> = []
+    private var notificationSensorKeys: Set<String> = []
 
     private var fanValueState: FanValue {
         FanValue(rawValue: Store.shared.string(key: "\(self.config.name)_fanValue", defaultValue: "percentage")) ?? .percentage
@@ -105,6 +106,16 @@ public class Sensors: Module {
             Store.shared.set(key: "\(ModuleType.sensors.stringValue)_sensor", value: value)
             self?.updateReaderActivityModes()
             self?.sensorsReader?.read()
+        }
+        self.notificationsView.notificationChangeCallback = { [weak self] id, threshold in
+            guard let self else { return }
+            if threshold.isEmpty {
+                self.notificationSensorKeys.remove(id)
+            } else {
+                self.notificationSensorKeys.insert(id)
+            }
+            self.updateReaderActivityModes()
+            self.sensorsReader?.read()
         }
 
         NotificationCenter.default.addObserver(self, selector: #selector(self.fanControlOverrideCallback), name: .fanControlOverride, object: nil)
@@ -258,9 +269,7 @@ public class Sensors: Module {
             scope.needsFanMode = true
         }
 
-        self.sensorsReader?.list.sensors
-            .filter { !$0.notificationThreshold.isEmpty }
-            .forEach { scope.include(key: $0.key) }
+        self.notificationSensorKeys.forEach { scope.include(key: $0) }
 
         return scope
     }
@@ -322,6 +331,11 @@ public class Sensors: Module {
         self.portalView.setup(sensors)
         self.notificationsView.setup(sensors)
         self.sensorViewKeys = keys
+        self.updateNotificationSensorKeys(sensors)
+    }
+
+    private func updateNotificationSensorKeys(_ sensors: [Sensor_p]) {
+        self.notificationSensorKeys = Set(sensors.filter { !$0.notificationThreshold.isEmpty }.map(\.key))
     }
 
     private func getStackItem(_ s: Sensor_p) -> Stack_t {

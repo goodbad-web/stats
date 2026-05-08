@@ -66,7 +66,7 @@ internal class Settings: NSStackView, Settings_v {
 struct SensorsSettingsView: View {
     let title: String
     
-    @AppStorage(AppSettingsKeys.moduleInt("Sensors", "updateInterval", defaultValue: 3).rawValue) private var updateInterval: Int = 3
+    @AppStorage(AppSettingsKeys.moduleInt("Sensors", "updateInterval", defaultValue: 5).rawValue) private var updateInterval: Int = 5
     @AppStorage(AppSettingsKeys.moduleBool("Sensors", "hid", defaultValue: true).rawValue) private var hidState: Bool = true
     @AppStorage(AppSettingsKeys.moduleBool("Sensors", "speed", defaultValue: false).rawValue) private var fanSpeedState: Bool = false
     @AppStorage(AppSettingsKeys.moduleBool("Sensors", "fansSync", defaultValue: false).rawValue) private var fansSyncState: Bool = false

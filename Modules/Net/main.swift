@@ -302,10 +302,7 @@ public class Network: Module {
             hasActiveValueWidget: hasNetworkValueWidget,
             detailVisible: detailVisible
         ))
-        self.connectivityReader?.setActivityMode(SamplingPolicy.mode(
-            hasActiveValueWidget: hasConnectivityWidget,
-            detailVisible: detailVisible
-        ))
+        self.connectivityReader?.setActivityMode(hasConnectivityWidget || detailVisible ? .active : .paused)
         self.processReader?.setActivityMode(SamplingPolicy.popupMode(popupVisible: self.isPopupVisible))
     }
     

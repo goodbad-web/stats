@@ -480,6 +480,7 @@ public class NetworkChartView: ChartView {
     private var outColor: NSColor
     
     private var hostingView: NSHostingView<NetworkChartContent>?
+    private var lastSwiftUIUpdate: Date = .distantPast
     
     public init(frame: NSRect, num: Int, minMax: Bool = true, reversedOrder: Bool = false,
                 outColor: NSColor = .systemRed, inColor: NSColor = .systemBlue, scale: Scale = .none, fixedScale: Double = 1) {
@@ -513,6 +514,10 @@ public class NetworkChartView: ChartView {
     }
     
     override func updateSwiftUI() {
+        let now = Date()
+        guard now.timeIntervalSince(self.lastSwiftUIUpdate) >= 2 else { return }
+        self.lastSwiftUIUpdate = now
+
         let content = NetworkChartContent(
             inPoints: self.read { self.inPoints },
             outPoints: self.read { self.outPoints },
@@ -526,6 +531,16 @@ public class NetworkChartView: ChartView {
     override var usesSwiftUIRendering: Bool { true }
     
     public func addValue(upload: Double, download: Double) {
+        let last = self.read { (self.outPoints.last??.value, self.inPoints.last??.value) }
+        if let lastUpload = last.0, let lastDownload = last.1 {
+            if lastUpload == upload && lastDownload == download {
+                return
+            }
+            if lastUpload == 0, lastDownload == 0, upload == 0, download == 0 {
+                return
+            }
+        }
+
         self.write {
             if !self.inPoints.isEmpty {
                 self.inPoints.remove(at: 0)

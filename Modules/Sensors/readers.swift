@@ -707,7 +707,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
     private nonisolated var hidState: Bool {
         Store.shared.bool(key: "Sensors_hid", defaultValue: true)
     }
-    private var userInterval: Int = Store.shared.int(key: "Sensors_updateInterval", defaultValue: 3)
+    private var userInterval: Int = Store.shared.int(key: "Sensors_updateInterval", defaultValue: 5)
     private var activityMode: ActivityMode = .active
     private var effectiveInterval: Int?
     nonisolated private let unknownSensorsStateLock = OSAllocatedUnfairLock(initialState: false)

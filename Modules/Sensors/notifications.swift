@@ -13,6 +13,8 @@ import Cocoa
 import Kit
 
 class Notifications: NotificationsWrapper {
+    internal var notificationChangeCallback: ((String, String) -> Void)?
+
     private var unknownSensorsState: Bool {
         Store.shared.bool(key: "Sensors_unknown", defaultValue: false)
     }
@@ -91,5 +93,6 @@ class Notifications: NotificationsWrapper {
     @objc private func changeSensorNotificaion(_ sender: NSMenuItem) {
         guard let id = sender.identifier, let key = sender.representedObject as? String else { return }
         Store.shared.set(key: "sensor_\(id.rawValue)_notification", value: key)
+        self.notificationChangeCallback?(id.rawValue, key)
     }
 }

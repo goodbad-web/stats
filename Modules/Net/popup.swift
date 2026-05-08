@@ -604,7 +604,7 @@ internal class Popup: PopupWrapper {
                 self.initialized = true
             }
             
-            if let chart = self.chart {
+            if self.window?.isVisible ?? false, let chart = self.chart {
                 chart.setBase(self.base)
                 chart.addValue(upload: Double(value.bandwidth.upload), download: Double(value.bandwidth.download))
             }
