@@ -168,14 +168,14 @@ class SettingsWindow: NSWindow, NSWindowDelegate, NSToolbarDelegate {
             self.orderFrontRegardless()
         }
         
-        if var name = notification.userInfo?["module"] as? String {
+        if var name = AppEventCenter.shared.toggleSettings(from: notification) {
             if name == "Combined modules" { name = "Dashboard" }
             self.sidebarView.openMenu(name)
         }
     }
     
     @objc private func menuCallback(_ notification: Notification) {
-        if let title = notification.userInfo?["module"] as? String {
+        if let title = AppEventCenter.shared.openModuleSettings(from: notification) {
             var view: NSView = NSView()
             if let detectedModule = modules.first(where: { $0.config.name == title }) {
                 if let v = detectedModule.window {
@@ -212,10 +212,10 @@ class SettingsWindow: NSWindow, NSWindowDelegate, NSToolbarDelegate {
     }
     
     @objc private func externalModuleToggle(_ notification: Notification) {
-        if let name = notification.userInfo?["module"] as? String, name == self.activeModuleName {
-            if let state = notification.userInfo?["state"] as? Bool {
-                toggleNSControlState(self.toggleButton, state: state ? .on : .off)
-            }
+        if let event = AppEventCenter.shared.moduleToggle(from: notification),
+           event.module == self.activeModuleName,
+           let state = event.state {
+            toggleNSControlState(self.toggleButton, state: state ? .on : .off)
         }
     }
     

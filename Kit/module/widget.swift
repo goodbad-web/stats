@@ -548,9 +548,10 @@ public class MenuBar {
     }
     
     @objc private func listenForOneView(_ notification: Notification) {
-        if notification.userInfo?["module"] as? String == nil {
+        let module = AppEventCenter.shared.toggleOneView(from: notification)
+        if module == nil {
             self.toggleOneView()
-        } else if let name = notification.userInfo?["module"] as? String, name == self.moduleName, self.active {
+        } else if module == self.moduleName, self.active {
             self.toggleOneView()
         }
     }
@@ -576,7 +577,7 @@ public class MenuBar {
     }
     
     @objc private func listenForWidgetRearrange(_ notification: Notification) {
-        guard let name = notification.userInfo?["module"] as? String, name == self.moduleName else {
+        guard let name = AppEventCenter.shared.widgetRearrange(from: notification), name == self.moduleName else {
             return
         }
         self.view.recalculate(self.sortedWidgets)

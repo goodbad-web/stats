@@ -312,7 +312,7 @@ import Cocoa
     }
     
     @objc private func listenForOneView(_ notification: Notification) {
-        guard notification.userInfo?["module"] == nil else { return }
+        guard AppEventCenter.shared.toggleOneView(from: notification) == nil else { return }
         self.oneViewBtn?.isEnabled = !self.globalOneView
         if !self.globalOneView {
             self.oneViewBtn?.state = self.oneViewState ? .on : .off
@@ -320,7 +320,8 @@ import Cocoa
     }
     
     @objc private func listenForToggleView(_ notification: Notification) {
-        guard let moduleName = notification.userInfo?["module"], self.config.pointee.name == moduleName as? String else { return }
+        guard let moduleName = AppEventCenter.shared.togglePreview(from: notification),
+              self.config.pointee.name == moduleName else { return }
         self.toggleView()
     }
     

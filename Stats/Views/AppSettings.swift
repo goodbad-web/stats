@@ -394,7 +394,7 @@ class ApplicationSettings: NSStackView {
     }
     
     @objc private func toggleUninstallHelperButton(_ notification: Notification) {
-        guard let state = notification.userInfo?["state"] as? Bool, let v = self.fanHelperView else {
+        guard let state = AppEventCenter.shared.fanHelperState(from: notification), let v = self.fanHelperView else {
             return
         }
         v.isHidden = !state
@@ -459,7 +459,7 @@ class ApplicationSettings: NSStackView {
     }
     
     @objc private func handleRemoteState(_ notification: Notification) {
-        guard let auth = notification.userInfo?["auth"] as? Bool else { return }
+        guard let auth = AppEventCenter.shared.remoteAuthState(from: notification) else { return }
         self.setRemoteSettings(auth)
     }
     

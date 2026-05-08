@@ -406,7 +406,7 @@ public struct module_c {
     }
     
     @objc private func listenForToggleWidget(_ notification: Notification) {
-        guard let name = notification.userInfo?["module"] as? String, name == self.config.name else {
+        guard let name = AppEventCenter.shared.toggleWidget(from: notification), name == self.config.name else {
             return
         }
         let isEmpty = self.menuBar.widgets.filter({ $0.isActive }).isEmpty

@@ -170,7 +170,7 @@ internal class CombinedView: NSObject, NSGestureRecognizerDelegate {
     }
     
     @objc private func listenForOneView(_ notification: Notification) {
-        guard notification.userInfo?["module"] == nil else { return }
+        guard AppEventCenter.shared.toggleOneView(from: notification) == nil else { return }
         
         if self.status {
             self.enable()
@@ -214,10 +214,9 @@ internal class CombinedView: NSObject, NSGestureRecognizerDelegate {
     }
     
     @objc private func listenForModule(_ notification: Notification) {
-        guard let name = notification.userInfo?["module"] as? String,
-              let state = notification.userInfo?["state"] as? Bool,
-              state,
-              let module = self.activeModules.first(where: { $0.name == name }) else { return }
+        guard let event = AppEventCenter.shared.moduleToggle(from: notification),
+              event.state == true,
+              let module = self.activeModules.first(where: { $0.name == event.module }) else { return }
         
         module.menuBar.widgets.forEach { w in
             w.item.onClick = {

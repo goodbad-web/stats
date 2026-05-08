@@ -100,11 +100,43 @@ public final class AppEventCenter: @unchecked Sendable {
         )
     }
 
-    public func moduleName(from notification: Notification) -> String? {
+    private func moduleName(from notification: Notification) -> String? {
         notification.userInfo?["module"] as? String
     }
 
     public func moduleRearrangeID(from notification: Notification) -> String? {
         notification.userInfo?["id"] as? String
+    }
+
+    public func toggleWidget(from notification: Notification) -> String? {
+        self.moduleName(from: notification)
+    }
+
+    public func togglePreview(from notification: Notification) -> String? {
+        self.moduleName(from: notification)
+    }
+
+    public func toggleOneView(from notification: Notification) -> String? {
+        self.moduleName(from: notification)
+    }
+
+    public func widgetRearrange(from notification: Notification) -> String? {
+        self.moduleName(from: notification)
+    }
+
+    public func openModuleSettings(from notification: Notification) -> String? {
+        self.moduleName(from: notification)
+    }
+
+    public func toggleSettings(from notification: Notification) -> String? {
+        self.moduleName(from: notification)
+    }
+
+    public func fanHelperState(from notification: Notification) -> Bool? {
+        notification.userInfo?["state"] as? Bool
+    }
+
+    public func remoteAuthState(from notification: Notification) -> Bool? {
+        notification.userInfo?["auth"] as? Bool
     }
 }

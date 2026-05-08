@@ -297,7 +297,9 @@ class Dashboard: NSStackView {
     }
     
     @objc private func windowOpens(_ notification: Notification) {
-        guard let moduleName = notification.userInfo?["module"] as? String, moduleName == "Dashboard" || moduleName == "Combined modules" else { return }
+        let moduleName = AppEventCenter.shared.openModuleSettings(from: notification) ??
+            AppEventCenter.shared.toggleSettings(from: notification)
+        guard moduleName == "Dashboard" || moduleName == "Combined modules" else { return }
         self.uptimeField?.stringValue = self.uptimeValue
     }
 }
