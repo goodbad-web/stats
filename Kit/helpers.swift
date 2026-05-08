@@ -16,6 +16,7 @@ import UserNotifications
 import WebKit
 import Metal
 import OSLog
+import WidgetKit
 
 private let kitLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "eu.exelban.Stats", category: "Kit")
 private let smcLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "eu.exelban.Stats", category: "SMCHelper")
@@ -1882,6 +1883,30 @@ public func isWidgetActive(_ defaults: UserDefaults?, _ widgets: [String]) -> Bo
         }
     }
     return false
+}
+
+public final class WidgetTimelineReloader: @unchecked Sendable {
+    public static let shared = WidgetTimelineReloader()
+
+    private let lock = OSAllocatedUnfairLock(initialState: [String: Date]())
+    private let minimumInterval: TimeInterval = 30
+
+    private init() {}
+
+    public func reloadTimelines(ofKind kind: String) {
+        let now = Date()
+        let shouldReload = self.lock.withLock { lastReloads in
+            if let lastReload = lastReloads[kind],
+               now.timeIntervalSince(lastReload) < self.minimumInterval {
+                return false
+            }
+            lastReloads[kind] = now
+            return true
+        }
+
+        guard shouldReload else { return }
+        WidgetCenter.shared.reloadTimelines(ofKind: kind)
+    }
 }
 
 public func countryFlag(_ code: String) -> String? {

@@ -301,8 +301,8 @@ public class RAM: Module {
                 let key = "RAM@UsageReader"
                 if self.userDefaults?.data(forKey: key) != blobData {
                     self.userDefaults?.set(blobData, forKey: key)
-                    WidgetCenter.shared.reloadTimelines(ofKind: RAM_entry.kind)
-                    WidgetCenter.shared.reloadTimelines(ofKind: "UnitedWidget")
+                    WidgetTimelineReloader.shared.reloadTimelines(ofKind: RAM_entry.kind)
+                    WidgetTimelineReloader.shared.reloadTimelines(ofKind: "UnitedWidget")
                 }
             }
         }

@@ -753,7 +753,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
             self.applyInterval(self.userInterval)
             self.sleepMode(state: false)
         case .passive:
-            self.applyInterval(max(self.userInterval * 3, 10))
+            self.applyInterval(max(self.userInterval * 5, 30))
             self.sleepMode(state: false)
         case .paused:
             self.sleepMode(state: true)

@@ -48,6 +48,9 @@ public class Remote {
             }
         }
     }
+    public var shouldRun: Bool {
+        self.monitoring || self.control
+    }
     public let id: UUID
     public var isAuthorized: Bool = false
     public var auth: RemoteAuth = RemoteAuth()
@@ -131,7 +134,7 @@ public class Remote {
             self.logout()
         }
         
-        if self.auth.hasCredentials() {
+        if self.auth.hasCredentials(), self.shouldRun {
             info("Found auth credentials for remote monitoring, starting Remote...", log: self.log)
             self.start()
         }
@@ -172,18 +175,25 @@ public class Remote {
     @objc private func successLogin() {
         self.isAuthorized = true
         NotificationCenter.default.post(name: .remoteState, object: nil, userInfo: ["auth": self.isAuthorized])
-        self.mqtt.connect()
+        if self.shouldRun {
+            self.mqtt.connect()
+        }
         debug("Login successfully on Stats Remote", log: self.log)
     }
     
     public func start() {
+        guard self.shouldRun else {
+            self.mqtt.disconnect()
+            return
+        }
+
         self.auth.isAuthorized { [weak self] status in
             guard let self else { return }
             
             self.isAuthorized = status
             NotificationCenter.default.post(name: .remoteState, object: nil, userInfo: ["auth": self.isAuthorized])
             
-            if status {
+            if status, self.shouldRun {
                 self.mqtt.connect()
             }
         }
@@ -771,7 +781,8 @@ class MQTTManager: NSObject {
     private var maxReconnectDelay: TimeInterval = 60.0
     private var pingTimer: DispatchSourceTimer?
     private var reconnectTimer: DispatchSourceTimer?
-    private var reachability: Reachability = Reachability(start: true)
+    private var reachability: Reachability = Reachability()
+    private var reachabilityStarted = false
     private let log: NextLog
     private var packetIdentifier: UInt16 = 1
     
@@ -783,7 +794,7 @@ class MQTTManager: NSObject {
         self.session = URLSession(configuration: .default, delegate: self, delegateQueue: .main)
         
         self.reachability.reachable = { [weak self] in
-            if Remote.shared.isAuthorized {
+            if Remote.shared.isAuthorized && Remote.shared.shouldRun {
                 self?.connect()
             }
         }
@@ -796,6 +807,11 @@ class MQTTManager: NSObject {
     }
     
     public func connect() {
+        guard Remote.shared.shouldRun else {
+            self.disconnect()
+            return
+        }
+        self.startReachability()
         guard !self.isConnected && !self.isConnecting else { return }
         self.isConnecting = true
         
@@ -836,16 +852,31 @@ class MQTTManager: NSObject {
         self.isConnected = false
         self.stopPingTimer()
         self.stopReconnectTimer()
+        self.stopReachability()
         debug("MQTT disconnected gracefully", log: self.log)
     }
     
     deinit {
         self.stopPingTimer()
         self.stopReconnectTimer()
+        self.stopReachability()
         self.session?.invalidateAndCancel()
+    }
+
+    private func startReachability() {
+        guard !self.reachabilityStarted else { return }
+        self.reachability.start()
+        self.reachabilityStarted = true
+    }
+
+    private func stopReachability() {
+        guard self.reachabilityStarted else { return }
+        self.reachability.stop()
+        self.reachabilityStarted = false
     }
     
     private func scheduleReconnect() {
+        guard Remote.shared.shouldRun else { return }
         guard !self.isDisconnected && !self.isConnected && self.reconnectTimer == nil else { return }
         
         self.isReconnecting = true

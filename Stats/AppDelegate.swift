@@ -76,8 +76,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
         SentrySDK.start { options in
             options.dsn = "https://f8c3e14f439ec5693bd80d5039ddc55b@o4511351261036544.ingest.us.sentry.io/4511351265165312"
             options.debug = false
-            options.enableAppHangTracking = true
-            options.enableCaptureFailedRequests = true
+            options.enableAppHangTracking = false
+            options.enableCaptureFailedRequests = false
         }
 #if canImport(MetricKit)
         PowerMetricsObserver.shared.start()

@@ -346,8 +346,8 @@ public class CPU: Module {
                 let key = "CPU@LoadReader"
                 if self.userDefaults?.data(forKey: key) != blobData {
                     self.userDefaults?.set(blobData, forKey: key)
-                    WidgetCenter.shared.reloadTimelines(ofKind: CPU_entry.kind)
-                    WidgetCenter.shared.reloadTimelines(ofKind: "UnitedWidget")
+                    WidgetTimelineReloader.shared.reloadTimelines(ofKind: CPU_entry.kind)
+                    WidgetTimelineReloader.shared.reloadTimelines(ofKind: "UnitedWidget")
                 }
             }
         }

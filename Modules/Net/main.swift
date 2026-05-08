@@ -442,7 +442,7 @@ public class Network: Module {
                 let key = "Network@UsageReader"
                 if self.userDefaults?.data(forKey: key) != blobData {
                     self.userDefaults?.set(blobData, forKey: key)
-                    WidgetCenter.shared.reloadTimelines(ofKind: Network_entry.kind)
+                    WidgetTimelineReloader.shared.reloadTimelines(ofKind: Network_entry.kind)
                 }
             }
         }

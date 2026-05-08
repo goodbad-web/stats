@@ -24,7 +24,7 @@ struct NetSettingsView: View {
     @AppStorage(AppSettingsKeys.moduleString("Net", "widgetActivationThresholdSize", defaultValue: SizeUnit.MB.key).rawValue) private var widgetActivationThresholdSize: String = SizeUnit.MB.key
     @AppStorage(AppSettingsKeys.moduleString("Net", "ICMPHost", defaultValue: "1.1.1.1").rawValue) private var connectivityICMPHost: String = "1.1.1.1"
     @AppStorage(AppSettingsKeys.moduleString("Net", "HTTPHost", defaultValue: "https://google.com").rawValue) private var connectivityHTTPHost: String = "https://google.com"
-    @AppStorage(AppSettingsKeys.moduleInt("Net", "updateICMPInterval", defaultValue: 1).rawValue) private var updateConnectivityInterval: Int = 1
+    @AppStorage(AppSettingsKeys.moduleInt("Net", "updateICMPInterval", defaultValue: 5).rawValue) private var updateConnectivityInterval: Int = 5
     @AppStorage(AppSettingsKeys.moduleString("Net", "connectivityMode", defaultValue: "icmp").rawValue) private var connectivityMode: String = "icmp"
     @AppStorage(AppSettingsKeys.moduleBool("Net", "publicIP", defaultValue: true).rawValue) private var publicIPState: Bool = true
     @AppStorage(AppSettingsKeys.moduleString("Net", "publicIPRefreshInterval", defaultValue: "never").rawValue) private var publicIPRefreshInterval: String = "never"
@@ -142,7 +142,7 @@ struct NetSettingsView: View {
                 TextField(localizedString("Connectivity host"), text: connectivityMode == "icmp" ? $connectivityICMPHost : $connectivityHTTPHost)
                 
                 Picker(localizedString("Update interval"), selection: $updateConnectivityInterval) {
-                    ForEach(ReaderUpdateIntervals, id: \.key) {
+                    ForEach(ReaderUpdateIntervals.filter { (Int($0.key) ?? 0) >= 5 }, id: \.key) {
                         Text(localizedString($0.value)).tag(Int($0.key) ?? 1)
                     }
                 }
@@ -154,6 +154,9 @@ struct NetSettingsView: View {
         }
         .formStyle(.grouped)
         .onAppear {
+            if updateConnectivityInterval < 5 {
+                updateConnectivityInterval = 5
+            }
             loadInterfaces()
         }
         .onChange(of: numberOfProcesses) { _, _ in callback() }

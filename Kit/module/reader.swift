@@ -146,6 +146,7 @@ private let efficiencyQueue = DispatchQueue(label: "eu.exelban.Stats.Efficiency"
         
         if SystemKit.shared.device.platform != nil {
             self.alignToSecondBoundary = true
+            self.alignOffset = Self.alignmentOffset(for: self.metricID.key)
         }
         
         debug("Successfully initialize reader", log: self.log)
@@ -260,7 +261,7 @@ private let efficiencyQueue = DispatchQueue(label: "eu.exelban.Stats.Efficiency"
         case .active:
             self.applyInterval(userInterval, restart: restart)
         case .passive:
-            self.applyInterval(max(userInterval * 3, 10), restart: restart)
+            self.applyInterval(max(userInterval * 5, 30), restart: restart)
         case .paused:
             self.pause()
         }
@@ -333,6 +334,11 @@ private let efficiencyQueue = DispatchQueue(label: "eu.exelban.Stats.Efficiency"
         let baseDelay = (fractional == 0) ? 0.0 : (1.0 - fractional)
         let safety: TimeInterval = 0.005 // 5ms past the boundary
         return baseDelay + safety
+    }
+
+    private static func alignmentOffset(for key: String) -> TimeInterval {
+        let bucket = key.unicodeScalars.reduce(0) { ($0 &+ Int($1.value)) % 10 }
+        return TimeInterval(bucket) / 10.0
     }
     
     private func startNormalRepeater() {

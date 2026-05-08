@@ -25,7 +25,7 @@ private final class RepeaterBucket {
     
     init(interval: Int) {
         self.interval = interval
-        self.queue = DispatchQueue(label: "eu.exelban.Stats.Repeater.\(interval)", qos: .default)
+        self.queue = DispatchQueue(label: "eu.exelban.Stats.Repeater.\(interval)", qos: .utility)
     }
     
     var isEmpty: Bool {

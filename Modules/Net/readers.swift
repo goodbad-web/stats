@@ -451,11 +451,17 @@ extension CWChannel {
 }
 
 internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked Sendable {
-    private let reachabilityLock = OSAllocatedUnfairLock(initialState: Reachability(start: true))
+    private let reachabilityLock = OSAllocatedUnfairLock(initialState: Reachability())
+    private let reachabilityStartedLock = OSAllocatedUnfairLock(initialState: false)
     nonisolated private var reachability: Reachability {
         self.reachabilityLock.withLock { $0 }
     }
+    nonisolated private var reachabilityStarted: Bool {
+        get { self.reachabilityStartedLock.withLock { $0 } }
+        set { self.reachabilityStartedLock.withLock { $0 = newValue } }
+    }
     private let worker = NetworkUsageWorker()
+    private var wifiEventsStarted = false
 
     nonisolated private var primaryInterface: String {
         primaryNetworkInterface()
@@ -486,6 +492,24 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
     }
 
     private let wifiClient = CWWiFiClient.shared()
+
+    public override func start() {
+        self.startReachability()
+        self.startListeningForWifiEvents()
+        super.start()
+    }
+
+    public override func pause() {
+        super.pause()
+        self.stopReachability()
+        self.stopListeningForWifiEvents()
+    }
+
+    public override func stop() {
+        super.stop()
+        self.stopReachability()
+        self.stopListeningForWifiEvents()
+    }
 
     @MainActor public override func setup() {
         self.reachability.reachable = {
@@ -527,11 +551,10 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
         }
 
         self.wifiClient.delegate = self
-        self.startListeningForWifiEvents()
     }
 
     @MainActor public override func terminate() {
-        self.reachability.stop()
+        self.stopReachability()
         self.stopListeningForWifiEvents()
     }
 
@@ -581,11 +604,27 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
     }
 
     private func startListeningForWifiEvents() {
+        guard !self.wifiEventsStarted else { return }
         try? self.wifiClient.startMonitoringEvent(with: .ssidDidChange)
+        self.wifiEventsStarted = true
     }
 
     private func stopListeningForWifiEvents() {
+        guard self.wifiEventsStarted else { return }
         try? self.wifiClient.stopMonitoringEvent(with: .ssidDidChange)
+        self.wifiEventsStarted = false
+    }
+
+    private func startReachability() {
+        guard !self.reachabilityStarted else { return }
+        self.reachability.start()
+        self.reachabilityStarted = true
+    }
+
+    private func stopReachability() {
+        guard self.reachabilityStarted else { return }
+        self.reachability.stop()
+        self.reachabilityStarted = false
     }
 
     public func ssidDidChangeForWiFiInterface(withName interfaceName: String) {
@@ -657,7 +696,7 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
     }
 
     @MainActor public override func setup() {
-        self.setInterval(Store.shared.int(key: "Net_updateICMPInterval", defaultValue: 1))
+        self.setInterval(max(5, Store.shared.int(key: "Net_updateICMPInterval", defaultValue: 5)))
         self.prepare()
     }
 

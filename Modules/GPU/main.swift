@@ -269,8 +269,8 @@ public class GPU: Module {
                 let key = "GPU@InfoReader"
                 if self.userDefaults?.data(forKey: key) != blobData {
                     self.userDefaults?.set(blobData, forKey: key)
-                    WidgetCenter.shared.reloadTimelines(ofKind: GPU_entry.kind)
-                    WidgetCenter.shared.reloadTimelines(ofKind: "UnitedWidget")
+                    WidgetTimelineReloader.shared.reloadTimelines(ofKind: GPU_entry.kind)
+                    WidgetTimelineReloader.shared.reloadTimelines(ofKind: "UnitedWidget")
                 }
             }
         }

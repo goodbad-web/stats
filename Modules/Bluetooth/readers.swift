@@ -317,6 +317,21 @@ internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBP
         self.defaultInterval = 30
         self.manager = CBCentralManager(delegate: self, queue: nil)
     }
+
+    public override func start() {
+        super.start()
+        self.updateScanState()
+    }
+
+    public override func pause() {
+        super.pause()
+        self.updateScanState()
+    }
+
+    public override func stop() {
+        super.stop()
+        self.updateScanState()
+    }
     
     nonisolated public override func read() {
         let isReading = self.readLock.withLock { $0 }
@@ -449,10 +464,18 @@ internal class DevicesReader: Reader<[BLEDevice]>, CBCentralManagerDelegate, CBP
     // MARK: - CBCentralManager
     
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        if central.state == .poweredOff {
-            central.stopScan()
-        } else if central.state == .poweredOn {
-            central.scanForPeripherals(withServices: nil, options: nil)
+        self.updateScanState()
+    }
+
+    private func updateScanState() {
+        guard let manager = self.manager else { return }
+
+        if self.active && manager.state == .poweredOn {
+            if !manager.isScanning {
+                manager.scanForPeripherals(withServices: nil, options: nil)
+            }
+        } else if manager.isScanning {
+            manager.stopScan()
         }
     }
     

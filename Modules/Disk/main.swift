@@ -429,8 +429,8 @@ public class Disk: Module {
                     let key = "Disk@CapacityReader"
                     if self.userDefaults?.data(forKey: key) != blobData {
                         self.userDefaults?.set(blobData, forKey: key)
-                        WidgetCenter.shared.reloadTimelines(ofKind: Disk_entry.kind)
-                        WidgetCenter.shared.reloadTimelines(ofKind: "UnitedWidget")
+                        WidgetTimelineReloader.shared.reloadTimelines(ofKind: Disk_entry.kind)
+                        WidgetTimelineReloader.shared.reloadTimelines(ofKind: "UnitedWidget")
                     }
                 }
             }
