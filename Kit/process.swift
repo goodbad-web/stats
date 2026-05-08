@@ -10,6 +10,44 @@
 //
 
 import Cocoa
+import Darwin
+
+// libproc.h definitions
+// swiftlint:disable identifier_name
+private let PROC_ALL_PIDS: UInt32 = 1
+private let PROC_PIDTASKINFO: Int32 = 4
+private let PROC_PIDPATHINFO_MAXSIZE: Int32 = 1024
+
+private struct proc_taskinfo {
+    var pti_virtual_size: UInt64 = 0
+    var pti_resident_size: UInt64 = 0
+    var pti_total_user: UInt64 = 0
+    var pti_total_system: UInt64 = 0
+    var pti_threads_user: UInt64 = 0
+    var pti_threads_system: UInt64 = 0
+    var pti_policy: Int32 = 0
+    var pti_faults: Int32 = 0
+    var pti_pageins: Int32 = 0
+    var pti_cow_faults: Int32 = 0
+    var pti_messages_sent: Int32 = 0
+    var pti_messages_received: Int32 = 0
+    var pti_syscalls_mach: Int32 = 0
+    var pti_syscalls_unix: Int32 = 0
+    var pti_csw: Int32 = 0
+    var pti_threadnum: Int32 = 0
+    var pti_numrunning: Int32 = 0
+    var pti_priority: Int32 = 0
+}
+// swiftlint:enable identifier_name
+
+@_silgen_name("proc_listpids")
+private func proc_listpids(_ type: UInt32, _ typeinfo: UInt32, _ buffer: UnsafeMutableRawPointer?, _ buffersize: Int32) -> Int32
+
+@_silgen_name("proc_pidinfo")
+private func proc_pidinfo(_ pid: Int32, _ flavor: Int32, _ arg: UInt64, _ buffer: UnsafeMutableRawPointer?, _ buffersize: Int32) -> Int32
+
+@_silgen_name("proc_name")
+private func proc_name(_ pid: Int32, _ buffer: UnsafeMutableRawPointer?, _ buffersize: UInt32) -> Int32
 
 public protocol Process_p {
     var pid: Int { get }
@@ -277,25 +315,82 @@ public class ProcessView: NSStackView {
 public actor ProcessMonitor {
     public static let shared = ProcessMonitor()
     
+    private var lastCPUUsage: [Int32: UInt64] = [:]
+    private var lastTime: UInt64 = 0
+    
     private init() {}
     
     public func getTopProcesses(limit: Int, category: String) async -> [TopProcess] {
-        // This is a placeholder for the actual libproc implementation.
-        // For now, we'll keep the logic that uses System APIs where possible.
-        // In a full implementation, we would use proc_listpids and proc_pidinfo(PROC_PIDTHREADINFO).
-        
-        // For this refactoring step, let's provide a unified way to get processes
-        // while minimizing the risk of breaking existing behavior.
-        
-        let task = Process()
         if category == "Power" {
-            task.launchPath = "/usr/bin/top"
-            task.arguments = ["-o", "power", "-l", "2", "-n", "\(limit)", "-stats", "pid,command,power"]
-        } else {
-            task.launchPath = "/bin/ps"
-            let sortKey = category == "CPU" ? "pcpu" : "rss"
-            task.arguments = ["-Aceo", "pid,\(sortKey),comm", "-r"]
+            return await self.getTopByShell(limit: limit, category: category)
         }
+        
+        let pidsCount = proc_listpids(PROC_ALL_PIDS, 0, nil, 0)
+        var pids = [Int32](repeating: 0, count: Int(pidsCount))
+        let actualCount = proc_listpids(PROC_ALL_PIDS, 0, &pids, Int32(pids.count * MemoryLayout<Int32>.size))
+        
+        var list: [TopProcess] = []
+        let now = mach_absolute_time()
+        
+        var timebaseInfo = mach_timebase_info_data_t()
+        mach_timebase_info(&timebaseInfo)
+        
+        for i in 0..<Int(actualCount) / MemoryLayout<Int32>.size {
+            let pid = pids[i]
+            if pid <= 0 { continue }
+            
+            var taskInfo = proc_taskinfo()
+            let result = proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &taskInfo, Int32(MemoryLayout<proc_taskinfo>.size))
+            if result != MemoryLayout<proc_taskinfo>.size { continue }
+            
+            var usage: Double = 0
+            if category == "CPU" {
+                let totalTime = taskInfo.pti_total_user + taskInfo.pti_total_system
+                if let last = self.lastCPUUsage[pid], self.lastTime > 0 {
+                    let deltaTicks = totalTime - last
+                    let deltaTime = now - self.lastTime
+                    
+                    let deltaTicksNS = Double(deltaTicks)
+                    let deltaTimeNS = Double(deltaTime) * Double(timebaseInfo.numer) / Double(timebaseInfo.denom)
+                    
+                    if deltaTimeNS > 0 {
+                        usage = (deltaTicksNS / deltaTimeNS) * 100.0
+                    }
+                }
+                self.lastCPUUsage[pid] = totalTime
+            } else if category == "RAM" {
+                usage = Double(taskInfo.pti_resident_size)
+            }
+            
+            if usage > 0 || category == "RAM" {
+                list.append(TopProcess(pid: Int(pid), name: self.getName(pid), usage: usage))
+            }
+        }
+        
+        self.lastTime = now
+        
+        list.sort { $0.usage > $1.usage }
+        return Array(list.prefix(limit))
+    }
+    
+    private func getName(_ pid: Int32) -> String {
+        var buffer = [UInt8](repeating: 0, count: Int(PROC_PIDPATHINFO_MAXSIZE))
+        let result = proc_name(pid, &buffer, UInt32(PROC_PIDPATHINFO_MAXSIZE))
+        if result > 0 {
+            return String(cString: buffer)
+        }
+        
+        if let app = NSRunningApplication(processIdentifier: pid), let name = app.localizedName {
+            return name
+        }
+        
+        return "Unknown"
+    }
+    
+    private func getTopByShell(limit: Int, category: String) async -> [TopProcess] {
+        let task = Process()
+        task.launchPath = "/usr/bin/top"
+        task.arguments = ["-o", "power", "-l", "2", "-n", "\(limit)", "-stats", "pid,command,power"]
         
         let pipe = Pipe()
         task.standardOutput = pipe
@@ -311,51 +406,21 @@ public actor ProcessMonitor {
         guard let output = String(data: data, encoding: .utf8) else { return [] }
         
         var list: [TopProcess] = []
+        let samples = output.components(separatedBy: "PID")
+        guard samples.count >= 2, let lastSample = samples.last else { return [] }
         
-        if category == "Power" {
-            let samples = output.components(separatedBy: "PID")
-            guard samples.count >= 2, let lastSample = samples.last else { return [] }
-            lastSample.enumerateLines { (line, _) in
-                if list.count >= limit { return }
-                let parts = line.trimmingCharacters(in: .whitespaces).components(separatedBy: " ").filter{ !$0.isEmpty }
-                if parts.count >= 3 {
-                    let pid = Int(parts[0]) ?? 0
-                    guard let usage = Double(parts.last!.filter("0123456789.".contains)) else { return }
-                    let command = parts[1..<(parts.count - 1)].joined(separator: " ")
-                    var name = command
-                    if let app = NSRunningApplication(processIdentifier: pid_t(pid)), let n = app.localizedName {
-                        name = n
-                    }
-                    list.append(TopProcess(pid: pid, name: name, usage: usage))
-                }
-            }
-        } else {
-            let lines = output.components(separatedBy: .newlines)
-            for (index, line) in lines.enumerated() {
-                if index == 0 || line.isEmpty { continue }
-                if list.count >= limit { break }
-                
-                let parts = line.trimmingCharacters(in: .whitespaces).components(separatedBy: .whitespaces).filter { !$0.isEmpty }
-                guard parts.count >= 3 else { continue }
-                
+        lastSample.enumerateLines { (line, _) in
+            if list.count >= limit { return }
+            let parts = line.trimmingCharacters(in: .whitespaces).components(separatedBy: " ").filter{ !$0.isEmpty }
+            if parts.count >= 3 {
                 let pid = Int(parts[0]) ?? 0
-                let usage = Double(parts[1].replacingOccurrences(of: ",", with: ".")) ?? 0
-                let command = parts.dropFirst(2).joined(separator: " ")
-                
+                guard let usage = Double(parts.last!.filter("0123456789.".contains)) else { return }
+                let command = parts[1..<(parts.count - 1)].joined(separator: " ")
                 var name = command
-                if let app = NSRunningApplication(processIdentifier: pid_t(pid)), let localizedName = app.localizedName {
-                    name = localizedName
+                if let app = NSRunningApplication(processIdentifier: pid_t(pid)), let n = app.localizedName {
+                    name = n
                 }
-                
-                if command.contains("com.apple.Virtua") && name.contains("Docker") {
-                    name = "Docker"
-                }
-                
-                // For RAM, ps -o rss gives KB, we convert to bytes if needed or keep as is depending on TopProcess expectation
-                // TopProcess usage is Double. CPU is %, RAM is usually bytes in this app.
-                let finalUsage = category == "CPU" ? usage : usage * 1024
-                
-                list.append(TopProcess(pid: pid, name: name, usage: finalUsage))
+                list.append(TopProcess(pid: pid, name: name, usage: usage))
             }
         }
         

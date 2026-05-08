@@ -356,7 +356,6 @@ public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
     private nonisolated(unsafe) var channels: CFMutableDictionary? = nil
     private nonisolated(unsafe) var subscription: IOReportSubscriptionRef? = nil
     
-    private let measurementCount: Int = 4
     private let freqLock = OSAllocatedUnfairLock(initialState: FrequencyState())
     
     private struct IOSample {
@@ -399,44 +398,47 @@ public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
             let minSCoreFreq = Double(self.sCoreFreqs.min() ?? 0)
             
             Task.detached(priority: .background) {
-                var eCores: [Double] = []
-                var sCores: [Double] = []
-                var pCores: [Double] = []
+                guard let next = self.getSample() else {
+                    self.freqLock.withLock { $0.isReading = false }
+                    return
+                }
                 
-                for (samples, _) in await self.getSamples() {
-                    var eCore: [Double] = []
-                    var pCore: [Double] = []
-                    var sCore: [Double] = []
-                    
-                    for sample in samples {
-                        guard sample.group == "CPU Stats" else { continue }
-                        if sample.channel.contains("ECPU") {
-                            eCore.append(self.calculateFrequencies(dict: sample.delta, freqs: self.eCoreFreqs))
-                        }
-                        if sample.channel.contains(self.sCoreCount == 0 ? "PCPU" : "MCPU") {
-                            pCore.append(self.calculateFrequencies(dict: sample.delta, freqs: self.pCoreFreqs))
-                        }
-                        if self.sCoreCount != 0 {
-                            if sample.channel.contains("PCPU") {
-                                sCore.append(self.calculateFrequencies(dict: sample.delta, freqs: self.sCoreFreqs))
-                            }
-                        }
+                let prev = self.freqLock.withLock {
+                    let old = $0.prev
+                    $0.prev = next
+                    return old
+                }
+                
+                guard let prev = prev, let diffCF = IOReportCreateSamplesDelta(prev.samples, next.samples, nil) else {
+                    self.freqLock.withLock { $0.isReading = false }
+                    return
+                }
+                
+                let diff = diffCF.takeRetainedValue()
+                let samples = self.collectIOSamples(data: diff)
+                
+                var eCore: [Double] = []
+                var pCore: [Double] = []
+                var sCore: [Double] = []
+                
+                for sample in samples {
+                    guard sample.group == "CPU Stats" else { continue }
+                    if sample.channel.contains("ECPU") {
+                        eCore.append(self.calculateFrequencies(dict: sample.delta, freqs: self.eCoreFreqs))
                     }
-                    
-                    if !eCore.isEmpty {
-                        eCores.append(max(eCore.reduce(0.0, +) / Double(eCore.count), minECoreFreq))
+                    if sample.channel.contains(self.sCoreCount == 0 ? "PCPU" : "MCPU") {
+                        pCore.append(self.calculateFrequencies(dict: sample.delta, freqs: self.pCoreFreqs))
                     }
-                    if !pCore.isEmpty {
-                        pCores.append(max(pCore.reduce(0.0, +) / Double(pCore.count), minPCoreFreq))
-                    }
-                    if !sCore.isEmpty {
-                        sCores.append(max(sCore.reduce(0.0, +) / Double(sCore.count), minSCoreFreq))
+                    if self.sCoreCount != 0 {
+                        if sample.channel.contains("PCPU") {
+                            sCore.append(self.calculateFrequencies(dict: sample.delta, freqs: self.sCoreFreqs))
+                        }
                     }
                 }
                 
-                let eFreq: Double? = eCores.isEmpty ? nil : eCores.reduce(0, +) / Double(self.measurementCount)
-                let pFreq: Double? = pCores.isEmpty ? nil : pCores.reduce(0, +) / Double(self.measurementCount)
-                let sFreq: Double? = sCores.isEmpty ? nil : sCores.reduce(0, +) / Double(self.measurementCount)
+                let eFreq: Double? = eCore.isEmpty ? nil : max(eCore.reduce(0.0, +) / Double(eCore.count), minECoreFreq)
+                let pFreq: Double? = pCore.isEmpty ? nil : max(pCore.reduce(0.0, +) / Double(pCore.count), minPCoreFreq)
+                let sFreq: Double? = sCore.isEmpty ? nil : max(sCore.reduce(0.0, +) / Double(sCore.count), minSCoreFreq)
                 
                 var activeCores: Double = 0
                 var totalFreq: Double = 0
@@ -518,29 +520,6 @@ public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
             return nil
         }
         return mutableCopy
-    }
-    
-    nonisolated private func getSamples() async -> [([IOSample], TimeInterval)] {
-        let duration = 500
-        let step = UInt64(duration / self.measurementCount)
-        var samples = [([IOSample], TimeInterval)]()
-        guard let initialSample = self.getSample() else { return samples }
-        
-        var prev = self.freqLock.withLock { $0.prev } ?? initialSample
-        
-        for _ in 0..<self.measurementCount {
-            try? await Task.sleep(nanoseconds: UInt64(step) * 1_000_000)
-            guard let next = self.getSample() else { continue }
-            if let diffCF = IOReportCreateSamplesDelta(prev.samples, next.samples, nil) {
-                let diff = diffCF.takeRetainedValue()
-                let elapsed = next.time - prev.time
-                samples.append((self.collectIOSamples(data: diff), max(elapsed, TimeInterval(1))))
-            }
-            prev = next
-        }
-        let finalPrev = prev
-        self.freqLock.withLock { $0.prev = finalPrev }
-        return samples
     }
     
     nonisolated private func getSample() -> Sample? {
