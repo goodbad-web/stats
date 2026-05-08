@@ -52,7 +52,6 @@ public class Portal: NSStackView, Portal_p {
         self.addArrangedSubview(self.container)
         
         NSLayoutConstraint.activate([
-            header.heightAnchor.constraint(equalToConstant: Constants.Popup.headerHeight),
             header.widthAnchor.constraint(equalTo: self.widthAnchor, constant: -(self.edgeInsets.left + self.edgeInsets.right)),
             self.container.widthAnchor.constraint(equalTo: self.widthAnchor, constant: -(self.edgeInsets.left + self.edgeInsets.right)),
             self.heightAnchor.constraint(equalToConstant: Constants.Popup.portalHeight)
