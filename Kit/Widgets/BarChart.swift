@@ -25,6 +25,12 @@ public class BarChart: WidgetWrapper {
     private var boxSettingsView: NSSwitch? = nil
     private var frameSettingsView: NSSwitch? = nil
     
+    private var chart: BarChartView = BarChartView(frame: NSRect(
+        x: 0,
+        y: 0,
+        width: 10,
+        height: Constants.Widget.height - (2*Constants.Widget.margin.y)
+    ))
     public var NSLabelCharts: [NSAttributedString] = []
     
     public init(title: String, config: NSDictionary?, preview: Bool = false) {
@@ -98,6 +104,8 @@ public class BarChart: WidgetWrapper {
             let str = NSAttributedString.init(string: "\(char)", attributes: stringAttributes)
             self.NSLabelCharts.append(str)
         }
+        
+        self.addSubview(self.chart)
     }
     
     required init?(coder: NSCoder) {
@@ -108,12 +116,8 @@ public class BarChart: WidgetWrapper {
         super.draw(dirtyRect)
         
         var value: [[ColorValue]] = []
-        var pressureLevel: RAMPressure = .normal
-        var colorZones: colorZones = (0.6, 0.8)
         self.queue.sync {
             value = self._value
-            pressureLevel = self._pressureLevel
-            colorZones = self._colorZones
         }
         
         guard !value.isEmpty else {
@@ -160,12 +164,13 @@ public class BarChart: WidgetWrapper {
             x = letterWidth + Constants.Widget.spacing
         }
         
-        let box = NSBezierPath(roundedRect: NSRect(
+        let boxSize = NSRect(
             x: x + offset,
             y: offset,
             width: width - x - (offset*2) - (Constants.Widget.margin.x*2),
             height: self.frame.size.height - (offset*2)
-        ), xRadius: 2, yRadius: 2)
+        )
+        let box = NSBezierPath(roundedRect: boxSize, xRadius: 2, yRadius: 2)
         
         if self.boxState {
             (isDarkMode ? NSColor.white : NSColor.black).set()
@@ -173,45 +178,15 @@ public class BarChart: WidgetWrapper {
             box.fill()
         }
         
-        let widthForBarChart = box.bounds.width
-        let partitionMargin: CGFloat = 0.5
-        let partitionsMargin: CGFloat = (CGFloat(value.count - 1)) * partitionMargin / CGFloat(value.count - 1)
-        let partitionWidth: CGFloat = (widthForBarChart / CGFloat(value.count)) - CGFloat(partitionsMargin.isNaN ? 0 : partitionsMargin)
-        let maxPartitionHeight: CGFloat = box.bounds.height
+        let chartFrame = NSRect(
+            x: boxSize.origin.x + offset,
+            y: boxSize.origin.y + offset,
+            width: boxSize.width - (offset*2),
+            height: boxSize.height - (offset*2)
+        )
         
-        x += offset
-        for i in 0..<value.count {
-            var y = offset
-            for a in 0..<value[i].count {
-                let partitionValue = value[i][a]
-                let partitionHeight = maxPartitionHeight * CGFloat(partitionValue.value)
-                let partition = NSBezierPath(rect: NSRect(x: x, y: y, width: partitionWidth, height: partitionHeight))
-                
-                if partitionValue.color == nil {
-                    switch self.colorState {
-                    case .systemAccent: NSColor.controlAccentColor.set()
-                    case .utilization: partitionValue.value.usageColor(zones: colorZones, reversed: self.title == "Battery").set()
-                    case .pressure: pressureLevel.pressureColor().set()
-                    case .monochrome:
-                        if self.boxState {
-                            (isDarkMode ? NSColor.black : NSColor.white).set()
-                        } else {
-                            (isDarkMode ? NSColor.white : NSColor.black).set()
-                        }
-                    default: (self.colorState.additional as? NSColor ?? .controlAccentColor).set()
-                    }
-                } else {
-                    partitionValue.color?.set()
-                }
-                
-                partition.fill()
-                partition.close()
-                
-                y += partitionHeight
-            }
-            
-            x += partitionWidth + partitionMargin
-        }
+        self.chart.setValues(value)
+        self.chart.frame = chartFrame
         
         if self.boxState || self.frameState {
             (isDarkMode ? NSColor.white : NSColor.black).set()

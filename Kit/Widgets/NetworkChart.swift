@@ -23,6 +23,11 @@ public class NetworkChart: WidgetWrapper {
     
     private var points: [(Double, Double)] = Array(repeating: (0, 0), count: 60)
     
+    private var chart: NetworkChartView = NetworkChartView(
+        frame: NSRect(x: 0, y: 0, width: 30, height: Constants.Widget.height - (2*Constants.Widget.margin.y)),
+        num: 60
+    )
+    
     private var width: CGFloat {
         get {
             switch self.historyCount {
@@ -104,6 +109,8 @@ public class NetworkChart: WidgetWrapper {
             let str = NSAttributedString.init(string: "\(char)", attributes: stringAttributes)
             self.NSLabelCharts.append(str)
         }
+        
+        self.addSubview(self.chart)
     }
     
     required init?(coder: NSCoder) {
@@ -113,24 +120,18 @@ public class NetworkChart: WidgetWrapper {
     public override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         
-        guard let context = NSGraphicsContext.current?.cgContext else { return }
-        
-        var points: [(Double, Double)] = []
         var labelState: Bool = false
         var boxState: Bool = false
         var frameState: Bool = false
-        var scaleState: Scale = .linear
         var reverseOrderState: Bool = false
         var originWidth: CGFloat = 0
         var labelString: [NSAttributedString] = []
         var downloadColor: SColor = .secondBlue
         var uploadColor: SColor = .secondRed
         self.queue.sync {
-            points = self.points
             labelState = self.labelState
             boxState = self.boxState
             frameState = self.frameState
-            scaleState = self.scaleState
             reverseOrderState = self.reverseOrderState
             labelString = self.NSLabelCharts
             originWidth = self.width
@@ -159,12 +160,13 @@ public class NetworkChart: WidgetWrapper {
             x = letterWidth + Constants.Widget.spacing
         }
         
-        let box = NSBezierPath(roundedRect: NSRect(
+        let boxRect = NSRect(
             x: x + offset,
             y: offset,
             width: originWidth - offset*2,
             height: boxSize.height - (offset*2)
-        ), xRadius: 2, yRadius: 2)
+        )
+        let box = NSBezierPath(roundedRect: boxRect, xRadius: 2, yRadius: 2)
         
         if boxState {
             (isDarkMode ? NSColor.white : NSColor.black).set()
@@ -172,86 +174,16 @@ public class NetworkChart: WidgetWrapper {
             box.fill()
         }
         
-        context.saveGState()
-        
         let chartFrame = NSRect(
-            x: x+offset+lineWidth,
-            y: offset,
-            width: box.bounds.width - (offset*2+lineWidth),
-            height: box.bounds.height - offset
+            x: boxRect.origin.x + offset,
+            y: boxRect.origin.y + offset,
+            width: boxRect.width - (offset*2),
+            height: boxRect.height - (offset*2)
         )
-        var topMax: Double = (reverseOrderState ? points.map{ $0.1 }.max() : points.map{ $0.0 }.max()) ?? 0
-        var bottomMax: Double = (reverseOrderState ? points.map{ $0.0 }.max() : points.map{ $0.1 }.max()) ?? 0
-        if topMax == 0 {
-            topMax = 1
-        }
-        if bottomMax == 0 {
-            bottomMax = 1
-        }
         
-        let zero: CGFloat = (chartFrame.height/2) + chartFrame.origin.y
-        let xRatio: CGFloat = (chartFrame.width + (lineWidth*3)) / CGFloat(points.count)
-        let xCenter: CGFloat = chartFrame.height/2 + chartFrame.origin.y
-        
-        let columnXPoint = { (point: Int) -> CGFloat in
-            return (CGFloat(point) * xRatio) + (chartFrame.origin.x - lineWidth)
-        }
-        
-        let topYPoint = { (point: Int) -> CGFloat in
-            let value = reverseOrderState ? points[point].1 : points[point].0
-            return scaleValue(scale: scaleState, value: value, maxValue: topMax, zeroValue: 256.0, maxHeight: chartFrame.height/2, limit: 1) + xCenter
-        }
-        let bottomYPoint = { (point: Int) -> CGFloat in
-            let value = reverseOrderState ? points[point].0 : points[point].1
-            return xCenter - scaleValue(scale: scaleState, value: value, maxValue: bottomMax, zeroValue: 256.0, maxHeight: chartFrame.height/2, limit: 1)
-        }
-        
-        let topLinePath = NSBezierPath()
-        topLinePath.move(to: CGPoint(x: columnXPoint(0), y: topYPoint(0)))
-        let bottomLinePath = NSBezierPath()
-        bottomLinePath.move(to: CGPoint(x: columnXPoint(0), y: bottomYPoint(0)))
-        
-        for i in 1..<points.count {
-            topLinePath.line(to: CGPoint(x: columnXPoint(i), y: topYPoint(i)))
-            bottomLinePath.line(to: CGPoint(x: columnXPoint(i), y: bottomYPoint(i)))
-        }
-        
-        let topColor = (reverseOrderState ? self.uploadColor : downloadColor).additional as? NSColor
-        let bottomColor = (reverseOrderState ? self.downloadColor : uploadColor).additional as? NSColor
-        
-        bottomColor?.setStroke()
-        topLinePath.lineWidth = lineWidth
-        topLinePath.stroke()
-        
-        topColor?.setStroke()
-        bottomLinePath.lineWidth = lineWidth
-        bottomLinePath.stroke()
-        
-        context.restoreGState()
-        context.saveGState()
-        
-        guard let topUnderLinePath = topLinePath.copy() as? NSBezierPath else { return }
-        topUnderLinePath.line(to: CGPoint(x: columnXPoint(points.count - 1), y: zero))
-        topUnderLinePath.line(to: CGPoint(x: columnXPoint(0), y: zero))
-        topUnderLinePath.close()
-        topUnderLinePath.addClip()
-        bottomColor?.withAlphaComponent(0.5).setFill()
-        let topFillRect = NSRect(x: chartFrame.origin.x - lineWidth, y: chartFrame.origin.y, width: chartFrame.width + (lineWidth*3), height: chartFrame.height)
-        NSBezierPath(rect: topFillRect).fill()
-        
-        context.restoreGState()
-        context.saveGState()
-        
-        guard let bottomUnderLinePath = bottomLinePath.copy() as? NSBezierPath else { return }
-        bottomUnderLinePath.line(to: CGPoint(x: columnXPoint(points.count - 1), y: zero))
-        bottomUnderLinePath.line(to: CGPoint(x: columnXPoint(0), y: zero))
-        bottomUnderLinePath.close()
-        bottomUnderLinePath.addClip()
-        topColor?.withAlphaComponent(0.5).setFill()
-        let bottomFillRect = NSRect(x: chartFrame.origin.x - lineWidth, y: chartFrame.origin.y, width: chartFrame.width + (lineWidth*3), height: chartFrame.height)
-        NSBezierPath(rect: bottomFillRect).fill()
-        
-        context.restoreGState()
+        self.chart.setColors(in: downloadColor.additional as? NSColor, out: uploadColor.additional as? NSColor)
+        self.chart.setReverseOrder(reverseOrderState)
+        self.chart.frame = chartFrame
         
         if boxState || frameState {
             (isDarkMode ? NSColor.white : NSColor.black).set()
@@ -264,8 +196,7 @@ public class NetworkChart: WidgetWrapper {
     
     public func setValue(upload: Double, download: Double) {
         DispatchQueue.main.async(execute: {
-            self.points.remove(at: 0)
-            self.points.append((upload, download))
+            self.chart.addValue(upload: upload, download: download)
             
             if self.window?.isVisible ?? false {
                 self.display()

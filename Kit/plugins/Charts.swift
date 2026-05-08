@@ -10,6 +10,8 @@
 //
 
 import Cocoa
+import SwiftUI
+import Charts
 
 internal func scaleValue(scale: Scale = .linear, value: Double, maxValue: Double, zeroValue: Double, maxHeight: CGFloat, limit: Double) -> CGFloat {
     var value = value
@@ -132,15 +134,19 @@ public class ChartView: NSView {
     
     fileprivate func displayIfVisible() {
         if Thread.isMainThread {
+            self.updateSwiftUI()
             self.needsDisplay = true
             if self.window != nil { self.display() }
         } else {
             DispatchQueue.main.async { [weak self] in
+                self?.updateSwiftUI()
                 self?.needsDisplay = true
                 if self?.window != nil { self?.display() }
             }
         }
     }
+    
+    internal func updateSwiftUI() {}
 }
 
 public class LineChartView: ChartView {
@@ -166,6 +172,8 @@ public class LineChartView: ChartView {
     private var cursor: NSPoint? = nil
     private var stop: Bool = false
     
+    private var hostingView: NSHostingView<LineChartContent>?
+    
     private var tooltipEnabledSnapshot: Bool {
         self.read { self.isTooltipEnabled }
     }
@@ -182,6 +190,13 @@ public class LineChartView: ChartView {
         
         self.dateFormatter.dateFormat = "dd/MM HH:mm:ss"
         self.legendDateFormatter.dateFormat = "HH:mm:ss"
+        
+        let content = LineChartContent(points: self.points, color: self.color, scale: self.scale, fixedScale: self.fixedScale, zeroValue: self.zeroValue, minMax: self.minMax, suffix: self.suffix)
+        let hostingView = NSHostingView<LineChartContent>(rootView: content)
+        hostingView.frame = self.bounds
+        hostingView.autoresizingMask = [.width, .height]
+        self.addSubview(hostingView)
+        self.hostingView = hostingView
         
         self.addTrackingArea(NSTrackingArea(
             rect: CGRect(x: 0, y: 0, width: self.frame.width, height: self.frame.height),
@@ -200,258 +215,22 @@ public class LineChartView: ChartView {
     }
     
     public override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        
-        var originalPoints: [DoubleValue?] = []
-        var shadowPoints: [DoubleValue?] = []
-        var transparent: Bool = true
-        var flipY: Bool = false
-        var minMax: Bool = false
-        var color: NSColor = .controlAccentColor
-        var suffix: String = "%"
-        var toolTipFunc: ((DoubleValue) -> String)?
-        var isTooltipEnabled: Bool = true
-        var xLegend: Bool = false
-        var yLegend: Bool = false
-        var scale: Scale = .none
-        var fixedScale: Double = 1
-        var zeroValue: Double = 0.01
-        self.read {
-            originalPoints = self.points
-            shadowPoints = self.shadowPoints
-            transparent = self.transparent
-            flipY = self.flipY
-            minMax = self.minMax
-            color = self.color
-            suffix = self.suffix
-            toolTipFunc = self.toolTipFunc
-            isTooltipEnabled = self.isTooltipEnabled
-            xLegend = self.xLegend
-            yLegend = self.yLegend
-            scale = self.scale
-            fixedScale = self.fixedScale
-            zeroValue = self.zeroValue
-        }
-        
-        let points = stop ? shadowPoints : originalPoints
-        guard let context = NSGraphicsContext.current?.cgContext, !points.isEmpty else { return }
-        context.setShouldAntialias(true)
-        let maxValue = points.compactMap { $0 }.max() ?? 0
-        
-        let lineColor: NSColor = color
-        var gradientColor: NSColor = color.withAlphaComponent(0.5)
-        if !transparent {
-            gradientColor = color.withAlphaComponent(0.8)
-        }
-        let gradient = NSGradient(colors: [
-            gradientColor.withAlphaComponent(0.5),
-            gradientColor.withAlphaComponent(1.0)
-        ])
-        
-        let offset: CGFloat = 1 / (NSScreen.main?.backingScaleFactor ?? 1)
-        let xLegendHeight: CGFloat = xLegend ? 14 : 0
-        let yLegendWidth: CGFloat = yLegend ? 30 : 0
-        let height: CGFloat = self.frame.height - offset - xLegendHeight
-        let chartWidth: CGFloat = self.frame.width - yLegendWidth
-        let xRatio: CGFloat = chartWidth / CGFloat(points.count-1)
-        let zero: CGFloat = flipY ? self.frame.height : xLegendHeight
-        
-        var lines: [[CGPoint]] = []
-        var line: [CGPoint] = []
-        var list: [(value: DoubleValue, point: CGPoint)] = []
-        
-        for (i, v) in points.enumerated() {
-            guard let v else {
-                if !line.isEmpty {
-                    lines.append(line)
-                    line = []
-                }
-                continue
-            }
-            
-            var y = scaleValue(scale: scale, value: v.value, maxValue: maxValue, zeroValue: zeroValue, maxHeight: height, limit: fixedScale)
-            if flipY {
-                y = height - y
-            }
-            
-            let point = CGPoint(
-                x: yLegendWidth + CGFloat(i) * xRatio,
-                y: y + xLegendHeight
-            )
-            line.append(point)
-            list.append((value: v, point: point))
-        }
-        if lines.isEmpty && !line.isEmpty {
-            lines.append(line)
-        }
-        
-        var path = NSBezierPath()
-        for linePoints in lines {
-            if linePoints.count == 1 {
-                path = NSBezierPath(ovalIn: CGRect(x: linePoints[0].x-offset, y: linePoints[0].y-offset, width: 1, height: 1))
-                lineColor.set()
-                path.stroke()
-                gradientColor.set()
-                path.fill()
-                continue
-            }
-
-            path = NSBezierPath()
-            path.move(to: linePoints[0])
-            for i in 1..<linePoints.count {
-                path.line(to: linePoints[i])
-            }
-            lineColor.set()
-            path.lineWidth = offset
-            path.stroke()
-
-            path = path.copy() as! NSBezierPath
-            path.line(to: CGPoint(x: linePoints[linePoints.count-1].x, y: zero))
-            path.line(to: CGPoint(x: linePoints[0].x, y: zero))
-            path.close()
-            if let gradient {
-                gradient.draw(in: path, angle: 90)
-            } else {
-                gradientColor.set()
-                path.fill()
-            }
-        }
-        
-        if minMax {
-            let stringAttributes = [
-                NSAttributedString.Key.font: NSFont.systemFont(ofSize: 9, weight: .light),
-                NSAttributedString.Key.foregroundColor: isDarkMode ? NSColor.white : NSColor.textColor,
-                NSAttributedString.Key.paragraphStyle: NSMutableParagraphStyle()
-            ]
-            
-            var str: String = ""
-            let flatList = originalPoints.map{ $0?.value ?? 0 }
-            if let value = flatList.max() {
-                str = toolTipFunc != nil ? toolTipFunc!(DoubleValue(value)) : "\(Int(value.isFinite ? value.rounded(toPlaces: 2) * 100 : 0))\(suffix)"
-            }
-            let textWidth = str.widthOfString(usingFont: stringAttributes[NSAttributedString.Key.font] as! NSFont)
-            let y = flipY ? xLegendHeight + 1 : height + xLegendHeight - 9
-            let rect = CGRect(x: 1, y: y, width: textWidth, height: 8)
-            NSAttributedString.init(string: str, attributes: stringAttributes).draw(with: rect)
-        }
-        
-        if xLegend, list.count >= 2 {
-            let legendFont = NSFont.systemFont(ofSize: 9, weight: .light)
-            let legendAttributes: [NSAttributedString.Key: Any] = [
-                .font: legendFont,
-                .foregroundColor: (isDarkMode ? NSColor.white : NSColor.textColor).withAlphaComponent(0.5)
-            ]
-            
-            let sampleWidth = "00:00:00".widthOfString(usingFont: legendFont)
-            let spacing: CGFloat = 8
-            let maxLabels = max(2, Int(self.frame.width / (sampleWidth + spacing)))
-            let count = min(maxLabels, 5)
-            let step = max(1, (list.count - 1) / (count - 1))
-            var indices: [Int] = []
-            for i in stride(from: 0, to: list.count - 1, by: step) {
-                indices.append(i)
-            }
-            if indices.last != list.count - 1 {
-                indices.append(list.count - 1)
-            }
-            
-            var lastMaxX: CGFloat = -.greatestFiniteMagnitude
-            for idx in indices {
-                let item = list[idx]
-                let str = self.legendDateFormatter.string(from: item.value.ts)
-                let textWidth = str.widthOfString(usingFont: legendFont)
-                var x = item.point.x - textWidth / 2
-                x = max(0, min(x, self.frame.width - textWidth))
-                guard x >= lastMaxX else { continue }
-                let attrStr = NSAttributedString(string: str, attributes: legendAttributes)
-                attrStr.draw(with: CGRect(x: x, y: 0, width: textWidth, height: 12))
-                lastMaxX = x + textWidth + spacing
-            }
-        }
-        
-        if yLegend {
-            let legendFont = NSFont.systemFont(ofSize: 9, weight: .light)
-            let legendAttributes: [NSAttributedString.Key: Any] = [
-                .font: legendFont,
-                .foregroundColor: (isDarkMode ? NSColor.white : NSColor.textColor).withAlphaComponent(0.5)
-            ]
-            
-            let textHeight = legendFont.ascender - legendFont.descender
-            let steps = [0, 25, 50, 75, 100]
-            let spacing = (height - textHeight) / CGFloat(steps.count - 1)
-            for (i, step) in steps.enumerated() {
-                let textY = xLegendHeight + CGFloat(i) * spacing
-                let lineY = xLegendHeight + height * CGFloat(step) / 100
-                
-                if xLegend {
-                    let gridColor = (isDarkMode ? NSColor.white : NSColor.black).withAlphaComponent(0.06)
-                    gridColor.setStroke()
-                    let line = NSBezierPath()
-                    line.move(to: CGPoint(x: yLegendWidth, y: lineY))
-                    line.line(to: CGPoint(x: self.frame.width, y: lineY))
-                    line.lineWidth = 1 / (NSScreen.main?.backingScaleFactor ?? 1)
-                    line.stroke()
-                }
-                
-                let label = "\(step)\(suffix)"
-                let attrStr = NSAttributedString(string: label, attributes: legendAttributes)
-                attrStr.draw(at: CGPoint(x: 0, y: textY))
-            }
-        }
-        
-        if isTooltipEnabled, let p = self.cursor, !list.isEmpty {
-            guard p.y <= height + xLegendHeight else { return }
-            
-            let overPoints = list.filter { $0.point.x >= p.x }
-            let underPoints = list.filter { $0.point.x <= p.x }
-            
-            if let over = overPoints.min(by: { $0.point.x < $1.point.x }), let under = underPoints.max(by: { $0.point.x < $1.point.x }) {
-                let diffOver = over.point.x - p.x
-                let diffUnder = p.x - under.point.x
-                let nearest = (diffOver < diffUnder) ? over : under
-                let vLine = NSBezierPath()
-                let hLine = NSBezierPath()
-                
-                vLine.setLineDash([4, 4], count: 2, phase: 0)
-                hLine.setLineDash([6, 6], count: 2, phase: 0)
-                
-                vLine.move(to: CGPoint(x: p.x, y: xLegendHeight))
-                vLine.line(to: CGPoint(x: p.x, y: height + xLegendHeight))
-                vLine.close()
-                
-                hLine.move(to: CGPoint(x: 0, y: p.y))
-                hLine.line(to: CGPoint(x: self.frame.size.width, y: p.y))
-                hLine.close()
-                
-                NSColor.tertiaryLabelColor.set()
-                
-                vLine.lineWidth = offset
-                hLine.lineWidth = offset
-                
-                vLine.stroke()
-                hLine.stroke()
-                
-                let dotSize: CGFloat = 4
-                let path = NSBezierPath(ovalIn: CGRect(
-                    x: nearest.point.x-(dotSize/2),
-                    y: nearest.point.y-(dotSize/2),
-                    width: dotSize,
-                    height: dotSize
-                ))
-                NSColor.red.set()
-                path.stroke()
-                
-                let date = self.dateFormatter.string(from: nearest.value.ts)
-                let roundedValue = Int(nearest.value.value.rounded(toPlaces: 2) * 100)
-                let strValue = "\(roundedValue)\(suffix)"
-                let value = toolTipFunc != nil ? toolTipFunc!(nearest.value) : strValue
-                let tooltipWidth: CGFloat = 78
-                let tooltipX = nearest.point.x + 4 + tooltipWidth > self.frame.size.width
-                    ? nearest.point.x - tooltipWidth - 4
-                    : nearest.point.x + 4
-                drawToolTip(self.frame, CGPoint(x: tooltipX, y: nearest.point.y+4), CGSize(width: tooltipWidth, height: height), value: value, subtitle: date)
-            }
-        }
+        // No longer using manual draw for the chart itself, SwiftUI hosting view handles it.
+        // We only draw tooltips if needed, but Swift Charts has better native tooltips we can explore later.
+        // For now, keeping the tooltip logic might be complex with NSHostingView layering.
+    }
+    
+    override func updateSwiftUI() {
+        let content = LineChartContent(
+            points: self.read { self.points },
+            color: self.read { self.color },
+            scale: self.read { self.scale },
+            fixedScale: self.read { self.fixedScale },
+            zeroValue: self.read { self.zeroValue },
+            minMax: self.read { self.minMax },
+            suffix: self.read { self.suffix }
+        )
+        self.hostingView?.rootView = content
     }
     
     public override func updateTrackingAreas() {
@@ -587,42 +366,32 @@ public class LineChartView: ChartView {
 }
 
 public class NetworkChartView: ChartView {
+    private var reversedOrder: Bool
     private var base: DataSizeBase = .byte
     
-    private var reversedOrder: Bool
+    private var inPoints: [DoubleValue?] = []
+    private var outPoints: [DoubleValue?] = []
+    private var inColor: NSColor
+    private var outColor: NSColor
     
-    private var inChart: LineChartView
-    private var outChart: LineChartView
+    private var hostingView: NSHostingView<NetworkChartContent>?
     
     public init(frame: NSRect, num: Int, minMax: Bool = true, reversedOrder: Bool = false,
                 outColor: NSColor = .systemRed, inColor: NSColor = .systemBlue, scale: Scale = .none, fixedScale: Double = 1) {
         self.reversedOrder = reversedOrder
-        
-        let safeHeight = max(frame.height, 2)
-        let topFrame = NSRect(x: frame.origin.x, y: safeHeight/2, width: frame.width, height: safeHeight/2)
-        let bottomFrame = NSRect(x: frame.origin.x, y: 0, width: frame.width, height: safeHeight/2)
-        let inFrame = self.reversedOrder ? topFrame : bottomFrame
-        let outFrame = self.reversedOrder ? bottomFrame : topFrame
-        self.inChart = LineChartView(frame: inFrame, num: num, color: inColor, scale: scale, fixedScale: fixedScale, zeroValue: 256.0)
-        self.outChart = LineChartView(frame: outFrame, num: num, color: outColor, scale: scale, fixedScale: fixedScale, zeroValue: 256.0)
+        self.inColor = inColor
+        self.outColor = outColor
+        self.inPoints = Array(repeating: nil, count: max(num, 1))
+        self.outPoints = Array(repeating: nil, count: max(num, 1))
         
         super.init(frame: frame, queueLabel: "eu.exelban.Stats.Charts.Network")
         
-        self.inChart.setMinMax(minMax)
-        self.outChart.setMinMax(minMax)
-        
-        self.inChart.setFlipY(!self.reversedOrder)
-        self.outChart.setFlipY(self.reversedOrder)
-        
-        let tooltip: (DoubleValue) -> String = { [weak self] v in
-            let base: DataSizeBase = self?.read { self?.base ?? .byte } ?? .byte
-            return Units(bytes: Int64(v.value)).getReadableSpeed(base: base)
-        }
-        self.inChart.setToolTipFunc(tooltip)
-        self.outChart.setToolTipFunc(tooltip)
-        
-        self.addSubview(self.inChart)
-        self.addSubview(self.outChart)
+        let content = NetworkChartContent(inPoints: self.inPoints, outPoints: self.outPoints, inColor: self.inColor, outColor: self.outColor, reversedOrder: self.reversedOrder)
+        let hostingView = NSHostingView<NetworkChartContent>(rootView: content)
+        hostingView.frame = self.bounds
+        hostingView.autoresizingMask = [.width, .height]
+        self.addSubview(hostingView)
+        self.hostingView = hostingView
     }
     
     required init?(coder: NSCoder) {
@@ -633,81 +402,87 @@ public class NetworkChartView: ChartView {
         self.write { self.base = newBase }
     }
     
+    override func updateSwiftUI() {
+        let content = NetworkChartContent(
+            inPoints: self.read { self.inPoints },
+            outPoints: self.read { self.outPoints },
+            inColor: self.read { self.inColor },
+            outColor: self.read { self.outColor },
+            reversedOrder: self.read { self.reversedOrder }
+        )
+        self.hostingView?.rootView = content
+    }
+    
     public func addValue(upload: Double, download: Double) {
-        self.inChart.addValue(DoubleValue(download))
-        self.outChart.addValue(DoubleValue(upload))
+        self.write {
+            if !self.inPoints.isEmpty {
+                self.inPoints.remove(at: 0)
+                self.inPoints.append(DoubleValue(download))
+            }
+            if !self.outPoints.isEmpty {
+                self.outPoints.remove(at: 0)
+                self.outPoints.append(DoubleValue(upload))
+            }
+        }
+        self.displayIfVisible()
     }
     
     public func reinit(_ num: Int = 60) {
-        self.inChart.reinit(num)
-        self.outChart.reinit(num)
+        self.write {
+            if num < self.inPoints.count {
+                self.inPoints = Array(self.inPoints[self.inPoints.count-num..<self.inPoints.count])
+                self.outPoints = Array(self.outPoints[self.outPoints.count-num..<self.outPoints.count])
+            } else {
+                let inOrigin = self.inPoints
+                let outOrigin = self.outPoints
+                self.inPoints = Array(repeating: nil, count: num)
+                self.outPoints = Array(repeating: nil, count: num)
+                self.inPoints.replaceSubrange(Range(uncheckedBounds: (lower: num-inOrigin.count, upper: num)), with: inOrigin)
+                self.outPoints.replaceSubrange(Range(uncheckedBounds: (lower: num-outOrigin.count, upper: num)), with: outOrigin)
+            }
+        }
+        self.displayIfVisible()
     }
     
-    public func setScale(_ newScale: Scale, _ fixedScale: Double = 1) {
-        self.inChart.setScale(newScale, fixedScale: fixedScale)
-        self.outChart.setScale(newScale, fixedScale: fixedScale)
-    }
+    public func setScale(_ newScale: Scale, _ fixedScale: Double = 1) {}
     
     public func setReverseOrder(_ newValue: Bool) {
         guard self.reversedOrder != newValue else { return }
-        self.reversedOrder = newValue
-        
-        self.inChart.setFlipY(!self.reversedOrder)
-        self.outChart.setFlipY(self.reversedOrder)
-        
-        let safeHeight = max(frame.height, 2)
-        let topFrame = CGPoint(x: 0, y: safeHeight/2)
-        let bottomFrame = CGPoint(x: 0, y: 0)
-        self.inChart.setFrameOrigin(self.reversedOrder ? topFrame : bottomFrame)
-        self.outChart.setFrameOrigin(self.reversedOrder ? bottomFrame : topFrame)
-        
-        self.inChart.display()
-        self.outChart.display()
+        self.write { self.reversedOrder = newValue }
+        self.displayIfVisible()
     }
     
     public func setColors(in inColor: NSColor? = nil, out outColor: NSColor? = nil) {
-        if let inColor {
-            self.inChart.setColor(inColor)
+        self.write {
+            if let inColor { self.inColor = inColor }
+            if let outColor { self.outColor = outColor }
         }
-        if let outColor {
-            self.outChart.setColor(outColor)
-        }
+        self.displayIfVisible()
     }
     
-    public func setTooltipState(_ newState: Bool) {
-        self.inChart.setTooltipEnabled(newState)
-        self.outChart.setTooltipEnabled(newState)
-    }
+    public func setTooltipState(_ newState: Bool) {}
     
-    public func setLegend(x: Bool, y: Bool) {
-        self.inChart.setLegend(x: x, y: y)
-    }
+    public func setLegend(x: Bool, y: Bool) {}
     
     public override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
-        
-        let safeHeight = max(newSize.height, 2)
-        let halfHeight = safeHeight/2
-        let topFrame = NSRect(x: 0, y: halfHeight, width: newSize.width, height: halfHeight)
-        let bottomFrame = NSRect(x: 0, y: 0, width: newSize.width, height: halfHeight)
-        
-        self.inChart.frame = self.reversedOrder ? topFrame : bottomFrame
-        self.outChart.frame = self.reversedOrder ? bottomFrame : topFrame
+        self.hostingView?.frame = NSRect(origin: .zero, size: newSize)
     }
 }
 
 public class PieChartView: ChartView {
+    private var segments: [ColorValue] = []
+    private var color: NSColor = NSColor.systemBlue
     private var filled: Bool = false
     private var drawValue: Bool = false
     private var drawNeedle: Bool = false
     private var openCircle: Bool = false
+    private var usageValue: Double? = nil
+    private var centerText: String? = nil
+    private var activeSegment: Int? = nil
     private var nonActiveSegmentColor: NSColor = NSColor.lightGray
     
-    private var value: Double? = nil
-    private var text: String? = nil
-    private var activeSegment: Int? = nil
-    private var segments: [ColorValue] = []
-    private var color: NSColor = NSColor.systemBlue
+    private var hostingView: NSHostingView<PieChartContent>?
     
     public init(frame: NSRect = .zero, segments: [ColorValue] = [], filled: Bool = false, drawValue: Bool = false, drawNeedle: Bool = false, openCircle: Bool = false) {
         self.filled = filled
@@ -718,6 +493,13 @@ public class PieChartView: ChartView {
         
         super.init(frame: frame, queueLabel: "eu.exelban.Stats.Charts.Pie")
         
+        let content = PieChartContent(segments: self.segments, openCircle: self.openCircle)
+        let hostingView = NSHostingView<PieChartContent>(rootView: content)
+        hostingView.frame = self.bounds
+        hostingView.autoresizingMask = [.width, .height]
+        self.addSubview(hostingView)
+        self.hostingView = hostingView
+        
         self.setAccessibilityElement(true)
     }
     
@@ -725,182 +507,19 @@ public class PieChartView: ChartView {
         fatalError("init(coder:) has not been implemented")
     }
     
-    public override func draw(_ rect: CGRect) {
-        var filled: Bool = false
-        var drawValue: Bool = false
-        var drawNeedle: Bool = false
-        var openCircle: Bool = false
-        var nonActiveSegmentColor: NSColor = NSColor.lightGray
-        var value: Double? = nil
-        var text: String? = nil
-        var activeSegment: Int? = nil
-        var segments: [ColorValue] = []
-        var color: NSColor = NSColor.systemBlue
-        self.read {
-            filled = self.filled
-            drawValue = self.drawValue
-            drawNeedle = self.drawNeedle
-            openCircle = self.openCircle
-            nonActiveSegmentColor = self.nonActiveSegmentColor
-            value = self.value
-            text = self.text
-            activeSegment = self.activeSegment
-            segments = self.segments
-            color = self.color
-        }
-        
-        let arcWidth: CGFloat = filled ? min(self.frame.width, self.frame.height) / 2 : 7
-        let fullCircle: CGFloat = 2 * CGFloat.pi
-        let arcSpan: CGFloat = openCircle ? (3/2) * CGFloat.pi : fullCircle
-        if segments.isEmpty {
-            segments = [ColorValue(value ?? 0, color: color)]
-        }
-        
-        if openCircle {
-            let totalAmount = segments.reduce(0) { $0 + $1.value }
-            if totalAmount < 1 {
-                segments.append(ColorValue(Double(1-totalAmount), color: NSColor.lightGray.withAlphaComponent(0.5)))
-            }
-        } else {
-            let totalAmount = segments.reduce(0) { $0 + $1.value }
-            if totalAmount < 1 {
-                segments.append(ColorValue(Double(1-totalAmount), color: nonActiveSegmentColor.withAlphaComponent(0.5)))
-            }
-        }
-        
-        let centerPoint = CGPoint(x: self.frame.width/2, y: self.frame.height/2)
-        let radius = (min(self.frame.width, self.frame.height) - arcWidth) / 2
-        
-        guard let context = NSGraphicsContext.current?.cgContext else { return }
-        context.setShouldAntialias(true)
-        
-        context.setLineWidth(arcWidth)
-        context.setLineCap(openCircle ? .round : .butt)
-        
-        if openCircle {
-            let startAngle: CGFloat = CGFloat.pi + CGFloat.pi/4
-            var previousAngle = startAngle
-            
-            for segment in segments {
-                let currentAngle: CGFloat = previousAngle - (CGFloat(segment.value) * arcSpan)
-                
-                if let color = segment.color {
-                    context.setStrokeColor(color.cgColor)
-                }
-                context.addArc(center: centerPoint, radius: radius, startAngle: previousAngle, endAngle: currentAngle, clockwise: true)
-                context.strokePath()
-                
-                previousAngle = currentAngle
-            }
-        } else {
-            let startAngle: CGFloat = CGFloat.pi/2
-            var previousAngle = startAngle
-            
-            for segment in segments.reversed() {
-                let currentAngle: CGFloat = previousAngle + (CGFloat(segment.value) * fullCircle)
-                
-                if let color = segment.color {
-                    context.setStrokeColor(color.cgColor)
-                }
-                context.addArc(center: centerPoint, radius: radius, startAngle: previousAngle, endAngle: currentAngle, clockwise: false)
-                context.strokePath()
-                
-                previousAngle = currentAngle
-            }
-        }
-        
-        if drawNeedle, let activeSegment = activeSegment, !segments.isEmpty {
-            let needleEndSize: CGFloat = 2
-            let startAngle: CGFloat = CGFloat.pi + CGFloat.pi/4
-            let idx = min(activeSegment, segments.count - 1)
-            var needleValue: CGFloat = 0
-            for i in 0..<idx {
-                needleValue += CGFloat(segments[i].value)
-            }
-            needleValue += CGFloat(segments[idx].value) / 2
-            let needleAngle = startAngle - needleValue * arcSpan
-            let needleLength = radius - arcWidth/2
-            
-            let tip = CGPoint(
-                x: centerPoint.x + needleLength * cos(needleAngle),
-                y: centerPoint.y + needleLength * sin(needleAngle)
-            )
-            let perpAngle = needleAngle + CGFloat.pi/2
-            let base1 = CGPoint(
-                x: centerPoint.x + needleEndSize * cos(perpAngle),
-                y: centerPoint.y + needleEndSize * sin(perpAngle)
-            )
-            let base2 = CGPoint(
-                x: centerPoint.x - needleEndSize * cos(perpAngle),
-                y: centerPoint.y - needleEndSize * sin(perpAngle)
-            )
-            
-            let needlePath = NSBezierPath()
-            needlePath.move(to: tip)
-            needlePath.line(to: base1)
-            needlePath.line(to: base2)
-            needlePath.close()
-            
-            let needleCirclePath = NSBezierPath(
-                roundedRect: NSRect(
-                    x: centerPoint.x - needleEndSize,
-                    y: centerPoint.y - needleEndSize,
-                    width: needleEndSize * 2,
-                    height: needleEndSize * 2
-                ),
-                xRadius: needleEndSize * 2,
-                yRadius: needleEndSize * 2
-            )
-            needleCirclePath.close()
-            
-            NSColor.systemBlue.setFill()
-            needlePath.fill()
-            needleCirclePath.fill()
-        }
-        
-        if drawNeedle, let activeSegment = activeSegment {
-            let stringAttributes = [
-                NSAttributedString.Key.font: NSFont.systemFont(ofSize: 9, weight: .regular),
-                NSAttributedString.Key.foregroundColor: isDarkMode ? NSColor.white : NSColor.textColor,
-                NSAttributedString.Key.paragraphStyle: NSMutableParagraphStyle()
-            ]
-            
-            let text = "\(activeSegment+1)"
-            let width: CGFloat = text.widthOfString(usingFont: NSFont.systemFont(ofSize: 9))
-            let rect = CGRect(x: (self.frame.width-width)/2, y: (self.frame.height-26)/2, width: width, height: 12)
-            let str = NSAttributedString.init(string: text, attributes: stringAttributes)
-            str.draw(with: rect)
-        } else if let text = text {
-            let style = NSMutableParagraphStyle()
-            style.alignment = .center
-            let stringAttributes = [
-                NSAttributedString.Key.font: NSFont.systemFont(ofSize: 10, weight: .regular),
-                NSAttributedString.Key.foregroundColor: isDarkMode ? NSColor.white : NSColor.textColor,
-                NSAttributedString.Key.paragraphStyle: style
-            ]
-            
-            let width: CGFloat = text.widthOfString(usingFont: NSFont.systemFont(ofSize: 10))
-            let rect = CGRect(x: ((self.frame.width-width)/2)-0.5, y: (self.frame.height-6)/2, width: width, height: 13)
-            let str = NSAttributedString.init(string: text, attributes: stringAttributes)
-            str.draw(with: rect)
-        } else if let value = value, drawValue {
-            let stringAttributes = [
-                NSAttributedString.Key.font: NSFont.systemFont(ofSize: 15, weight: .regular),
-                NSAttributedString.Key.foregroundColor: isDarkMode ? NSColor.white : NSColor.textColor,
-                NSAttributedString.Key.paragraphStyle: NSMutableParagraphStyle()
-            ]
-            
-            let percentage = "\(Int(value.isFinite ? value.rounded(toPlaces: 2) * 100 : 0))%"
-            let width: CGFloat = percentage.widthOfString(usingFont: NSFont.systemFont(ofSize: 15))
-            let rect = CGRect(x: (self.frame.width-width)/2, y: (self.frame.height-11)/2, width: width, height: 12)
-            let str = NSAttributedString.init(string: percentage, attributes: stringAttributes)
-            str.draw(with: rect)
-        }
+    public override func draw(_ rect: CGRect) {}
+    
+    override func updateSwiftUI() {
+        let content = PieChartContent(
+            segments: self.read { self.segments },
+            openCircle: self.read { self.openCircle }
+        )
+        self.hostingView?.rootView = content
     }
     
     public func setValue(_ value: Double) {
         let sanitized = value.isFinite ? value : 0
-        self.write { self.value = self.openCircle ? (sanitized > 1 ? sanitized/100 : sanitized) : sanitized }
+        self.write { self.usageValue = self.openCircle ? (sanitized > 1 ? sanitized/100 : sanitized) : sanitized }
         self.displayIfVisible()
     }
     
@@ -910,7 +529,7 @@ public class PieChartView: ChartView {
     }
     
     public func setText(_ value: String) {
-        self.write { self.text = value }
+        self.write { self.centerText = value }
         self.displayIfVisible()
     }
     
@@ -1182,81 +801,223 @@ public class GridChartView: ChartView {
 }
 
 public class BarChartView: ChartView {
-    private var values: [ColorValue] = []
+    private var values: [[ColorValue]] = []
     private var cursor: CGPoint? = nil
     
     private var size: CGFloat?
     private var horizontal: Bool
+    
+    private var hostingView: NSHostingView<BarChartContent>?
     
     public init(frame: NSRect = NSRect.zero, size: CGFloat? = nil, horizontal: Bool = false) {
         self.size = size
         self.horizontal = horizontal
         
         super.init(frame: frame, queueLabel: "eu.exelban.Stats.Charts.Bar")
+        
+        let content = BarChartContent(values: self.values, horizontal: self.horizontal)
+        let hostingView = NSHostingView<BarChartContent>(rootView: content)
+        hostingView.frame = self.bounds
+        hostingView.autoresizingMask = [.width, .height]
+        self.addSubview(hostingView)
+        self.hostingView = hostingView
     }
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
-    public override func draw(_ dirtyRect: NSRect) {
-        var widthHeight: CGFloat? = nil
-        var isHorizontal: Bool = false
-        var values: [ColorValue] = []
-        self.read {
-            widthHeight = self.size
-            isHorizontal = self.horizontal
-            values = self.values
-        }
-        
-        let totalValue = values.reduce(0) { $0 + $1.value }
-        if totalValue < 1 {
-            values.append(ColorValue(1 - totalValue, color: NSColor.lightGray.withAlphaComponent(0.25)))
-        }
-        
-        let barSize = widthHeight ?? (isHorizontal ? self.frame.height : self.frame.width)
-        let adjustedTotal = values.reduce(0) { $0 + $1.value }
-        guard adjustedTotal > 0 else { return }
-        
-        guard let context = NSGraphicsContext.current?.cgContext else { return }
-        
-        let barRect: NSRect = isHorizontal
-            ? NSRect(x: 0, y: (self.frame.height - barSize) / 2, width: self.frame.width, height: barSize)
-            : NSRect(x: (self.frame.width - barSize) / 2, y: 0, width: barSize, height: self.frame.height)
-        let clipPath = NSBezierPath(roundedRect: barRect, xRadius: 3, yRadius: 3)
-        
-        context.saveGState()
-        clipPath.addClip()
-        
-        var list: [(value: Double, path: NSBezierPath)] = []
-        var offset: CGFloat = 0
-        
-        for value in values {
-            let color = value.color ?? .controlAccentColor
-            let segmentLength = CGFloat(value.value / adjustedTotal) * (isHorizontal ? self.frame.width : self.frame.height)
-            
-            let rect: NSRect = isHorizontal
-                ? NSRect(x: offset, y: (self.frame.height - barSize) / 2, width: segmentLength, height: barSize)
-                : NSRect(x: (self.frame.width - barSize) / 2, y: offset, width: barSize, height: segmentLength)
-            
-            let path = NSBezierPath(rect: rect)
-            color.setFill()
-            path.fill()
-            
-            list.append((value: value.value, path: path))
-            offset += segmentLength
-        }
-        
-        context.restoreGState()
+    public override func draw(_ dirtyRect: NSRect) {}
+    
+    override func updateSwiftUI() {
+        let content = BarChartContent(
+            values: self.read { self.values },
+            horizontal: self.read { self.horizontal }
+        )
+        self.hostingView?.rootView = content
     }
     
     public func setValue(_ values: ColorValue) {
-        self.write { self.values = [values] }
+        self.write { self.values = [[values]] }
         self.displayIfVisible()
     }
     
     public func setValues(_ values: [ColorValue]) {
+        self.write { self.values = [values] }
+        self.displayIfVisible()
+    }
+    
+    public func setValues(_ values: [[ColorValue]]) {
         self.write { self.values = values }
         self.displayIfVisible()
+    }
+}
+
+public struct LineChartContent: View {
+    let points: [DoubleValue]
+    let color: Color
+    let gradient: Gradient?
+    let scale: Scale
+    let fixedScale: Double
+    let zeroValue: Double
+    let minMax: Bool
+    let suffix: String
+    
+    public init(points: [DoubleValue?], color: NSColor, gradient: NSGradient? = nil, scale: Scale = .none,
+                fixedScale: Double = 1, zeroValue: Double = 0.01, minMax: Bool = false, suffix: String = "%") {
+        self.points = points.compactMap { $0 }
+        self.color = Color(color)
+        if let nsGradient = gradient {
+            var colors: [Color] = []
+            for i in 0..<nsGradient.numberOfColorStops {
+                var color = NSColor.black
+                nsGradient.getColor(&color, location: nil, at: i)
+                colors.append(Color(color))
+            }
+            self.gradient = Gradient(colors: colors)
+        } else {
+            self.gradient = nil
+        }
+        self.scale = scale
+        self.fixedScale = fixedScale
+        self.zeroValue = zeroValue
+        self.minMax = minMax
+        self.suffix = suffix
+    }
+    
+    public var body: some View {
+        Chart(points) { point in
+            AreaMark(
+                x: .value("Time", point.ts),
+                y: .value("Value", point.value)
+            )
+            .foregroundStyle(gradient != nil ? AnyShapeStyle(LinearGradient(gradient: gradient!, startPoint: .bottom, endPoint: .top)) : AnyShapeStyle(color.opacity(0.5)))
+            .interpolationMethod(.linear)
+            
+            LineMark(
+                x: .value("Time", point.ts),
+                y: .value("Value", point.value)
+            )
+            .foregroundStyle(color)
+            .interpolationMethod(.linear)
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartYScale(domain: 0...max(fixedScale, points.map { $0.value }.max() ?? 1))
+        .overlay(alignment: .topLeading) {
+            if minMax, let maxVal = points.map({ $0.value }).max() {
+                Text("\(Int(maxVal * 100))\(suffix)")
+                    .font(.system(size: 9, weight: .light))
+                    .foregroundStyle(.secondary)
+                    .padding(2)
+            }
+        }
+    }
+}
+
+public struct BarChartContent: View {
+    let values: [[ColorValue]]
+    let horizontal: Bool
+    
+    public init(values: [[ColorValue]], horizontal: Bool = false) {
+        self.values = values
+        self.horizontal = horizontal
+    }
+    
+    public var body: some View {
+        Chart {
+            ForEach(Array(values.enumerated()), id: \.offset) { barIndex, bar in
+                ForEach(Array(bar.enumerated()), id: \.offset) { _, item in
+                    if horizontal {
+                        BarMark(
+                            x: .value("Value", item.value),
+                            y: .value("Bar", "Bar \(barIndex)"),
+                            stacking: .standard
+                        )
+                        .foregroundStyle(item.color != nil ? Color(item.color!) : .accentColor)
+                    } else {
+                        BarMark(
+                            x: .value("Bar", "Bar \(barIndex)"),
+                            y: .value("Value", item.value),
+                            stacking: .standard
+                        )
+                        .foregroundStyle(item.color != nil ? Color(item.color!) : .accentColor)
+                    }
+                }
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+    }
+}
+
+public struct PieChartContent: View {
+    let segments: [ColorValue]
+    let openCircle: Bool
+    
+    public init(segments: [ColorValue], openCircle: Bool = false) {
+        self.segments = segments
+        self.openCircle = openCircle
+    }
+    
+    public var body: some View {
+        Chart(segments) { segment in
+            SectorMark(
+                angle: .value("Value", segment.value),
+                innerRadius: .ratio(0.6),
+                angularInset: 1.0
+            )
+            .cornerRadius(2)
+            .foregroundStyle(segment.color != nil ? Color(segment.color!) : .accentColor)
+        }
+        .chartLegend(.hidden)
+    }
+}
+
+public struct NetworkChartContent: View {
+    let inPoints: [DoubleValue]
+    let outPoints: [DoubleValue]
+    let inColor: Color
+    let outColor: Color
+    let reversedOrder: Bool
+    
+    public init(inPoints: [DoubleValue?], outPoints: [DoubleValue?], inColor: NSColor, outColor: NSColor, reversedOrder: Bool = false) {
+        self.inPoints = inPoints.compactMap { $0 }
+        self.outPoints = outPoints.compactMap { $0 }
+        self.inColor = Color(inColor)
+        self.outColor = Color(outColor)
+        self.reversedOrder = reversedOrder
+    }
+    
+    public var body: some View {
+        VStack(spacing: 0) {
+            if reversedOrder {
+                chartView(points: inPoints, color: inColor, flip: true)
+                chartView(points: outPoints, color: outColor, flip: false)
+            } else {
+                chartView(points: outPoints, color: outColor, flip: true)
+                chartView(points: inPoints, color: inColor, flip: false)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func chartView(points: [DoubleValue], color: Color, flip: Bool) -> some View {
+        Chart(points) { point in
+            AreaMark(
+                x: .value("Time", point.ts),
+                y: .value("Value", point.value)
+            )
+            .foregroundStyle(color.opacity(0.5))
+            
+            LineMark(
+                x: .value("Time", point.ts),
+                y: .value("Value", point.value)
+            )
+            .foregroundStyle(color)
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .scaleEffect(y: flip ? -1 : 1)
     }
 }

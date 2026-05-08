@@ -11,7 +11,8 @@
 
 import Cocoa
 
-public struct DoubleValue: Sendable {
+public struct DoubleValue: Identifiable, Sendable {
+    public var id: UUID = UUID()
     public var ts: Date = Date()
     public let value: Double
     
@@ -23,7 +24,8 @@ extension [DoubleValue] {
     public func max() -> Double? { self.max(by: { $0.value < $1.value })?.value }
 }
 
-public struct ColorValue: Equatable, @unchecked Sendable {
+public struct ColorValue: Identifiable, Equatable, @unchecked Sendable {
+    public var id: UUID = UUID()
     public let value: Double
     public var color: NSColor?
     

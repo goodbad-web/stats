@@ -132,6 +132,8 @@ public class LineChart: WidgetWrapper {
             let str = NSAttributedString.init(string: "\(char)", attributes: stringAttributes)
             self.NSLabelCharts.append(str)
         }
+        
+        self.addSubview(self.chart)
     }
     
     required init?(coder: NSCoder) {
@@ -227,16 +229,16 @@ public class LineChart: WidgetWrapper {
         }
 
         context.saveGState()
-        context.translateBy(x: x+offset+lineWidth, y: offset)
-
-        let chartSize = NSSize(
+        
+        let chartFrame = NSRect(
+            x: x+offset+lineWidth,
+            y: offset,
             width: box.bounds.width - (offset*2+lineWidth),
             height: box.bounds.height - offset
         )
         self.chart.setColor(color)
-        self.chart.setFrameSize(chartSize)
-        self.chart.draw(NSRect(origin: .zero, size: chartSize))
-
+        self.chart.frame = chartFrame
+        
         context.restoreGState()
         
         if self.boxState || self.frameState {
