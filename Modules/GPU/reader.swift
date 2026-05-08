@@ -36,210 +36,49 @@ private func maxANEPower(for platform: Platform?) -> Double {
     }
 }
 
-internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
-    private nonisolated(unsafe) var gpus: GPUs = GPUs()
-    private nonisolated(unsafe) var displays: [gpu_s] = []
-    private nonisolated(unsafe) var devices: [device] = []
-
-    private nonisolated(unsafe) var powerChannels: CFMutableDictionary? = nil
-    private nonisolated(unsafe) var powerSubscription: IOReportSubscriptionRef? = nil
-    private nonisolated(unsafe) var previousPowerEnergy: [String: Double] = [:]
-    private nonisolated(unsafe) var previousPowerRead: Date? = nil
-    private nonisolated(unsafe) var aneMaxPower: Double = 8.0
-
-    private nonisolated(unsafe) var framesChannels: CFMutableDictionary? = nil
-    private nonisolated(unsafe) var framesSubscription: IOReportSubscriptionRef? = nil
-    private nonisolated(unsafe) var previousFramesCount: Int64 = 0
-    private nonisolated(unsafe) var previousFramesTime: CFAbsoluteTime = 0
+private actor GPUReaderWorker {
+    private var powerChannels: CFMutableDictionary?
+    private var powerSubscription: IOReportSubscriptionRef?
+    private var previousPowerEnergy: [String: Double] = [:]
+    private var previousPowerRead: Date? = nil
     
-    public override func setup() {
+    private var framesChannels: CFMutableDictionary?
+    private var framesSubscription: IOReportSubscriptionRef?
+    private var previousFramesCount: Int64 = 0
+    private var previousFramesTime: CFAbsoluteTime = 0
+    
+    private let aneMaxPower: Double
+    private var displays: [gpu_s] = []
+    
+    init() {
+        self.aneMaxPower = maxANEPower(for: SystemKit.shared.device.platform)
         if let list = SystemKit.shared.device.info.gpu {
             self.displays = list
         }
         
-        self.aneMaxPower = maxANEPower(for: SystemKit.shared.device.platform)
-        self.setupPower()
-        self.setupFrames()
-    }
-    
-    @MainActor public override func terminate() {
-        self.powerChannels = nil
-        self.powerSubscription = nil
-        self.framesChannels = nil
-        self.framesSubscription = nil
-    }
-    
-    private let readLock = OSAllocatedUnfairLock(initialState: false)
-    
-    nonisolated public override func read() {
-        let isReading = self.readLock.withLock { $0 }
-        guard !isReading else { return }
-        self.readLock.withLock { $0 = true }
+        let (pc, ps) = Self.initializePower()
+        self.powerChannels = pc
+        self.powerSubscription = ps
         
-        Task { @MainActor in
-            let updatedGPUs = await Task.detached(priority: .userInitiated) {
-                guard let accelerators = fetchIOService(kIOAcceleratorClassName) else {
-                    return self.gpus
-                }
-                
-                let vramTotal = Int64(ProcessInfo.processInfo.physicalMemory)
-                
-                for (index, accelerator) in accelerators.enumerated() {
-                    guard let IOClass = accelerator.object(forKey: "IOClass") as? String else {
-                        continue
-                    }
-                    
-                    guard let stats = accelerator["PerformanceStatistics"] as? [String: Any] else {
-                        continue
-                    }
-                    
-                    var vendor: String? = nil
-                    var model: String = ""
-                    var cores: Int? = nil
-                    
-                    let ioClass = IOClass.lowercased()
-                    var type: GPU_types = .unknown
-                    
-                    let utilization: Int? = stats["Device Utilization %"] as? Int ?? stats["GPU Activity(%)"] as? Int ?? nil
-                    let renderUtilization: Int? = stats["Renderer Utilization %"] as? Int ?? nil
-                    let tilerUtilization: Int? = stats["Tiler Utilization %"] as? Int ?? nil
-                    let temperature: Int? = stats["Temperature(C)"] as? Int ?? nil
-                    let fanSpeed: Int? = stats["Fan Speed(%)"] as? Int ?? nil
-                    let coreClock: Int? = stats["Core Clock(MHz)"] as? Int ?? nil
-                    let memoryClock: Int? = stats["Memory Clock(MHz)"] as? Int ?? nil
-                    
-                    let vramUsed: Int64? = stats["In use system memory"] as? Int64 ?? stats["vramUsedBytes"] as? Int64 ?? nil
-                    
-                    var topProcesses: [TopProcess] = []
-                    if let clients = accelerator["Clients"] as? NSArray {
-                        for client in clients {
-                            guard let clientDict = client as? NSDictionary else { continue }
-                            
-                            let pid = (clientDict["ProcessID"] as? NSNumber)?.intValue ?? (clientDict["pid"] as? NSNumber)?.intValue ?? 0
-                            let name = (clientDict["ProcessName"] as? String) ?? (clientDict["ExecutableName"] as? String) ?? "Unknown"
-                            guard pid != 0 && name != "Unknown" else { continue }
-                            
-                            var usage: Double = 0
-                            if let stats = clientDict["PerformanceStatistics"] as? NSDictionary {
-                                usage = (stats["Device Utilization %"] as? NSNumber)?.doubleValue ?? (stats["GPU Activity(%)"] as? NSNumber)?.doubleValue ?? 0
-                            } else if let u = clientDict["Device Utilization %"] as? NSNumber {
-                                usage = u.doubleValue
-                            }
-                            
-                            topProcesses.append(TopProcess(pid: pid, name: name, usage: usage))
-                        }
-                    }
-                    topProcesses.sort { $0.usage > $1.usage }
-                    
-                    if ioClass.contains("agx") { // apple
-                        model = stats["model"] as? String ?? "Apple Graphics"
-                        if let display = self.displays.first(where: { $0.vendor == "sppci_vendor_Apple" }) {
-                            if let name = display.name {
-                                model = name
-                            }
-                            if let num = display.cores {
-                                cores = num
-                            }
-                        }
-                        vendor = "Apple"
-                        type = .integrated
-                    } else {
-                        model = "Unknown"
-                        type = .unknown
-                    }
-                    
-                    let id = "\(model) #\(index)"
-                    
-                    if self.gpus.list.first(where: { $0.id == id }) == nil {
-                        self.gpus.list.append(GPU_Info(
-                            id: id,
-                            type: type.rawValue,
-                            IOClass: IOClass,
-                            vendor: vendor,
-                            model: model,
-                            cores: cores
-                        ))
-                        if self.gpus.list.last?.id == id {
-                            self.gpus.list[self.gpus.list.count - 1].vramTotal = vramTotal
-                        }
-                    }
-                    guard let idx = self.gpus.list.firstIndex(where: { $0.id == id }) else {
-                        continue
-                    }
-                    
-                    if let value = vramUsed, let total = self.gpus.list[idx].vramTotal, total != 0 {
-                        self.gpus.list[idx].vramUsed = Double(value) / Double(total)
-                    }
-                    self.gpus.list[idx].topProcesses = topProcesses
-                    
-                    if let agcInfo = accelerator["AGCInfo"] as? [String: Int], let state = agcInfo["poweredOffByAGC"] {
-                        self.gpus.list[idx].state = state == 0
-                    }
-                    
-                    if var value = utilization {
-                        if value > 100 {
-                            value = 100
-                        }
-                        self.gpus.list[idx].utilization = Double(value)/100
-                    }
-                    if var value = renderUtilization {
-                        if value > 100 {
-                            value = 100
-                        }
-                        self.gpus.list[idx].renderUtilization = Double(value)/100
-                    }
-                    if var value = tilerUtilization {
-                        if value > 100 {
-                            value = 100
-                        }
-                        self.gpus.list[idx].tilerUtilization = Double(value)/100
-                    }
-                    if let value = temperature {
-                        self.gpus.list[idx].temperature = Double(value)
-                    }
-                    if let value = fanSpeed {
-                        self.gpus.list[idx].fanSpeed = value
-                    }
-                    if let value = coreClock {
-                        self.gpus.list[idx].coreClock = value
-                    }
-                    if let value = memoryClock {
-                        self.gpus.list[idx].memoryClock = value
-                    }
-                }
-                
-                let power = self.readPower()
-                let anePower = power["ANE"] ?? 0
-                let gpuPower = power["GPU"] ?? 0
-                let aneUtil = anePower / self.aneMaxPower
-                let fpsValue = self.readFrames()
-                
-                for i in self.gpus.list.indices where self.gpus.list[i].IOClass.lowercased().contains("agx") {
-                    self.gpus.list[i].aneUtilization = min(1, max(0, aneUtil))
-                    self.gpus.list[i].gpuPower = gpuPower
-                    self.gpus.list[i].fps = fpsValue
-                }
-                
-                self.gpus.list.sort{ !$0.state && $1.state }
-                return self.gpus
-            }.value
-            
-            if let old = self.value, old == updatedGPUs {
-                self.readLock.withLock { $0 = false }
-                return
-            }
-            
-            self.callback(updatedGPUs)
-            self.readLock.withLock { $0 = false }
-        }
+        let (fc, fs) = Self.initializeFrames()
+        self.framesChannels = fc
+        self.framesSubscription = fs
     }
     
-    // MARK: - FPS
+    static private func initializePower() -> (CFMutableDictionary?, IOReportSubscriptionRef?) {
+        guard let channel = IOReportCopyChannelsInGroup("Energy Model" as CFString, nil, 0, 0, 0)?.takeRetainedValue() else { return (nil, nil) }
+        let size = CFDictionaryGetCount(channel)
+        guard let mutable = CFDictionaryCreateMutableCopy(kCFAllocatorDefault, size, channel),
+              let dict = (mutable as AnyObject) as? [String: Any], dict["IOReportChannels"] != nil else { return (nil, nil) }
+        var sub: Unmanaged<CFMutableDictionary>?
+        let subscription = IOReportCreateSubscription(nil, mutable, &sub, 0, nil)
+        sub?.release()
+        return (mutable, subscription)
+    }
     
-    private func setupFrames() {
+    static private func initializeFrames() -> (CFMutableDictionary?, IOReportSubscriptionRef?) {
         let groups = ["DCP", "DCPEXT0", "DCPEXT1", "DCPEXT2", "DCPEXT3"]
         var merged: CFMutableDictionary? = nil
-        
         for group in groups {
             guard let channel = IOReportCopyChannelsInGroup(group as CFString, "swap" as CFString, 0, 0, 0)?.takeRetainedValue() else { continue }
             if merged == nil {
@@ -248,16 +87,162 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
                 IOReportMergeChannels(merged, channel, nil)
             }
         }
-        
-        guard let merged, let dict = (merged as AnyObject) as? [String: Any], dict["IOReportChannels"] != nil else { return }
-        
-        self.framesChannels = merged
+        guard let merged, let dict = (merged as AnyObject) as? [String: Any], dict["IOReportChannels"] != nil else { return (nil, nil) }
         var sub: Unmanaged<CFMutableDictionary>?
-        self.framesSubscription = IOReportCreateSubscription(nil, merged, &sub, 0, nil)
+        let subscription = IOReportCreateSubscription(nil, merged, &sub, 0, nil)
         sub?.release()
+        return (merged, subscription)
     }
     
-    nonisolated private func readFrames() -> Double? {
+    func read(currentGPUs: GPUs) async -> GPUs {
+        guard let accelerators = fetchIOService(kIOAcceleratorClassName) else {
+            return currentGPUs
+        }
+        
+        let updatedGPUs = currentGPUs
+        let vramTotal = Int64(ProcessInfo.processInfo.physicalMemory)
+        
+        for (index, accelerator) in accelerators.enumerated() {
+            guard let IOClass = accelerator.object(forKey: "IOClass") as? String else {
+                continue
+            }
+            
+            guard let stats = accelerator["PerformanceStatistics"] as? [String: Any] else {
+                continue
+            }
+            
+            var vendor: String? = nil
+            var model: String = ""
+            var cores: Int? = nil
+            
+            let ioClass = IOClass.lowercased()
+            var type: GPU_types = .unknown
+            
+            let utilization: Int? = stats["Device Utilization %"] as? Int ?? stats["GPU Activity(%)"] as? Int ?? nil
+            let renderUtilization: Int? = stats["Renderer Utilization %"] as? Int ?? nil
+            let tilerUtilization: Int? = stats["Tiler Utilization %"] as? Int ?? nil
+            let temperature: Int? = stats["Temperature(C)"] as? Int ?? nil
+            let fanSpeed: Int? = stats["Fan Speed(%)"] as? Int ?? nil
+            let coreClock: Int? = stats["Core Clock(MHz)"] as? Int ?? nil
+            let memoryClock: Int? = stats["Memory Clock(MHz)"] as? Int ?? nil
+            
+            let vramUsed: Int64? = stats["In use system memory"] as? Int64 ?? stats["vramUsedBytes"] as? Int64 ?? nil
+            
+            var topProcesses: [TopProcess] = []
+            if let clients = accelerator["Clients"] as? NSArray {
+                for client in clients {
+                    guard let clientDict = client as? NSDictionary else { continue }
+                    
+                    let pid = (clientDict["ProcessID"] as? NSNumber)?.intValue ?? (clientDict["pid"] as? NSNumber)?.intValue ?? 0
+                    let name = (clientDict["ProcessName"] as? String) ?? (clientDict["ExecutableName"] as? String) ?? "Unknown"
+                    guard pid != 0 && name != "Unknown" else { continue }
+                    
+                    var usage: Double = 0
+                    if let stats = clientDict["PerformanceStatistics"] as? NSDictionary {
+                        usage = (stats["Device Utilization %"] as? NSNumber)?.doubleValue ?? (stats["GPU Activity(%)"] as? NSNumber)?.doubleValue ?? 0
+                    } else if let u = clientDict["Device Utilization %"] as? NSNumber {
+                        usage = u.doubleValue
+                    }
+                    
+                    topProcesses.append(TopProcess(pid: pid, name: name, usage: usage))
+                }
+            }
+            topProcesses.sort { $0.usage > $1.usage }
+            
+            if ioClass.contains("agx") { // apple
+                model = stats["model"] as? String ?? "Apple Graphics"
+                if let display = self.displays.first(where: { $0.vendor == "sppci_vendor_Apple" }) {
+                    if let name = display.name {
+                        model = name
+                    }
+                    if let num = display.cores {
+                        cores = num
+                    }
+                }
+                vendor = "Apple"
+                type = .integrated
+            } else {
+                model = "Unknown"
+                type = .unknown
+            }
+            
+            let id = "\(model) #\(index)"
+            
+            if updatedGPUs.list.first(where: { $0.id == id }) == nil {
+                updatedGPUs.list.append(GPU_Info(
+                    id: id,
+                    type: type.rawValue,
+                    IOClass: IOClass,
+                    vendor: vendor,
+                    model: model,
+                    cores: cores
+                ))
+                if updatedGPUs.list.last?.id == id {
+                    updatedGPUs.list[updatedGPUs.list.count - 1].vramTotal = vramTotal
+                }
+            }
+            guard let idx = updatedGPUs.list.firstIndex(where: { $0.id == id }) else {
+                continue
+            }
+            
+            if let value = vramUsed, let total = updatedGPUs.list[idx].vramTotal, total != 0 {
+                updatedGPUs.list[idx].vramUsed = Double(value) / Double(total)
+            }
+            updatedGPUs.list[idx].topProcesses = topProcesses
+            
+            if let agcInfo = accelerator["AGCInfo"] as? [String: Int], let state = agcInfo["poweredOffByAGC"] {
+                updatedGPUs.list[idx].state = state == 0
+            }
+            
+            if var value = utilization {
+                if value > 100 {
+                    value = 100
+                }
+                updatedGPUs.list[idx].utilization = Double(value)/100
+            }
+            if var value = renderUtilization {
+                if value > 100 {
+                    value = 100
+                }
+                updatedGPUs.list[idx].renderUtilization = Double(value)/100
+            }
+            if var value = tilerUtilization {
+                if value > 100 {
+                    value = 100
+                }
+                updatedGPUs.list[idx].tilerUtilization = Double(value)/100
+            }
+            if let value = temperature {
+                updatedGPUs.list[idx].temperature = Double(value)
+            }
+            if let value = fanSpeed {
+                updatedGPUs.list[idx].fanSpeed = value
+            }
+            if let value = coreClock {
+                updatedGPUs.list[idx].coreClock = value
+            }
+            if let value = memoryClock {
+                updatedGPUs.list[idx].memoryClock = value
+            }
+        }
+        
+        let power = self.readPower()
+        let anePower = power["ANE"] ?? 0
+        let gpuPower = power["GPU"] ?? 0
+        let aneUtil = anePower / self.aneMaxPower
+        let fpsValue = self.readFrames()
+        
+        for i in updatedGPUs.list.indices where updatedGPUs.list[i].IOClass.lowercased().contains("agx") {
+            updatedGPUs.list[i].aneUtilization = min(1, max(0, aneUtil))
+            updatedGPUs.list[i].gpuPower = gpuPower
+            updatedGPUs.list[i].fps = fpsValue
+        }
+        
+        updatedGPUs.list.sort{ !$0.state && $1.state }
+        return updatedGPUs
+    }
+    
+    private func readFrames() -> Double? {
         guard let subscription = self.framesSubscription,
               let channels = self.framesChannels,
               let sample = IOReportCreateSamples(subscription, channels, nil)?.takeRetainedValue(),
@@ -291,22 +276,7 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
         return Double(delta) / elapsed
     }
     
-    // MARK: - Power
-    
-    private func setupPower() {
-        guard let channel = IOReportCopyChannelsInGroup("Energy Model" as CFString, nil, 0, 0, 0)?.takeRetainedValue() else { return }
-        
-        let size = CFDictionaryGetCount(channel)
-        guard let mutable = CFDictionaryCreateMutableCopy(kCFAllocatorDefault, size, channel),
-              let dict = (mutable as AnyObject) as? [String: Any], dict["IOReportChannels"] != nil else { return }
-        
-        self.powerChannels = mutable
-        var sub: Unmanaged<CFMutableDictionary>?
-        self.powerSubscription = IOReportCreateSubscription(nil, mutable, &sub, 0, nil)
-        sub?.release()
-    }
-    
-    nonisolated private func readPower() -> [String: Double] {
+    private func readPower() -> [String: Double] {
         guard let subscription = self.powerSubscription,
               let channels = self.powerChannels,
               let reportSample = IOReportCreateSamples(subscription, channels, nil)?.takeRetainedValue(),
@@ -368,5 +338,42 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
             }
         }
         return result
+    }
+}
+
+internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
+    private let worker = GPUReaderWorker()
+    private let usageState = OSAllocatedUnfairLock(initialState: GPUs())
+    
+    nonisolated private var gpus: GPUs {
+        get { self.usageState.withLock { $0 } }
+        set { self.usageState.withLock { $0 = newValue } }
+    }
+    
+    public override func setup() {}
+    
+    public override func terminate() {}
+    
+    private let readLock = OSAllocatedUnfairLock(initialState: false)
+    
+    nonisolated public override func read() {
+        let isReading = self.readLock.withLock { $0 }
+        guard !isReading else { return }
+        self.readLock.withLock { $0 = true }
+        
+        let currentGPUs = self.gpus
+        let worker = self.worker
+        
+        Task {
+            defer { self.readLock.withLock { $0 = false } }
+            let updatedGPUs = await worker.read(currentGPUs: currentGPUs)
+            
+            if let old = self.value, old == updatedGPUs {
+                return
+            }
+            
+            self.gpus = updatedGPUs
+            self.callback(updatedGPUs)
+        }
     }
 }
