@@ -182,9 +182,9 @@ public class RAM: Module {
     
     public override func updateReaderActivityModes() {
         let detailVisible = self.isPopupVisible || self.isSettingsWindowVisible
-        let usageMode: ReaderActivityMode = self.hasActiveValueWidget || detailVisible ? .active : .passive
+        let usageMode = SamplingPolicy.mode(hasActiveValueWidget: self.hasActiveValueWidget, detailVisible: detailVisible)
         self.usageReader?.setActivityMode(usageMode)
-        self.processReader?.setActivityMode(self.isPopupVisible ? .active : .paused)
+        self.processReader?.setActivityMode(SamplingPolicy.popupMode(popupVisible: self.isPopupVisible))
     }
     
     private func loadCallback(_ raw: RAM_Usage?) {

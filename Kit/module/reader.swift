@@ -93,7 +93,13 @@ private struct ReaderState<T> {
     public var observable = ObservableModel<T>()
     
     nonisolated private let module: ModuleType
-    private var history: Bool
+    nonisolated public var metricID: MetricID {
+        MetricID(module: self.module, reader: self.name)
+    }
+    nonisolated private let history: Bool
+    private let pipeline = MetricPipeline<T>()
+    private let cache = MetricCache<T>()
+    private let metricStore: LevelDBMetricHistoryStore
     private var repeatTask: Repeater?
     private var initlizalized: Bool = false
     private var userInterval: Int?
@@ -111,13 +117,16 @@ private struct ReaderState<T> {
         self.module = module
         self.history = history
         self.callbackHandler = callback
+        self.metricStore = .shared
         
         super.init()
-        DB.shared.setup(T.self, "\(module.stringValue)@\(self.name)")
-        if let lastValue = DB.shared.findOne(T.self, key: "\(module.stringValue)@\(self.name)") {
+        self.configureMetricPipeline()
+        self.metricStore.setup(T.self, id: self.metricID)
+        if let lastValue = self.metricStore.latest(T.self, id: self.metricID) {
             self.value = lastValue
             Task { @MainActor in
                 callback(lastValue)
+                self.observable.value = lastValue
             }
         }
         self.setup()
@@ -126,36 +135,29 @@ private struct ReaderState<T> {
     }
     
     deinit {
-        let v = self.value
-        DB.shared.insert(key: "\(self.module.stringValue)@\(self.name)", value: v, ts: self.history)
+        if let value = self.value {
+            let snapshot = MetricSnapshot(id: self.metricID, value: value, history: self.history)
+            self.metricStore.save(snapshot, force: true)
+        }
+        let metricID = self.metricID
+        Task {
+            await SamplingScheduler.shared.remove(metricID)
+        }
     }
     
     public func initStoreValues(title: String) {
         guard self.userInterval == nil else { return }
-        let updateInterval = Store.shared.int(key: "\(title)_updateInterval", defaultValue: self.defaultInterval)
+        let updateInterval = UserDefaultsSettingsStore.shared.int(
+            AppSettingsKeys.moduleUpdateInterval(title, defaultValue: self.defaultInterval)
+        )
         self.userInterval = updateInterval
         self.applyActivityMode(restart: false)
     }
     
     nonisolated public func callback(_ value: T?) {
-        let moduleKey = "\(self.module.stringValue)@\(self.name)"
         self.value = value
         if let value {
-            Task { @MainActor in
-                self.callbackHandler(value)
-            }
-            Remote.shared.send(key: moduleKey, value: value)
-            
-            Task { @MainActor in
-                if let ts = self.lastDBWrite, let interval = self.interval, Date().timeIntervalSince(ts) > interval * 10 {
-                    DB.shared.insert(key: moduleKey, value: value, ts: self.history)
-                    self.lastDBWrite = Date()
-                } else if self.lastDBWrite == nil {
-                    DB.shared.insert(key: moduleKey, value: value, ts: self.history)
-                    self.lastDBWrite = Date()
-                }
-                self.observable.value = value
-            }
+            self.pipeline.publish(MetricSnapshot(id: self.metricID, value: value, history: self.history))
         }
     }
     
@@ -215,6 +217,9 @@ private struct ReaderState<T> {
         guard self.activityMode != mode else { return }
         debug("Set activity mode: \(mode)", log: self.log)
         self.activityMode = mode
+        Task {
+            await SamplingScheduler.shared.setMode(mode, for: self.metricID)
+        }
         self.applyActivityMode(restart: false)
     }
     
@@ -258,7 +263,36 @@ private struct ReaderState<T> {
     }
     
     public func save(_ value: T) {
-        DB.shared.insert(key: "\(self.module.stringValue)@\(self.name)", value: value, ts: self.history, force: true)
+        self.metricStore.save(MetricSnapshot(id: self.metricID, value: value, history: self.history), force: true)
+    }
+
+    private func configureMetricPipeline() {
+        self.pipeline.subscribe { [weak self] snapshot in
+            self?.cache.update(snapshot)
+        }
+        self.pipeline.subscribe { snapshot in
+            RemoteMetricPublisher.shared.publish(snapshot)
+        }
+        self.pipeline.subscribe { [weak self] snapshot in
+            guard let self else { return }
+            
+            Task { @MainActor in
+                if let ts = self.lastDBWrite,
+                   let interval = self.interval,
+                   Date().timeIntervalSince(ts) <= interval * 10 {
+                    return
+                }
+                
+                self.metricStore.save(snapshot, force: false)
+                self.lastDBWrite = Date()
+            }
+        }
+        self.pipeline.subscribe { [weak self] snapshot in
+            Task { @MainActor in
+                self?.callbackHandler(snapshot.value)
+                self?.observable.value = snapshot.value
+            }
+        }
     }
     
     private func delayToNextSecondBoundary() -> TimeInterval {

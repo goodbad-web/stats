@@ -94,8 +94,8 @@ public struct module_c {
     
     public var name: String { config.name }
     public var combinedPosition: Int {
-        get { Store.shared.int(key: "\(self.name)_position", defaultValue: 0) }
-        set { Store.shared.set(key: "\(self.name)_position", value: newValue) }
+        get { UserDefaultsSettingsStore.shared.int(AppSettingsKeys.modulePosition(self.name)) }
+        set { UserDefaultsSettingsStore.shared.set(AppSettingsKeys.modulePosition(self.name), value: newValue) }
     }
     public var userDefaults: UserDefaults? = {
         widgetsUserDefaults
@@ -122,8 +122,8 @@ public struct module_c {
     private var readers: [Reader_p] = []
     
     private var pauseState: Bool {
-        get { Store.shared.bool(key: "pause", defaultValue: false) }
-        set { Store.shared.set(key: "pause", value: newValue) }
+        get { UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.pause) }
+        set { UserDefaultsSettingsStore.shared.set(AppSettingsKeys.pause, value: newValue) }
     }
     
     public init(
@@ -149,7 +149,9 @@ public struct module_c {
         self.previewView = preview
         self.menuBar = MenuBar(moduleName: self.config.name)
         self.available = self.isAvailable()
-        self.enabled = Store.shared.bool(key: "\(self.config.name)_state", defaultValue: self.config.defaultState)
+        self.enabled = UserDefaultsSettingsStore.shared.bool(
+            AppSettingsKeys.moduleState(self.config.name, defaultValue: self.config.defaultState)
+        )
         self.userDefaults?.set(self.enabled, forKey: "\(self.config.name)_state")
         
         if !self.available {
@@ -157,7 +159,10 @@ public struct module_c {
             
             if self.enabled {
                 self.enabled = false
-                Store.shared.set(key: "\(self.config.name)_state", value: false)
+                UserDefaultsSettingsStore.shared.set(
+                    AppSettingsKeys.moduleState(self.config.name, defaultValue: self.config.defaultState),
+                    value: false
+                )
             }
             
             return
@@ -231,7 +236,10 @@ public struct module_c {
         guard self.available else { return }
         
         self.enabled = true
-        Store.shared.set(key: "\(self.config.name)_state", value: true)
+        UserDefaultsSettingsStore.shared.set(
+            AppSettingsKeys.moduleState(self.config.name, defaultValue: self.config.defaultState),
+            value: true
+        )
         self.userDefaults?.set(true, forKey: "\(self.config.name)_state")
         self.readers.forEach { (reader: Reader_p) in
             reader.initStoreValues(title: self.config.name)
@@ -249,7 +257,10 @@ public struct module_c {
         
         self.enabled = false
         if !self.pauseState { // omit saving the disable state when toggle by pause, need for resume state restoration
-            Store.shared.set(key: "\(self.config.name)_state", value: false)
+            UserDefaultsSettingsStore.shared.set(
+                AppSettingsKeys.moduleState(self.config.name, defaultValue: self.config.defaultState),
+                value: false
+            )
             self.userDefaults?.set(false, forKey: "\(self.config.name)_state")
         }
         self.readers.forEach{ $0.stop() }
@@ -301,9 +312,10 @@ public struct module_c {
     }
     
     @objc private func listenForWindowOpen(_ notification: Notification) {
-        guard var state = notification.userInfo?["state"] as? Bool else { return }
+        guard let event = AppEventCenter.shared.openWindow(from: notification) else { return }
+        var state = event.state
         
-        if state, let name = notification.userInfo?["module"] as? String, self.config.name != name {
+        if state, let name = event.module, self.config.name != name {
             state = false
         }
         self.settingsWindowVisible = state
@@ -362,9 +374,10 @@ public struct module_c {
     }
     
     @objc private func listenForModuleToggle(_ notification: Notification) {
-        if let name = notification.userInfo?["module"] as? String {
+        if let event = AppEventCenter.shared.moduleToggle(from: notification) {
+            let name = event.module
             if name == self.config.name {
-                if let state = notification.userInfo?["state"] as? Bool {
+                if let state = event.state {
                     if state && !self.enabled {
                         self.enable()
                     } else if !state && self.enabled {
@@ -381,7 +394,7 @@ public struct module_c {
             
             if self.pauseState == true {
                 self.pauseState = false
-                NotificationCenter.default.post(name: .pause, object: nil, userInfo: ["state": false])
+                AppEventCenter.shared.post(.pause(false))
             }
         }
     }

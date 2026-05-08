@@ -226,13 +226,13 @@ public class CPU: Module {
     
     public override func updateReaderActivityModes() {
         let detailVisible = self.isPopupVisible || self.isSettingsWindowVisible
-        let mainMode: ReaderActivityMode = self.hasActiveValueWidget || detailVisible ? .active : .passive
+        let mainMode = SamplingPolicy.mode(hasActiveValueWidget: self.hasActiveValueWidget, detailVisible: detailVisible)
         
         self.loadReader?.setActivityMode(mainMode)
         self.frequencyReader?.setActivityMode(detailVisible ? .active : mainMode)
-        self.temperatureReader?.setActivityMode(detailVisible ? .active : .paused)
-        self.averageLoadReader?.setActivityMode(detailVisible ? .active : .paused)
-        self.processReader?.setActivityMode(self.isPopupVisible ? .active : .paused)
+        self.temperatureReader?.setActivityMode(SamplingPolicy.detailMode(detailVisible: detailVisible))
+        self.averageLoadReader?.setActivityMode(SamplingPolicy.detailMode(detailVisible: detailVisible))
+        self.processReader?.setActivityMode(SamplingPolicy.popupMode(popupVisible: self.isPopupVisible))
     }
     
     private func loadCallback(_ raw: CPU_Load?) {

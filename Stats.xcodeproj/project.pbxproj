@@ -85,6 +85,9 @@
 		5CF221172B1F4ACB006C583F /* notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF221162B1F4ACB006C583F /* notifications.swift */; };
 		5CF221192B1F8B90006C583F /* notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF221182B1F8B90006C583F /* notifications.swift */; };
 		5CF2211B2B1F8CEF006C583F /* notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF2211A2B1F8CEF006C583F /* notifications.swift */; };
+		5CF000012FAD000000000001 /* MetricPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF000112FAD000000000001 /* MetricPipeline.swift */; };
+		5CF000022FAD000000000001 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF000122FAD000000000001 /* SettingsStore.swift */; };
+		5CF000032FAD000000000001 /* AppEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF000132FAD000000000001 /* AppEvent.swift */; };
 		5CFE492A29264DF1000F2856 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CFE492929264DF1000F2856 /* main.swift */; };
 		5CFE493929265055000F2856 /* protocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CFE493829265055000F2856 /* protocol.swift */; };
 		5CFE493B292650F8000F2857 /* eu.exelban.Stats.SMC.Helper.plist in Copy Files */ = {isa = PBXBuildFile; fileRef = 5CFE493B292650F8000F2856 /* eu.exelban.Stats.SMC.Helper.plist */; };
@@ -591,6 +594,9 @@
 		5CF221162B1F4ACB006C583F /* notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = notifications.swift; sourceTree = "<group>"; };
 		5CF221182B1F8B90006C583F /* notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = notifications.swift; sourceTree = "<group>"; };
 		5CF2211A2B1F8CEF006C583F /* notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = notifications.swift; sourceTree = "<group>"; };
+		5CF000112FAD000000000001 /* MetricPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricPipeline.swift; sourceTree = "<group>"; };
+		5CF000122FAD000000000001 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		5CF000132FAD000000000001 /* AppEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEvent.swift; sourceTree = "<group>"; };
 		5CFE492729264DF1000F2856 /* eu.exelban.Stats.SMC.Helper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = eu.exelban.Stats.SMC.Helper; sourceTree = BUILT_PRODUCTS_DIR; };
 		5CFE492929264DF1000F2856 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		5CFE493829265055000F2856 /* protocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = protocol.swift; sourceTree = "<group>"; };
@@ -1075,6 +1081,8 @@
 				9A2847762666AA5000EC1F6D /* popup.swift */,
 				9A2847782666AA5000EC1F6D /* widget.swift */,
 				9A2847772666AA5000EC1F6D /* reader.swift */,
+				5CF000112FAD000000000001 /* MetricPipeline.swift */,
+				5CF000132FAD000000000001 /* AppEvent.swift */,
 				5CC3B4E22F5A032E00775E2C /* ObservableModel.swift */,
 				9A2847752666AA5000EC1F6D /* window.swift */,
 				5C23BC0329A014AC00DBA990 /* portal.swift */,
@@ -1215,6 +1223,7 @@
 				9A5A8446271895B700BC40A4 /* Reachability.swift */,
 				9A302613286A2A3B00B41D57 /* Repeater.swift */,
 				5C4E8BC62B6EF98800F148B6 /* DB.swift */,
+				5CF000122FAD000000000001 /* SettingsStore.swift */,
 			);
 			path = plugins;
 			sourceTree = "<group>";
@@ -2092,6 +2101,8 @@
 				9A5A8447271895B700BC40A4 /* Reachability.swift in Sources */,
 				9A2847622666AA2700EC1F6D /* Label.swift in Sources */,
 				9A28477C2666AA5000EC1F6D /* reader.swift in Sources */,
+				5CF000012FAD000000000001 /* MetricPipeline.swift in Sources */,
+				5CF000032FAD000000000001 /* AppEvent.swift in Sources */,
 				5CC3B4E32F5A033000775E2C /* ObservableModel.swift in Sources */,
 				9A9B8C9D27149A3700218374 /* Tachometer.swift in Sources */,
 				9A2847652666AA2700EC1F6D /* Memory.swift in Sources */,
@@ -2101,6 +2112,7 @@
 				5CF2210D2B1E7EAF006C583F /* notifications.swift in Sources */,
 				9A6EEBBE2685259500897371 /* Logger.swift in Sources */,
 				5C4E8BC72B6EF98800F148B6 /* DB.swift in Sources */,
+				5CF000022FAD000000000001 /* SettingsStore.swift in Sources */,
 				9A2847602666AA2700EC1F6D /* NetworkChart.swift in Sources */,
 				5C23BC0429A014AC00DBA990 /* portal.swift in Sources */,
 				9A2847792666AA5000EC1F6D /* module.swift in Sources */,
