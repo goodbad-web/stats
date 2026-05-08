@@ -7,63 +7,19 @@
 //  Running on macOS 26.3
 //
 //  Copyright © 2026 Serhiy Mytrovtsiy. All rights reserved.
-//  
+//
 
 import Foundation
-import Kit
+@preconcurrency import Kit
+import os
 
-internal class ClockReader: Reader<Date>, @unchecked Sendable {
-    private let title: String = ModuleType.clock.stringValue
-    
-    private var offset: TimeInterval = 0
-    private var now: Date { Date().addingTimeInterval(self.offset) }
-    
-    private var ntpSync: Bool {
-        get { Store.shared.bool(key: "\(self.title)_ntpSync", defaultValue: false) }
-        set { Store.shared.set(key: "\(self.title)_ntpSync", value: newValue) }
+private actor ClockReaderWorker {
+    func fetchNTPOffset(server: String) async -> TimeInterval? {
+        guard let serverDate = self.requestTime(server: server) else { return nil }
+        return serverDate.timeIntervalSince(Date())
     }
     
-    private var ntpServer: String {
-        get { Store.shared.string(key: "\(self.title)_ntpServer", defaultValue: "pool.ntp.org") }
-        set { Store.shared.set(key: "\(self.title)_ntpServer", value: newValue) }
-    }
-    
-    public override func setup() {
-        self.alignToSecondBoundary = true
-        self.syncWithNTP()
-    }
-    
-    nonisolated public override func read() {
-        Task { @MainActor in
-            let date = self.ntpSync ? self.now : Date()
-            
-            self.callback(date)
-            
-            if Calendar.current.component(.second, from: date) == 0 {
-                self.syncWithNTP()
-            }
-        }
-    }
-    
-    private func syncWithNTP() {
-        guard self.ntpSync else {
-            self.offset = 0
-            return
-        }
-        
-        let server = self.ntpServer
-        Task.detached(priority: .background) { [weak self] in
-            guard let self else { return }
-            guard let serverDate = self.requestTime(server: server) else { return }
-            let newOffset = serverDate.timeIntervalSince(Date())
-            await MainActor.run {
-                self.offset = newOffset
-                self.alignOffset = newOffset
-            }
-        }
-    }
-    
-    nonisolated private func requestTime(server: String, timeout: TimeInterval = 2.0) -> Date? {
+    private func requestTime(server: String, timeout: TimeInterval = 2.0) -> Date? {
         let host = CFHostCreateWithName(nil, server as CFString).takeRetainedValue()
         var resolved: DarwinBoolean = false
         let started = CFHostStartInfoResolution(host, .addresses, nil)
@@ -119,5 +75,64 @@ internal class ClockReader: Reader<Date>, @unchecked Sendable {
         }
         
         return Date(timeIntervalSince1970: TimeInterval(seconds1900) - 2_208_988_800)
+    }
+}
+
+internal class ClockReader: Reader<Date>, @unchecked Sendable {
+    private let title: String = ModuleType.clock.stringValue
+    private let worker = ClockReaderWorker()
+    private let offsetLock = OSAllocatedUnfairLock(initialState: TimeInterval(0))
+    private let syncLock = OSAllocatedUnfairLock(initialState: false)
+    
+    private var now: Date { Date().addingTimeInterval(self.offsetLock.withLock { $0 }) }
+    
+    private nonisolated var ntpSync: Bool {
+        Store.shared.bool(key: "\(self.title)_ntpSync", defaultValue: false)
+    }
+    
+    private nonisolated var ntpServer: String {
+        Store.shared.string(key: "\(self.title)_ntpServer", defaultValue: "pool.ntp.org")
+    }
+    
+    public override func setup() {
+        self.alignToSecondBoundary = true
+        self.syncWithNTP()
+    }
+    
+    nonisolated public override func read() {
+        Task { @MainActor in
+            let ntp = self.ntpSync
+            let date = ntp ? self.now : Date()
+            
+            self.callback(date)
+            
+            if Calendar.current.component(.second, from: date) == 0 {
+                self.syncWithNTP()
+            }
+        }
+    }
+    
+    private func syncWithNTP() {
+        guard self.ntpSync else {
+            self.offsetLock.withLock { $0 = 0 }
+            return
+        }
+        
+        let isSyncing = self.syncLock.withLock { $0 }
+        guard !isSyncing else { return }
+        self.syncLock.withLock { $0 = true }
+        
+        let server = self.ntpServer
+        let worker = self.worker
+        
+        Task {
+            defer { self.syncLock.withLock { $0 = false } }
+            if let newOffset = await worker.fetchNTPOffset(server: server) {
+                self.offsetLock.withLock { $0 = newOffset }
+                await MainActor.run {
+                    self.alignOffset = newOffset
+                }
+            }
+        }
     }
 }
