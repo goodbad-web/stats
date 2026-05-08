@@ -323,7 +323,8 @@ internal class SensorView: NSStackView {
         super.init(frame: NSRect(x: 0, y: 0, width: width, height: 22))
         
         self.orientation = .vertical
-        self.distribution = .fillProportionally
+        self.distribution = .fill
+        self.alignment = .centerX
         self.spacing = 0
         
         self.valueView = ValueSensorView(sensor, width: width, toggleable: toggleable, callback: { [weak self] in
@@ -347,8 +348,13 @@ internal class SensorView: NSStackView {
         self.addArrangedSubview(self.valueView)
         
         NSLayoutConstraint.activate([
-            self.widthAnchor.constraint(equalToConstant: self.bounds.width)
+            self.widthAnchor.constraint(equalToConstant: width),
+            self.heightAnchor.constraint(equalToConstant: self.bounds.height)
         ])
+    }
+    
+    private var heightConstraint: NSLayoutConstraint? {
+        self.constraints.first { $0.firstAttribute == .height && $0.relation == .equal }
     }
     
     required init?(coder: NSCoder) {
@@ -376,6 +382,7 @@ internal class SensorView: NSStackView {
         self.openned = !self.openned
         
         let h = self.arrangedSubviews.map({ $0.bounds.height }).reduce(0, +)
+        self.heightConstraint?.constant = h
         self.setFrameSize(NSSize(width: self.frame.width, height: h))
         self.sizeCallback()
     }
@@ -400,7 +407,8 @@ internal class ValueSensorView: NSStackView {
         
         self.wantsLayer = true
         self.orientation = .horizontal
-        self.distribution = .fillProportionally
+        self.distribution = .fill
+        self.alignment = .centerY
         self.spacing = 0
         self.layer?.cornerRadius = 3
         

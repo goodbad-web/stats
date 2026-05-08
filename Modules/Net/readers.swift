@@ -137,37 +137,38 @@ extension CWChannel {
 internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked Sendable {
     private nonisolated(unsafe) var reachability: Reachability = Reachability(start: true)
     private nonisolated(unsafe) var _usage: Network_Usage = Network_Usage()
-    public var usage: Network_Usage {
+    nonisolated public var usage: Network_Usage {
         get { self._usage }
         set { self._usage = newValue }
     }
     
-    private var primaryInterface: String {
+    nonisolated private var primaryInterface: String {
         if let global = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString), let name = (global as? [String: Any])?["PrimaryInterface"] as? String {
             return name
         }
         return ""
     }
     
-    private var interfaceID: String {
+    nonisolated private var interfaceID: String {
         get { Store.shared.string(key: "Network_interface", defaultValue: self.primaryInterface) }
         set { Store.shared.set(key: "Network_interface", value: newValue) }
     }
     
-    private var reader: String {
+    nonisolated private var reader: String {
         Store.shared.string(key: "Network_reader", defaultValue: "interface")
     }
     
-    private var vpnConnection: Bool {
+    nonisolated private var vpnConnection: Bool {
         if let settings = CFNetworkCopySystemProxySettings()?.takeRetainedValue() as? [String: Any], let scopes = settings["__SCOPED__"] as? [String: Any] {
             return !scopes.filter({ $0.key.contains("tap") || $0.key.contains("tun") || $0.key.contains("ppp") || $0.key.contains("ipsec") || $0.key.contains("ipsec0")}).isEmpty
         }
         return false
     }
     
-    private var VPNMode: Bool {
+    nonisolated private var VPNMode: Bool {
         Store.shared.bool(key: "Network_VPNMode", defaultValue: false)
     }
+    
     private var publicIPState: Bool {
         Store.shared.bool(key: "Network_publicIP", defaultValue: true)
     }
@@ -268,13 +269,15 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
                 self.readLock.withLock { $0 = false }
                 return
             }
-            
-            self.usage = updatedUsage
-            self.callback(updatedUsage)
+            let resultUsage = updatedUsage
+            await MainActor.run {
+                self.usage = resultUsage
+                self.callback(resultUsage)
+                
+                self.usage.bandwidth.upload = currentBandwidth.upload
+                self.usage.bandwidth.download = currentBandwidth.download
+            }
             self.readLock.withLock { $0 = false }
-            
-            self.usage.bandwidth.upload = currentBandwidth.upload
-            self.usage.bandwidth.download = currentBandwidth.download
         }
     }
     
@@ -563,9 +566,9 @@ internal class ConnectivityReaderWrapper {
 internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Sendable {
     private let identifier = UInt16.random(in: 0..<UInt16.max)
     private var fingerprint: UUID = UUID()
-    private var ICMPHost: String { Store.shared.string(key: "Net_ICMPHost", defaultValue: "1.1.1.1") }
-    private var HTTPHost: String { Store.shared.string(key: "Net_HTTPHost", defaultValue: "https://google.com") }
-    private var connectivityMode: String { Store.shared.string(key: "Net_connectivityMode", defaultValue: "icmp") }
+    nonisolated private var ICMPHost: String { Store.shared.string(key: "Net_ICMPHost", defaultValue: "1.1.1.1") }
+    nonisolated private var HTTPHost: String { Store.shared.string(key: "Net_HTTPHost", defaultValue: "https://google.com") }
+    nonisolated private var connectivityMode: String { Store.shared.string(key: "Net_connectivityMode", defaultValue: "icmp") }
     
     private nonisolated(unsafe) var lastHost: String = ""
     private nonisolated(unsafe) var addr: Data? = nil

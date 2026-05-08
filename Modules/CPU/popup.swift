@@ -148,6 +148,8 @@ internal class Popup: PopupWrapper {
         
         self.spacing = 0
         self.orientation = .vertical
+        self.distribution = .fill
+        self.alignment = .centerX
         
         self.systemColorState = SColor.fromString(UserDefaultsSettingsStore.shared.string(AppSettingsKeys.moduleString(self.title, "systemColor", defaultValue: self.systemColorState.key)))
         self.userColorState = SColor.fromString(UserDefaultsSettingsStore.shared.string(AppSettingsKeys.moduleString(self.title, "userColor", defaultValue: self.userColorState.key)))
@@ -214,6 +216,8 @@ internal class Popup: PopupWrapper {
         let view: NSStackView = NSStackView(frame: NSRect(x: 0, y: 0, width: self.frame.width, height: self.chartHeight))
         view.heightAnchor.constraint(equalToConstant: view.bounds.height).isActive = true
         view.orientation = .vertical
+        view.distribution = .fill
+        view.alignment = .centerX
         view.spacing = 0
         
         let separator = separatorView(localizedString("Usage history"), origin: NSPoint(x: 0, y: 0), width: self.frame.width)
@@ -271,6 +275,8 @@ internal class Popup: PopupWrapper {
         ), width: self.frame.width)
         let container: NSStackView = NSStackView(frame: NSRect(x: 0, y: 0, width: view.frame.width, height: separator.frame.origin.y))
         container.orientation = .vertical
+        container.distribution = .fill
+        container.alignment = .centerX
         container.spacing = 0
         
         (self.systemColorView, _, self.systemField) = popupWithColorRow(container, color: self.systemColor, title: "\(localizedString("System")):", value: "")
@@ -292,6 +298,10 @@ internal class Popup: PopupWrapper {
         
         view.addSubview(separator)
         view.addSubview(container)
+        NSLayoutConstraint.activate([
+            container.widthAnchor.constraint(equalTo: view.widthAnchor),
+            container.heightAnchor.constraint(equalToConstant: separator.frame.origin.y)
+        ])
         
         return view
     }
@@ -302,6 +312,8 @@ internal class Popup: PopupWrapper {
         let separator = separatorView(localizedString("Average load"), origin: NSPoint(x: 0, y: self.averageHeight-Constants.Popup.separatorHeight), width: self.frame.width)
         let container: NSStackView = NSStackView(frame: NSRect(x: 0, y: 0, width: view.frame.width, height: separator.frame.origin.y))
         container.orientation = .vertical
+        container.distribution = .fill
+        container.alignment = .centerX
         container.spacing = 0
         
         self.average1Field = popupRow(container, title: "\(localizedString("1 minute")):", value: "").1
@@ -310,6 +322,10 @@ internal class Popup: PopupWrapper {
         
         view.addSubview(separator)
         view.addSubview(container)
+        NSLayoutConstraint.activate([
+            container.widthAnchor.constraint(equalTo: view.widthAnchor),
+            container.heightAnchor.constraint(equalToConstant: separator.frame.origin.y)
+        ])
         
         return view
     }
@@ -320,6 +336,8 @@ internal class Popup: PopupWrapper {
         let separator = separatorView(localizedString("Frequency"), origin: NSPoint(x: 0, y: self.frequencyHeight-Constants.Popup.separatorHeight), width: self.frame.width)
         let container: NSStackView = NSStackView(frame: NSRect(x: 0, y: 0, width: view.frame.width, height: separator.frame.origin.y))
         container.orientation = .vertical
+        container.distribution = .fill
+        container.alignment = .centerX
         container.spacing = 0
         
         self.coresFreqField = popupRow(container, title: "\(localizedString("All cores")):", value: "").1
@@ -336,6 +354,10 @@ internal class Popup: PopupWrapper {
         
         view.addSubview(separator)
         view.addSubview(container)
+        NSLayoutConstraint.activate([
+            container.widthAnchor.constraint(equalTo: view.widthAnchor),
+            container.heightAnchor.constraint(equalToConstant: separator.frame.origin.y)
+        ])
         
         return view
     }

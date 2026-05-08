@@ -54,6 +54,8 @@ private struct ReaderState<T> {
     var active: Bool = false
     var locked: Bool = true
     var lastDBWrite: Date?
+    var interval: Double? = nil
+    var defaultInterval: Int = 1
 }
 
 @MainActor open class Reader<T: Codable & Sendable>: NSObject, ReaderInternal_p, @unchecked Sendable {
@@ -61,27 +63,85 @@ private struct ReaderState<T> {
         NextLog.shared.copy(category: "\(String(describing: self))")
     }
     
-    private let state = OSAllocatedUnfairLock(initialState: ReaderState<T>())
+    private let stateLock = NSRecursiveLock()
+    private nonisolated(unsafe) var state = ReaderState<T>()
     
     nonisolated public var value: T? {
-        get { self.state.withLock { $0.value } }
-        set { self.state.withLock { $0.value = newValue } }
+        get {
+            self.stateLock.lock()
+            defer { self.stateLock.unlock() }
+            return self.state.value
+        }
+        set {
+            self.stateLock.lock()
+            defer { self.stateLock.unlock() }
+            self.state.value = newValue
+        }
     }
     nonisolated public var active: Bool {
-        get { self.state.withLock { $0.active } }
-        set { self.state.withLock { $0.active = newValue } }
+        get {
+            self.stateLock.lock()
+            defer { self.stateLock.unlock() }
+            return self.state.active
+        }
+        set {
+            self.stateLock.lock()
+            defer { self.stateLock.unlock() }
+            self.state.active = newValue
+        }
     }
     nonisolated private var locked: Bool {
-        get { self.state.withLock { $0.locked } }
-        set { self.state.withLock { $0.locked = newValue } }
+        get {
+            self.stateLock.lock()
+            defer { self.stateLock.unlock() }
+            return self.state.locked
+        }
+        set {
+            self.stateLock.lock()
+            defer { self.stateLock.unlock() }
+            self.state.locked = newValue
+        }
     }
     
-    nonisolated public var name: String {
-        String(NSStringFromClass(type(of: self)).split(separator: ".").last ?? "unknown")
+    nonisolated private var lastDBWrite: Date? {
+        get {
+            self.stateLock.lock()
+            defer { self.stateLock.unlock() }
+            return self.state.lastDBWrite
+        }
+        set {
+            self.stateLock.lock()
+            defer { self.stateLock.unlock() }
+            self.state.lastDBWrite = newValue
+        }
     }
     
-    public var interval: Double? = nil
-    public var defaultInterval: Int = 1
+    nonisolated public let name: String
+    
+    nonisolated public var interval: Double? {
+        get {
+            self.stateLock.lock()
+            defer { self.stateLock.unlock() }
+            return self.state.interval
+        }
+        set {
+            self.stateLock.lock()
+            defer { self.stateLock.unlock() }
+            self.state.interval = newValue
+        }
+    }
+    nonisolated public var defaultInterval: Int {
+        get {
+            self.stateLock.lock()
+            defer { self.stateLock.unlock() }
+            return self.state.defaultInterval
+        }
+        set {
+            self.stateLock.lock()
+            defer { self.stateLock.unlock() }
+            self.state.defaultInterval = newValue
+        }
+    }
     public var optional: Bool = false
     public var popup: Bool = false
     public var preview: Bool = false
@@ -94,13 +154,11 @@ private struct ReaderState<T> {
     public var observable = ObservableModel<T>()
     
     nonisolated private let module: ModuleType
-    nonisolated public var metricID: MetricID {
-        MetricID(module: self.module, reader: self.name)
-    }
+    nonisolated public let metricID: MetricID
     nonisolated private let history: Bool
-    private let pipeline = MetricPipeline<T>()
-    private let cache = MetricCache<T>()
-    private let metricStore: LevelDBMetricHistoryStore
+    nonisolated private let pipeline = MetricPipeline<T>()
+    nonisolated private let cache = MetricCache<T>()
+    nonisolated private let metricStore: LevelDBMetricHistoryStore
     private var repeatTask: Repeater?
     private var initlizalized: Bool = false
     private var userInterval: Int?
@@ -111,6 +169,10 @@ private struct ReaderState<T> {
     private let alignQueue = DispatchQueue(label: "eu.exelban.readerAlignQueue")
     
     public init(_ module: ModuleType, popup: Bool = false, preview: Bool = false, history: Bool = false, callback: @escaping (T?) -> Void = {_ in }) {
+        let name = String(NSStringFromClass(type(of: self)).split(separator: ".").last ?? "unknown")
+        self.name = name
+        self.metricID = MetricID(module: module, reader: name)
+        
         self.popup = popup
         self.preview = preview
         self.module = module
@@ -122,7 +184,10 @@ private struct ReaderState<T> {
         self.configureMetricPipeline()
         self.metricStore.setup(T.self, id: self.metricID)
         if let lastValue = self.metricStore.latest(T.self, id: self.metricID) {
-            self.value = lastValue
+            self.stateLock.lock()
+            self.state.value = lastValue
+            self.stateLock.unlock()
+            
             Task { @MainActor in
                 callback(lastValue)
                 self.observable.value = lastValue
@@ -278,12 +343,12 @@ private struct ReaderState<T> {
             let interval = self.interval ?? Double(self.defaultInterval)
             let now = Date()
             
-            if let ts = self.state.withLock({ $0.lastDBWrite }),
+            if let ts = self.lastDBWrite,
                now.timeIntervalSince(ts) <= interval * 10 {
                 return
             }
             
-            self.state.withLock { $0.lastDBWrite = now }
+            self.lastDBWrite = now
             Task.detached(priority: .background) {
                 self.metricStore.save(snapshot, force: false)
             }

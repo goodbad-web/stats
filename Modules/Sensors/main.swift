@@ -40,11 +40,11 @@ public class Sensors: Module {
     private let portalView: Portal
     private let notificationsView: Notifications
     private var sensorViewKeys: Set<String> = []
-    
+
     private var fanValueState: FanValue {
         FanValue(rawValue: Store.shared.string(key: "\(self.config.name)_fanValue", defaultValue: "percentage")) ?? .percentage
     }
-    
+
     private var selectedStackLine1: String {
         Store.shared.string(key: "Sensors_stack_line1", defaultValue: "Average CPU")
     }
@@ -57,14 +57,14 @@ public class Sensors: Module {
             .map { String($0) == "Temp" ? SensorType.temperature.rawValue : String($0) }
     }
     private var selectedSensor: String
-    
+
     public init() {
         self.settingsView = Settings(.sensors)
         self.popupView = Popup()
         self.portalView = Portal(.sensors)
         self.notificationsView = Notifications(.sensors)
         self.selectedSensor = Store.shared.string(key: "\(ModuleType.sensors.stringValue)_sensor", defaultValue: Self.defaultMiniSensor)
-        
+
         super.init(
             moduleType: .sensors,
             popup: self.popupView,
@@ -73,14 +73,15 @@ public class Sensors: Module {
             notifications: self.notificationsView
         )
         guard self.available else { return }
-        
+
         self.sensorsReader = SensorsReader { [weak self] value in
             self?.usageCallback(value)
         }
-        
+
         self.setupSensorDependentViews(self.sensorsReader?.list.sensors)
-        
+
         self.settingsView.callback = { [weak self] in
+            self?.sensorsReader?.setReadScope(.full)
             self?.sensorsReader?.read()
         }
         self.settingsView.setInterval = { [weak self] value in
@@ -102,21 +103,28 @@ public class Sensors: Module {
         self.settingsView.selectedHandler = { [weak self] value in
             self?.selectedSensor = value
             Store.shared.set(key: "\(ModuleType.sensors.stringValue)_sensor", value: value)
+            self?.updateReaderActivityModes()
             self?.sensorsReader?.read()
         }
-        
+
         NotificationCenter.default.addObserver(self, selector: #selector(self.fanControlOverrideCallback), name: .fanControlOverride, object: nil)
-        
+
         self.setReaders([self.sensorsReader])
-        
+
         if let reader = self.sensorsReader {
             self.usageCallback(reader.list)
         }
     }
-    
+
+    public override func updateReaderActivityModes() {
+        let activeWidgets = self.menuBar.widgets.filter { $0.isActive }
+        self.sensorsReader?.setReadScope(self.sensorsReadScope(for: activeWidgets))
+        self.sensorsReader?.setActivityMode(self.sensorsActivityMode(for: activeWidgets))
+    }
+
     public override func willTerminate() {
         guard SMCHelper.shared.isActive(), let reader = self.sensorsReader else { return }
-        
+
         reader.list.sensors.filter({ $0 is Fan }).forEach { (s: Sensor_p) in
             if let f = s as? Fan, let mode = f.customMode {
                 if !mode.isAutomatic {
@@ -127,33 +135,34 @@ public class Sensors: Module {
             }
         }
     }
-    
+
     @objc private func fanControlOverrideCallback(_ notification: Notification) {
         guard let reason = notification.userInfo?["reason"] as? String else { return }
         let title = localizedString("Fan control override")
         var subtitle = ""
-        
+
         if reason == "high_temp" {
             subtitle = localizedString("Fans set to Auto due to high temperature")
         } else if reason == "battery" {
             subtitle = localizedString("Fans set to Auto on battery power")
         }
-        
+
         self.notificationsView.newNotification(id: "fan_override", title: title, subtitle: subtitle)
     }
-    
+
     private func usageCallback(_ raw: Sensors_List?) {
         guard let value = raw else { return }
         self.setupSensorDependentViews(value.sensors)
         guard self.enabled else { return }
-        
+
         self.popupView.usageCallback(value.sensors)
         self.portalView.usageCallback(value.sensors)
         self.notificationsView.usageCallback(value.sensors)
-        
+
         let activeWidgets = self.menuBar.widgets.filter{ $0.isActive }
+        self.sensorsReader?.setReadScope(self.sensorsReadScope(for: activeWidgets))
         self.sensorsReader?.setActivityMode(self.sensorsActivityMode(for: activeWidgets))
-        
+
         activeWidgets.forEach { (w: SWidget) in
             switch w.item {
             case let widget as Mini:
@@ -175,7 +184,7 @@ public class Sensors: Module {
             case let widget as BarChart:
                 var flatList: [[ColorValue]] = []
                 let selected = self.selectedBarChartSensors
-                
+
                 value.sensors.forEach { (s: Sensor_p) in
                     if s.state && (selected.contains(s.type.rawValue) || selected.contains(s.key)) {
                         if let f = s as? Fan {
@@ -196,16 +205,64 @@ public class Sensors: Module {
             }
         }
     }
-    
+
     private func sensorsActivityMode(for activeWidgets: [SWidget]) -> SensorsReader.ActivityMode {
         let hasValueWidget = activeWidgets.contains { !($0.item is Label) }
         if hasValueWidget {
             return .active
         }
-        
+
         let fanSafetyState = Store.shared.bool(key: "Sensors_fanSafety", defaultValue: true)
         let batteryAutoState = Store.shared.bool(key: "Sensors_fanBatteryAuto", defaultValue: false)
         return fanSafetyState || batteryAutoState ? .passive : .paused
+    }
+
+    private func sensorsReadScope(for activeWidgets: [SWidget]) -> SensorsReadScope {
+        if self.isPopupVisible || self.isSettingsWindowVisible {
+            return .full
+        }
+
+        var scope = SensorsReadScope()
+
+        activeWidgets.forEach { widget in
+            switch widget.item {
+            case is Mini:
+                scope.include(key: self.selectedSensor)
+                Self.miniSensorFallbacks.forEach { scope.include(key: $0) }
+            case is StackWidget:
+                scope.include(key: self.selectedStackLine1)
+                scope.include(key: self.selectedStackLine2)
+                Self.stackSensorFallbacks.forEach { scope.include(key: $0) }
+            case is BarChart:
+                self.selectedBarChartSensors.forEach { value in
+                    if let type = SensorType(rawValue: value) {
+                        scope.include(type: type)
+                    } else {
+                        scope.include(key: value)
+                    }
+                }
+            case is Label:
+                break
+            default:
+                return
+            }
+        }
+
+        if Store.shared.bool(key: "Sensors_fanSafety", defaultValue: true) {
+            scope.include(type: .temperature)
+            scope.include(type: .fan)
+            scope.needsFanMode = true
+        }
+        if Store.shared.bool(key: "Sensors_fanBatteryAuto", defaultValue: false) {
+            scope.include(type: .fan)
+            scope.needsFanMode = true
+        }
+
+        self.sensorsReader?.list.sensors
+            .filter { !$0.notificationThreshold.isEmpty }
+            .forEach { scope.include(key: $0.key) }
+
+        return scope
     }
 
     private func miniSensor(from sensors: [Sensor_p]) -> Sensor_p? {
@@ -266,7 +323,7 @@ public class Sensors: Module {
         self.notificationsView.setup(sensors)
         self.sensorViewKeys = keys
     }
-    
+
     private func getStackItem(_ s: Sensor_p) -> Stack_t {
         var value = s.formattedMiniValue
         if let f = s as? Fan {

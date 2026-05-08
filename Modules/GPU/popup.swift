@@ -112,7 +112,7 @@ private class GPUView: NSStackView {
         
         self.orientation = .vertical
         self.alignment = .centerX
-        self.distribution = .fillProportionally
+        self.distribution = .fill
         self.spacing = 0
         self.wantsLayer = true
         self.layer?.cornerRadius = 2
@@ -193,6 +193,13 @@ private class GPUView: NSStackView {
         view.addSubview(stateView)
         view.addSubview(button)
         self.stateView = stateView
+        
+        NSLayoutConstraint.activate([
+            button.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            button.topAnchor.constraint(equalTo: view.topAnchor, constant: 2),
+            button.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            button.widthAnchor.constraint(equalToConstant: w)
+        ])
         
         return view
     }
@@ -543,6 +550,8 @@ private class GPUDetails: NSView {
         self.setFrameSize(NSSize(width: self.frame.width, height: (16 * num) + Constants.Popup.margins))
         grid.setFrameSize(NSSize(width: grid.frame.width, height: self.frame.height - Constants.Popup.margins))
         self.addSubview(grid)
+        
+        self.heightAnchor.constraint(equalToConstant: self.frame.height).isActive = true
     }
     
     required init?(coder: NSCoder) {

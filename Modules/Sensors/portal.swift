@@ -34,7 +34,8 @@ public class Portal: NSStackView, Portal_p {
         self.layer?.cornerRadius = 3
         
         self.orientation = .vertical
-        self.distribution = .fillEqually
+        self.distribution = .fill
+        self.alignment = .centerX
         self.widthAnchor.constraint(equalToConstant: Constants.Popup.width).isActive = true
         self.spacing = Constants.Popup.spacing
         self.edgeInsets = NSEdgeInsets(
@@ -46,10 +47,16 @@ public class Portal: NSStackView, Portal_p {
         
         self.container.stackView.spacing = 0
         
-        self.addArrangedSubview(PortalHeader(self.name))
+        let header = PortalHeader(self.name)
+        self.addArrangedSubview(header)
         self.addArrangedSubview(self.container)
         
-        self.heightAnchor.constraint(equalToConstant: Constants.Popup.portalHeight).isActive = true
+        NSLayoutConstraint.activate([
+            header.heightAnchor.constraint(equalToConstant: Constants.Popup.headerHeight),
+            header.widthAnchor.constraint(equalTo: self.widthAnchor, constant: -(self.edgeInsets.left + self.edgeInsets.right)),
+            self.container.widthAnchor.constraint(equalTo: self.widthAnchor, constant: -(self.edgeInsets.left + self.edgeInsets.right)),
+            self.heightAnchor.constraint(equalToConstant: Constants.Popup.portalHeight)
+        ])
     }
     
     required init?(coder: NSCoder) {

@@ -80,13 +80,21 @@ public struct GPU_Info: Codable, Equatable {
     }
 }
 
-public class GPUs: Codable, Equatable, RemoteType {
-    private var queue: DispatchQueue = DispatchQueue(label: "eu.exelban.Stats.GPU.SynchronizedArray")
+public class GPUs: Codable, Equatable, RemoteType, @unchecked Sendable {
+    private let lock = NSRecursiveLock()
     
     private var _list: [GPU_Info] = []
     public var list: [GPU_Info] {
-        get { self.queue.sync { self._list } }
-        set { self.queue.sync { self._list = newValue } }
+        get {
+            self.lock.lock()
+            defer { self.lock.unlock() }
+            return self._list
+        }
+        set {
+            self.lock.lock()
+            defer { self.lock.unlock() }
+            self._list = newValue
+        }
     }
     
     enum CodingKeys: String, CodingKey {

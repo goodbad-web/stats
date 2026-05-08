@@ -14,42 +14,140 @@ import Cocoa
 import IOKit.ps
 import os
 
+internal struct SensorsReadScope: Equatable, Sendable {
+    internal var isFull: Bool
+    internal var keys: Set<String>
+    internal var types: Set<String>
+    internal var hidTypes: Set<String>
+    internal var needsIOSensors: Bool
+    internal var needsBattery: Bool
+    internal var needsFanMode: Bool
+
+    internal static let full = SensorsReadScope(isFull: true)
+
+    internal init(
+        isFull: Bool = false,
+        keys: Set<String> = [],
+        types: Set<SensorType> = [],
+        hidTypes: Set<SensorType> = [],
+        needsIOSensors: Bool = false,
+        needsBattery: Bool = false,
+        needsFanMode: Bool = false
+    ) {
+        self.isFull = isFull
+        self.keys = keys
+        self.types = []
+        self.hidTypes = Set(hidTypes.map(\.rawValue))
+        self.needsIOSensors = needsIOSensors
+        self.needsBattery = needsBattery
+        self.needsFanMode = needsFanMode
+        keys.forEach { self.expandComputedDependencies(for: $0) }
+        types.forEach { self.include(type: $0) }
+    }
+
+    internal mutating func include(key: String) {
+        guard !key.isEmpty else { return }
+        self.keys.insert(key)
+        self.expandComputedDependencies(for: key)
+    }
+
+    internal mutating func include(type: SensorType) {
+        self.types.insert(type.rawValue)
+        if type == .temperature {
+            self.hidTypes.insert(SensorType.temperature.rawValue)
+        } else if type == .voltage {
+            self.hidTypes.insert(SensorType.voltage.rawValue)
+        } else if type == .power {
+            self.needsIOSensors = true
+            self.needsBattery = true
+        } else if type == .current {
+            self.needsBattery = true
+        } else if type == .fan {
+            self.needsFanMode = true
+        }
+    }
+
+    internal func contains(_ sensor: Sensor_p) -> Bool {
+        self.isFull ||
+            self.keys.contains(sensor.key) ||
+            self.types.contains(sensor.type.rawValue)
+    }
+
+    internal func includesHID(type: SensorType) -> Bool {
+        self.isFull || self.hidTypes.contains(type.rawValue)
+    }
+
+    internal func includesIOPower(key: String) -> Bool {
+        self.isFull || self.needsIOSensors || self.keys.contains(key)
+    }
+
+    internal func includesBattery(key: String) -> Bool {
+        self.isFull || self.needsBattery || self.keys.contains(key)
+    }
+
+    private mutating func expandComputedDependencies(for key: String) {
+        switch key {
+        case "Average CPU", "Hottest CPU":
+            self.types.insert(SensorType.temperature.rawValue)
+            self.hidTypes.insert(SensorType.temperature.rawValue)
+        case "Average GPU", "Hottest GPU":
+            self.types.insert(SensorType.temperature.rawValue)
+            self.hidTypes.insert(SensorType.temperature.rawValue)
+        case "Average SOC", "Hottest SOC":
+            self.hidTypes.insert(SensorType.temperature.rawValue)
+        case "Average Fan", "Fastest fan":
+            self.types.insert(SensorType.fan.rawValue)
+            self.needsFanMode = true
+        case "CPU Power", "GPU Power", "ANE Power", "RAM Power", "PCI Power":
+            self.needsIOSensors = true
+        case "battery_amperage", "battery_power":
+            self.needsBattery = true
+        case "Average System Total", "Total System Consumption":
+            self.keys.insert("PSTR")
+        default:
+            break
+        }
+    }
+
+}
+
 internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
     nonisolated static let HIDtypes: [SensorType] = [.temperature, .voltage]
-    
+
     internal enum ActivityMode {
         case active
         case passive
         case paused
     }
-    
+
     internal nonisolated(unsafe) var list: Sensors_List = Sensors_List()
-    
+
     private nonisolated(unsafe) var lastRead: Date = Date()
     private let firstRead: Date = Date()
     private nonisolated(unsafe) var lastIOSensorsRead: Date? = nil
-    
+
     private var hidState: Bool {
         Store.shared.bool(key: "Sensors_hid", defaultValue: true)
     }
     private var unknownSensorsState: Bool
-    
+
     private nonisolated(unsafe) var channels: CFMutableDictionary? = nil
     private nonisolated(unsafe) var subscription: IOReportSubscriptionRef? = nil
     private nonisolated(unsafe) var powers: (CPU: Double, GPU: Double, ANE: Double, RAM: Double, PCI: Double) = (0.0, 0.0, 0.0, 0.0, 0.0)
     private var userInterval: Int = Store.shared.int(key: "Sensors_updateInterval", defaultValue: 3)
     private var activityMode: ActivityMode = .active
     private var effectiveInterval: Int?
-    
+    private let readScopeLock = OSAllocatedUnfairLock(initialState: SensorsReadScope.full)
+
     @MainActor init(callback: @escaping (T?) -> Void = {_ in }) {
         self.unknownSensorsState = Store.shared.bool(key: "Sensors_unknown", defaultValue: false)
         super.init(.sensors, callback: callback)
-        
+
         self.channels = self.getChannels()
         var dict: Unmanaged<CFMutableDictionary>?
         self.subscription = IOReportCreateSubscription(nil, self.channels, &dict, 0, nil)
         dict?.release()
-        
+
         Task {
             let list = await self.sensors()
             await MainActor.run {
@@ -58,19 +156,26 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
             }
         }
     }
-    
+
     internal func setUserInterval(_ value: Int) {
         guard self.userInterval != value else { return }
         self.userInterval = value
         self.applyActivityMode()
     }
-    
+
     internal func setActivityMode(_ mode: ActivityMode) {
         guard self.activityMode != mode else { return }
         self.activityMode = mode
         self.applyActivityMode()
     }
-    
+
+    internal func setReadScope(_ scope: SensorsReadScope) {
+        self.readScopeLock.withLock {
+            guard $0 != scope else { return }
+            $0 = scope
+        }
+    }
+
     private func applyActivityMode() {
         switch self.activityMode {
         case .active:
@@ -83,33 +188,33 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
             self.sleepMode(state: true)
         }
     }
-    
+
     private func applyInterval(_ value: Int) {
         guard self.effectiveInterval != value else { return }
         self.effectiveInterval = value
         super.setInterval(value)
     }
-    
+
     private func sensors() async -> [Sensor_p] {
         var available: [String] = await SMC.shared.getAllKeys()
         var list: [Sensor_p] = []
         var sensorsList = SensorsList
-        
+
         if let platform = SystemKit.shared.device.platform {
             sensorsList = sensorsList.filter({ $0.platforms.contains(platform) })
         }
-        
+
         if let count = await SMC.shared.getValue("FNum") {
             list += await self.loadFans(Int(count))
         }
-        
+
         available = available.filter({ (key: String) -> Bool in
             switch key.prefix(1) {
             case "T", "V", "P", "I": return true
             default: return false
             }
         })
-        
+
         sensorsList.forEach { (s: Sensor) in
             if let idx = available.firstIndex(where: { $0 == s.key }) {
                 list.append(s)
@@ -124,7 +229,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                     var sensor = s.copy()
                     sensor.key = key
                     sensor.name = s.name.replacingOccurrences(of: "%", with: "\(index)")
-                    
+
                     list.append(sensor)
                     available.remove(at: idx)
                     index += 1
@@ -144,13 +249,13 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                 list.append(Sensor(key: key, name: key, group: .unknown, type: t, platforms: []))
             }
         }
-        
+
         for i in list.indices {
             if let newValue = await SMC.shared.getValue(list[i].key) {
                 list[i].value = newValue
             }
         }
-        
+
         var results: [Sensor_p] = []
         results += list.filter({ (s: Sensor_p) -> Bool in
             if s.type == .temperature && (s.value == 0 || s.value > 110) {
@@ -160,7 +265,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
             }
             return true
         })
-        
+
         if self.hidState {
             results += self.initHIDSensors()
         }
@@ -168,15 +273,15 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
         results += self.initCalculatedSensors(results)
         results.append(Sensor(key: "battery_amperage", name: "Battery", group: .sensor, type: .current, platforms: Platform.all))
         results.append(Sensor(key: "battery_power", name: "Battery", group: .sensor, type: .power, platforms: Platform.all))
-        
+
         return results
     }
-    
+
     nonisolated private func getBatteryData() -> (raw: Int, corrected: Int, voltage: Int) {
         var raw: Int = 0
         var corrected: Int = 0
         var voltage: Int = 0
-        
+
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
         if service != 0 {
             if let amperage = IORegistryEntryCreateCFProperty(service, "Amperage" as CFString, kCFAllocatorDefault, 0) {
@@ -184,11 +289,11 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
             } else if let amperage = IORegistryEntryCreateCFProperty(service, "InstantAmperage" as CFString, kCFAllocatorDefault, 0) {
                 raw = (amperage.takeRetainedValue() as? Int ?? 0)
             }
-            
+
             if let v = IORegistryEntryCreateCFProperty(service, "Voltage" as CFString, kCFAllocatorDefault, 0) {
                 voltage = (v.takeRetainedValue() as? Int ?? 0)
             }
-            
+
             corrected = raw
             if let telemetry = IORegistryEntryCreateCFProperty(service, "PowerTelemetryData" as CFString, kCFAllocatorDefault, 0) {
                 if let dict = telemetry.takeRetainedValue() as? [String: Any] {
@@ -202,38 +307,41 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
         }
         return (raw, corrected, voltage)
     }
-    
+
     private let readLock = OSAllocatedUnfairLock(initialState: false)
-    
+
     nonisolated public override func read() {
         let isReading = self.readLock.withLock { $0 }
         guard !isReading else { return }
         self.readLock.withLock { $0 = true }
-        
+
         Task { @MainActor in
+            let scope = self.readScopeLock.withLock { $0 }
             let localUnknownSensorsState = self.unknownSensorsState
             let localHidState = self.hidState
             let localSensors = self.list.sensors
             let localLastRead = self.lastRead
             let localFirstRead = self.firstRead
-            
+
             var updatedSensors = await Task.detached(priority: .background) {
                 var sensors = localSensors
                 let smcKeys = sensors.indices.compactMap { i -> String? in
                     let s = sensors[i]
                     if s.group != .hid && !s.isComputed && s.key != "battery_amperage" && s.key != "battery_power" {
                         if !localUnknownSensorsState && s.group == .unknown { return nil }
+                        if !scope.contains(s) { return nil }
                         return s.key
                     }
                     return nil
                 }
                 let smcValues = await SMC.shared.getValues(smcKeys)
-                
+
                 for i in sensors.indices {
                     guard sensors[i].group != .hid && !sensors[i].isComputed else { continue }
                     if !localUnknownSensorsState && sensors[i].group == .unknown { continue }
-                    
-                    var newValue: Double = 0
+                    guard scope.contains(sensors[i]) || scope.includesBattery(key: sensors[i].key) else { continue }
+
+                    var newValue: Double = sensors[i].value
                     if sensors[i].key == "battery_amperage" || sensors[i].key == "battery_power" {
                         let batteryData = self.getBatteryData()
                         if sensors[i].key == "battery_amperage" {
@@ -244,34 +352,35 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                     } else {
                         newValue = smcValues[sensors[i].key] ?? 0
                     }
-                    
+
                     if sensors[i].type == .temperature && (newValue < 0 || newValue > 125) {
                         newValue = sensors[i].value
                     }
                     sensors[i].value = newValue
                 }
-                
+
                 var cpuSensors = sensors.filter({ $0.group == .CPU && $0.type == .temperature && $0.average }).map{ $0.value }
                 var gpuSensors = sensors.filter({ $0.group == .GPU && $0.type == .temperature && $0.average }).map{ $0.value }
                 let fanSensors = sensors.filter({ $0.type == .fan && !$0.isComputed })
-                
+
                 if localHidState {
                     for typ in SensorsReader.HIDtypes {
+                        guard scope.includesHID(type: typ) else { continue }
                         let (page, usage, type) = self.m1Preset(type: typ)
                         AppleSiliconSensors(page, usage, type).forEach { (key, value) in
                             guard let key = key as? String, let value = value as? Double, value < 300 && value >= 0 else {
                                 return
                             }
-                            
+
                             if let idx = sensors.firstIndex(where: { $0.group == .hid && $0.key == key }) {
                                 sensors[idx].value = value
                             }
                         }
                     }
-                    
+
                     cpuSensors += sensors.filter({ $0.key.hasPrefix("pACC MTR Temp") || $0.key.hasPrefix("eACC MTR Temp") }).map{ $0.value }
                     gpuSensors += sensors.filter({ $0.key.hasPrefix("GPU MTR Temp") }).map{ $0.value }
-                    
+
                     let socSensors = sensors.filter({ $0.key.hasPrefix("SOC MTR Temp") }).map{ $0.value }
                     if !socSensors.isEmpty {
                         if let idx = sensors.firstIndex(where: { $0.key == "Average SOC" }) {
@@ -282,7 +391,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                         }
                     }
                 }
-                
+
                 if !cpuSensors.isEmpty {
                     if let idx = sensors.firstIndex(where: { $0.key == "Average CPU" }) {
                         sensors[idx].value = cpuSensors.reduce(0, +) / Double(cpuSensors.count)
@@ -299,7 +408,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                         sensors[idx].value = gpuSensors.max() ?? 0
                     }
                 }
-                
+
                 if !fanSensors.isEmpty {
                     if let idx = sensors.firstIndex(where: { $0.key == "Average Fan" }) {
                         sensors[idx].value = fanSensors.map{ $0.value }.reduce(0, +) / Double(fanSensors.count)
@@ -308,12 +417,12 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                         sensors[idx].value = fanSensors.map{ $0.value }.max() ?? 0
                     }
                 }
-                
+
                 if let PSTRSensor = sensors.first(where: { $0.key == "PSTR"}), PSTRSensor.value > 0 {
                     let now = Date()
                     let sinceLastRead = now.timeIntervalSince(localLastRead)
                     let sinceFirstRead = now.timeIntervalSince(localFirstRead)
-                    
+
                     if let totalIdx = sensors.firstIndex(where: {$0.key == "Total System Consumption"}), sinceLastRead > 0 {
                         sensors[totalIdx].value += PSTRSensor.value * sinceLastRead / 3600
                         if let avgIdx = sensors.firstIndex(where: {$0.key == "Average System Total"}), sinceFirstRead > 0 {
@@ -321,7 +430,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                         }
                     }
                 }
-                
+
                 if let idx = sensors.firstIndex(where: { $0.key == "VD0R" }), sensors[idx].value < 0.4 {
                     sensors[idx].value = 0
                 }
@@ -330,7 +439,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                 }
                 return sensors
             }.value
-            if let (cpu, gpu, ane, ram, pci) = self.IOSensors() {
+            if scope.isFull || scope.needsIOSensors, let (cpu, gpu, ane, ram, pci) = self.IOSensors() {
                 if let idx = updatedSensors.firstIndex(where: { $0.key == "CPU Power" }) {
                     updatedSensors[idx].value = cpu
                 }
@@ -352,7 +461,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
             if safetyState {
                 let hottest = updatedSensors.filter{ $0.type == .temperature && ($0.group == .CPU || $0.group == .GPU || $0.group == .hid) }.map{ $0.value }.max() ?? 0
                 if hottest > 95 {
-                    if updatedSensors.filter({ $0 is Fan }).contains(where: { ($0 as? Fan)?.mode == .forced }) {
+                    if updatedSensors.compactMap({ $0 as? Fan }).contains(where: { $0.mode == .forced }) {
                         Task {
                             await SMCHelper.shared.resetFanControl()
                         }
@@ -360,10 +469,10 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                     }
                 }
             }
-            
+
             let batteryAutoState = Store.shared.bool(key: "Sensors_fanBatteryAuto", defaultValue: false)
             if batteryAutoState && !self.isAC() {
-                if updatedSensors.filter({ $0 is Fan }).contains(where: { ($0 as? Fan)?.mode == .forced }) {
+                if updatedSensors.compactMap({ $0 as? Fan }).contains(where: { $0.mode == .forced }) {
                     Task {
                         await SMCHelper.shared.resetFanControl()
                     }
@@ -373,33 +482,33 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
 
             let newList = Sensors_List()
             newList.sensors = updatedSensors
-            
+
             if let old = self.value, old == newList {
                 self.lastRead = Date()
                 self.readLock.withLock { $0 = false }
                 return
             }
-            
+
             self.list.sensors = updatedSensors
             self.lastRead = Date()
             self.callback(self.list)
             self.readLock.withLock { $0 = false }
         }
     }
-    
+
     private func initCalculatedSensors(_ sensors: [Sensor_p]) -> [Sensor_p] {
         var list: [Sensor_p] = []
-        
+
         var cpuSensors = sensors.filter({ $0.group == .CPU && $0.type == .temperature && $0.average }).map{ $0.value }
         var gpuSensors = sensors.filter({ $0.group == .GPU && $0.type == .temperature && $0.average }).map{ $0.value }
-        
+
         if self.hidState {
             cpuSensors += sensors.filter({ $0.key.hasPrefix("pACC MTR Temp") || $0.key.hasPrefix("eACC MTR Temp") }).map{ $0.value }
             gpuSensors += sensors.filter({ $0.key.hasPrefix("GPU MTR Temp") }).map{ $0.value }
         }
-        
+
         let fanSensors = sensors.filter({ $0.type == .fan && !$0.isComputed })
-        
+
         if !cpuSensors.isEmpty {
             let value = cpuSensors.reduce(0, +) / Double(cpuSensors.count)
             list.append(Sensor(key: "Average CPU", name: "Average CPU", value: value, group: .CPU, type: .temperature, platforms: Platform.all, isComputed: true))
@@ -419,12 +528,12 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                 list.append(Fan(id: -1, key: "Fastest fan", name: "Fastest fan", minSpeed: f.minSpeed, maxSpeed: f.maxSpeed, value: f.value, mode: .automatic, isComputed: true))
             }
         }
-        
+
         if sensors.contains(where: { $0.key == "PSTR"}) {
             list.append(Sensor(key: "Total System Consumption", name: "Total System Consumption", value: 0, group: .sensor, type: .energy, platforms: Platform.all, isComputed: true))
             list.append(Sensor(key: "Average System Total", name: "Average System Total", value: 0, group: .sensor, type: .power, platforms: Platform.all, isComputed: true))
         }
-        
+
         return list.filter({ (s: Sensor_p) -> Bool in
             switch s.type {
             case .temperature:
@@ -437,11 +546,11 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
             }
         }).sorted { $0.key.lowercased() < $1.key.lowercased() }
     }
-    
+
     public func unknownCallback() {
         self.unknownSensorsState = Store.shared.bool(key: "Sensors_unknown", defaultValue: false)
     }
-    
+
     public override func terminate() {
         self.subscription = nil
         self.channels = nil
@@ -456,7 +565,7 @@ extension SensorsReader {
         var list: [Fan] = []
         for i in 0..<Int(count) {
             var name = await SMC.shared.getStringValue("F\(i)ID")
-            
+
             if name == nil && count == 2 {
                 switch i {
                 case 0:
@@ -466,9 +575,9 @@ extension SensorsReader {
                 default: break
                 }
             }
-            
+
             let mode = await self.getFanMode(i)
-            
+
             list.append(Fan(
                 id: i,
                 key: "F\(i)Ac",
@@ -479,22 +588,22 @@ extension SensorsReader {
                 mode: mode
             ))
         }
-        
+
         return list
     }
-    
+
     private func getFanMode(_ id: Int) async -> FanMode {
         let modeKey = await SMC.shared.fanModeKey(id)
         let modeValue = Int(await SMC.shared.getValue(modeKey) ?? 0)
         return modeValue == 1 ? .forced : .automatic
     }
-    
+
     nonisolated private func isAC() -> Bool {
         guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
               let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef] else {
             return true
         }
-        
+
         for source in sources {
             if let description = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue() as? [String: Any] {
                 if let type = description[kIOPSTypeKey] as? String, type == kIOPSInternalBatteryType {
@@ -504,7 +613,7 @@ extension SensorsReader {
                 }
             }
         }
-        
+
         return true
     }
 }
@@ -516,7 +625,7 @@ extension SensorsReader {
         var page: Int32 = 0
         var usage: Int32 = 0
         var eventType: Int32 = kIOHIDEventTypeTemperature
-        
+
         switch type {
         case .temperature:
             page = 0xff00
@@ -532,13 +641,13 @@ extension SensorsReader {
             eventType = kIOHIDEventTypePower
         case .power, .energy, .fan: break
         }
-        
+
         return (page, usage, eventType)
     }
-    
+
     private func initHIDSensors() -> [Sensor] {
         var list: [Sensor] = []
-        
+
         for typ in SensorsReader.HIDtypes {
             let (page, usage, type) = self.m1Preset(type: typ)
             if let sensors = AppleSiliconSensors(page, usage, type) {
@@ -547,7 +656,7 @@ extension SensorsReader {
                         return
                     }
                     var name: String = key
-                    
+
                     HIDSensorsList.forEach { (s: Sensor) in
                         if s.key.contains("%") {
                             var index = 1
@@ -561,7 +670,7 @@ extension SensorsReader {
                             name = s.name
                         }
                     }
-                    
+
                     list.append(Sensor(
                         key: key,
                         name: name,
@@ -573,7 +682,7 @@ extension SensorsReader {
                 }
             }
         }
-        
+
         let socSensors = list.filter({ $0.key.hasPrefix("SOC MTR Temp") }).map{ $0.value }
         if !socSensors.isEmpty {
             let value = socSensors.reduce(0, +) / Double(socSensors.count)
@@ -582,7 +691,7 @@ extension SensorsReader {
                 list.append(Sensor(key: "Hottest SOC", name: "Hottest SOC", value: max, group: .hid, type: .temperature, platforms: Platform.all))
             }
         }
-        
+
         return list.filter({ (s: Sensor_p) -> Bool in
             switch s.type {
             case .temperature:
@@ -595,7 +704,7 @@ extension SensorsReader {
             }
         }).sorted { $0.key.lowercased() < $1.key.lowercased() }
     }
-    
+
     public func HIDCallback() {
         if self.hidState {
             self.list.sensors += self.initHIDSensors()
@@ -610,29 +719,29 @@ extension SensorsReader {
 extension SensorsReader {
     private func getChannels() -> CFMutableDictionary? {
         let channelNames: [(String, String?)] = [("Energy Model", nil)]
-        
+
         var channels: [CFDictionary] = []
         for (gname, sname) in channelNames {
             let channel = IOReportCopyChannelsInGroup(gname as CFString?, sname as CFString?, 0, 0, 0)
             guard let channel = channel?.takeRetainedValue() else { continue }
             channels.append(channel)
         }
-        
+
         if channels.isEmpty { return nil }
         let chan = channels[0]
         for i in 1..<channels.count {
             IOReportMergeChannels(chan, channels[i], nil)
         }
-        
+
         let size = CFDictionaryGetCount(chan)
         guard let channel = CFDictionaryCreateMutableCopy(kCFAllocatorDefault, size, chan),
               let chanDict = (channel as AnyObject) as? [String: Any], chanDict["IOReportChannels"] != nil else {
             return nil
         }
-        
+
         return channel
     }
-    
+
     private func initIOSensors() -> [Sensor] {
         guard let (cpu, gpu, ane, ram, pci) = self.IOSensors() else { return [] }
         return [
@@ -643,7 +752,7 @@ extension SensorsReader {
             Sensor(key: "PCI Power", name: "PCI Power", value: pci, group: .system, type: .power, platforms: Platform.apple, isComputed: true)
         ]
     }
-    
+
     private static func appleSiliconPower(currentEnergy: Double, previousEnergy: Double, elapsed: TimeInterval) -> Double {
         guard elapsed > 0 else { return 0 }
         return (currentEnergy - previousEnergy) / elapsed
@@ -658,24 +767,24 @@ extension SensorsReader {
             return nil
         }
         let now = Date()
-        
+
         let prevCPU = self.powers.CPU
         let prevGPU = self.powers.GPU
         let prevANE = self.powers.ANE
         let prevRAM = self.powers.RAM
         let prevPCI = self.powers.PCI
-        
+
         for i in 0..<items.count {
             guard let item = items[i] as? NSDictionary else { continue }
             let channelInfo = item as CFDictionary
-            
+
             guard let group = IOReportChannelGetGroup(channelInfo)?.takeUnretainedValue() as? String,
                   group == "Energy Model",
                   let channel = IOReportChannelGetChannelName(channelInfo)?.takeUnretainedValue() as? String,
                   let unit = IOReportChannelGetUnitLabel(channelInfo)?.takeUnretainedValue() as? String else { continue }
-            
+
             let value = Double(IOReportSimpleGetIntegerValue(channelInfo, 0))
-            
+
             if channel.hasSuffix("CPU Energy") {
                 self.powers.CPU = value.power(unit)
             } else if channel.hasSuffix("GPU Energy") {
@@ -688,7 +797,7 @@ extension SensorsReader {
                 self.powers.PCI = value.power(unit)
             }
         }
-        
+
         guard let lastIOSensorsRead = self.lastIOSensorsRead else {
             self.lastIOSensorsRead = now
             return (0, 0, 0, 0, 0)
@@ -697,7 +806,7 @@ extension SensorsReader {
             self.lastIOSensorsRead = now
             return (0, 0, 0, 0, 0)
         }
-        
+
         let elapsed = now.timeIntervalSince(lastIOSensorsRead)
         defer { self.lastIOSensorsRead = now }
         return (

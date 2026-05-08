@@ -14,7 +14,8 @@ import os
 public final class Store: @unchecked Sendable {
     public static let shared = Store()
     private let defaults = UserDefaults.standard
-    private let lock = OSAllocatedUnfairLock(initialState: [String: Any]())
+    private let lock = NSRecursiveLock()
+    private nonisolated(unsafe) var cache: [String: Any] = [:]
     
     public init() {
         self.loadCache()
@@ -24,21 +25,21 @@ public final class Store: @unchecked Sendable {
     @objc private func loadCache() {
         guard let bundleId = Bundle.main.bundleIdentifier,
               let domain = self.defaults.persistentDomain(forName: bundleId) else { return }
-        self.lock.withLock { cache in
-            cache = domain
-        }
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        self.cache = domain
     }
     
     private func getValue<T>(for key: String, type: T.Type) -> T? {
-        self.lock.withLock { cache in
-            return cache[key] as? T
-        }
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return self.cache[key] as? T
     }
     
     private func setValue(_ value: Any?, for key: String) {
-        self.lock.withLock { cache in
-            cache[key] = value
-        }
+        self.lock.lock()
+        self.cache[key] = value
+        self.lock.unlock()
         
         if let value = value {
             self.defaults.set(value, forKey: key)
@@ -48,9 +49,9 @@ public final class Store: @unchecked Sendable {
     }
     
     public func exist(key: String) -> Bool {
-        self.lock.withLock { cache in
-            return cache.keys.contains(key) || self.defaults.object(forKey: key) != nil
-        }
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return self.cache.keys.contains(key) || self.defaults.object(forKey: key) != nil
     }
     
     public func remove(_ key: String) {
@@ -98,9 +99,9 @@ public final class Store: @unchecked Sendable {
     }
     
     public func reset() {
-        self.lock.withLock { cache in
-            cache.removeAll()
-        }
+        self.lock.lock()
+        self.cache.removeAll()
+        self.lock.unlock()
         
         self.defaults.dictionaryRepresentation().keys.forEach { key in
             self.defaults.removeObject(forKey: key)
@@ -130,9 +131,9 @@ public final class Store: @unchecked Sendable {
         }
         
         let finalDict = importedDict
-        self.lock.withLock { cache in
-            cache = finalDict
-        }
+        self.lock.lock()
+        self.cache = finalDict
+        self.lock.unlock()
         
         self.defaults.setPersistentDomain(importedDict, forName: id)
         restartApp(self)

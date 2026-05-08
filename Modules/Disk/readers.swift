@@ -42,14 +42,16 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
         Store.shared.bool(key: "\(ModuleType.disk.stringValue)_SMART", defaultValue: true)
     }
     private nonisolated(unsafe) var purgableSpace: [URL: (Date, Int64)] = [:]
-    private let session: DASession? = DASessionCreate(kCFAllocatorDefault)
-    
+    private nonisolated(unsafe) var session: DASession? = DASessionCreate(kCFAllocatorDefault)
     private let readLock = OSAllocatedUnfairLock(initialState: false)
     
     nonisolated public override func read() {
-        let isReading = self.readLock.withLock { $0 }
-        guard !isReading else { return }
-        self.readLock.withLock { $0 = true }
+        let alreadyReading = self.readLock.withLock { state in
+            if state { return true }
+            state = true
+            return false
+        }
+        if alreadyReading { return }
         
         let removableState = Store.shared.bool(key: "Disk_removable", defaultValue: false)
         let smartState = self.SMART
@@ -277,7 +279,7 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
 
 internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
     internal nonisolated(unsafe) var list: Disks = Disks()
-    private let session: DASession? = DASessionCreate(kCFAllocatorDefault)
+    private nonisolated(unsafe) var session: DASession? = DASessionCreate(kCFAllocatorDefault)
     
     @MainActor override func setup() {
         self.setInterval(Store.shared.int(key: "Disk_updateInterval", defaultValue: self.defaultInterval))
@@ -286,9 +288,12 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
     private let activityLock = OSAllocatedUnfairLock(initialState: false)
     
     nonisolated public override func read() {
-        let isReading = self.activityLock.withLock { $0 }
-        guard !isReading else { return }
-        self.activityLock.withLock { $0 = true }
+        let alreadyReading = self.activityLock.withLock { state in
+            if state { return true }
+            state = true
+            return false
+        }
+        if alreadyReading { return }
         
         Task { @MainActor in
             let keys: [URLResourceKey] = [.volumeNameKey]
@@ -297,13 +302,13 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
                 return
             }
             
-            guard let session = self.session else {
-                return
-            }
             let currentInterval = Int64(self.interval ?? 1)
+            let localList = self.list
             
-            let updatedList = await Task.detached(priority: .background) {
-                let localList = self.list
+            let updatedList = await Task.detached(priority: .background) { [weak self] in
+                guard let self, let session = self.session else {
+                    return localList
+                }
                 var active: [String] = []
                 for url in paths {
                     if url.pathComponents.count == 1 || (url.pathComponents.count > 1 && url.pathComponents[1] == "Volumes") {
@@ -496,8 +501,6 @@ public class ProcessReader: Reader<[Disk_process]>, @unchecked Sendable {
         self.setInterval(Store.shared.int(key: "Disk_updateTopInterval", defaultValue: 5))
     }
     
-    private let processLock = OSAllocatedUnfairLock(initialState: false)
-
     nonisolated private func listPIDs() -> [pid_t] {
         let bufferSize = proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0)
         guard bufferSize > 0 else { return [] }
@@ -530,10 +533,15 @@ public class ProcessReader: Reader<[Disk_process]>, @unchecked Sendable {
         return "\(pid)"
     }
     
+    private let processLock = OSAllocatedUnfairLock(initialState: false)
+    
     nonisolated public override func read() {
-        let isReading = self.processLock.withLock { $0 }
-        guard !isReading else { return }
-        self.processLock.withLock { $0 = true }
+        let alreadyReading = self.processLock.withLock { state in
+            if state { return true }
+            state = true
+            return false
+        }
+        if alreadyReading { return }
         
         Task { @MainActor in
             let limit = self.numberOfProcesses

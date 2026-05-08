@@ -130,6 +130,13 @@ public class Battery: Module {
         self.setReaders([self.usageReader, self.processReader])
     }
     
+    public override func updateReaderActivityModes() {
+        let detailVisible = self.isPopupVisible || self.isSettingsWindowVisible
+        let usageMode = SamplingPolicy.mode(hasActiveValueWidget: self.hasActiveValueWidget, detailVisible: detailVisible)
+        self.usageReader?.setActivityMode(usageMode)
+        self.processReader?.setActivityMode(SamplingPolicy.popupMode(popupVisible: self.isPopupVisible))
+    }
+    
     public override func willTerminate() {
         guard self.isAvailable() else { return }
         self.notificationsView.willTerminate()

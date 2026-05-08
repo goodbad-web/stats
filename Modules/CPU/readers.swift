@@ -50,9 +50,9 @@ private struct CPUInfoWrapper: @unchecked Sendable {
 
 internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
     private let loadLock = OSAllocatedUnfairLock(initialState: LoadState())
-    private var numCPUs: uint = 0
-    private var hasHyperthreadingCores = false
-    private var cores: [core_s]? = nil
+    private nonisolated(unsafe) var numCPUs: uint = 0
+    private nonisolated(unsafe) var hasHyperthreadingCores = false
+    private nonisolated(unsafe) var cores: [core_s]? = nil
     
     public override func setup() {
         self.hasHyperthreadingCores = sysctlByName("hw.physicalcpu") != sysctlByName("hw.logicalcpu")

@@ -89,7 +89,8 @@ public class ProcessesView: NSStackView {
         view.widthAnchor.constraint(equalToConstant: self.bounds.width).isActive = true
         view.heightAnchor.constraint(equalToConstant: ProcessView.height).isActive = true
         view.orientation = .horizontal
-        view.distribution = .fillProportionally
+        view.distribution = .fill
+        view.alignment = .centerY
         view.spacing = 0
         
         let iconView: NSImageView = NSImageView()
@@ -182,7 +183,8 @@ public class ProcessView: NSStackView {
         
         self.wantsLayer = true
         self.orientation = .horizontal
-        self.distribution = .fillProportionally
+        self.distribution = .fill
+        self.alignment = .centerY
         self.spacing = 0
         self.layer?.cornerRadius = 3
         
@@ -318,12 +320,19 @@ public actor ProcessMonitor {
     private var lastCPUUsage: [Int32: UInt64] = [:]
     private var lastTime: UInt64 = 0
     private var nameCache: [Int32: String] = [:]
+    private var cache: [String: (time: Date, list: [TopProcess])] = [:]
     
     private init() {}
     
     public func getTopProcesses(limit: Int, category: String) async -> [TopProcess] {
+        if let cached = self.cache[category], Date().timeIntervalSince(cached.time) < 1.0 && cached.list.count >= limit {
+            return Array(cached.list.prefix(limit))
+        }
+        
         if category == "Power" {
-            return await self.getTopByShell(limit: limit, category: category)
+            let list = await self.getTopByShell(limit: limit, category: category)
+            self.cache[category] = (Date(), list)
+            return list
         }
         
         let pidsCount = proc_listpids(PROC_ALL_PIDS, 0, nil, 0)
@@ -382,6 +391,7 @@ public actor ProcessMonitor {
             self.nameCache.removeAll()
         }
         
+        self.cache[category] = (Date(), list)
         return list
     }
     

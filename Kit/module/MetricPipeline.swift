@@ -1,29 +1,25 @@
-//
-//  MetricPipeline.swift
-//  Kit
-//
-//  Created by Codex on 08/05/2026.
-//
-
 import Foundation
 import os
 
 public struct MetricID: Hashable, Sendable {
     public let module: String
     public let reader: String
-    
-    public var key: String {
-        "\(self.module)@\(self.reader)"
-    }
+    public let key: String
     
     public init(module: ModuleType, reader: String) {
-        self.module = module.stringValue
-        self.reader = reader
+        let m = String(module.stringValue)
+        let r = String(reader)
+        self.module = m
+        self.reader = r
+        self.key = m + "@" + r
     }
     
     public init(module: String, reader: String) {
-        self.module = module
-        self.reader = reader
+        let m = String(module)
+        let r = String(reader)
+        self.module = m
+        self.reader = r
+        self.key = m + "@" + r
     }
 }
 
@@ -57,43 +53,58 @@ public protocol MetricStore {
 public final class MetricPipeline<Value: Codable & Sendable>: @unchecked Sendable {
     public typealias Subscriber = @Sendable (MetricSnapshot<Value>) -> Void
     
-    private let state = OSAllocatedUnfairLock(initialState: PipelineState<Value>())
+    private let stateLock = NSRecursiveLock()
+    private nonisolated(unsafe) var state = PipelineState<Value>()
     
     public init() {}
     
     @discardableResult
     public func subscribe(_ subscriber: @escaping Subscriber) -> UUID {
         let id = UUID()
-        self.state.withLock { state in
-            state.subscribers[id] = subscriber
-        }
+        self.stateLock.lock()
+        defer { self.stateLock.unlock() }
+        self.state.subscribers[id] = subscriber
         return id
     }
     
     public func unsubscribe(_ id: UUID) {
-        _ = self.state.withLock { state in
-            state.subscribers.removeValue(forKey: id)
-        }
+        self.stateLock.lock()
+        defer { self.stateLock.unlock() }
+        self.state.subscribers.removeValue(forKey: id)
     }
     
     public func publish(_ snapshot: MetricSnapshot<Value>, removeDuplicates: Bool = false) {
-        let subscribers = self.state.withLock { state -> [Subscriber] in
+        self.stateLock.lock()
+        if self.state.isPublishing {
+            self.stateLock.unlock()
+            return
+        }
+        self.state.isPublishing = true
+        
+        let subscribers: [Subscriber] = {
             if removeDuplicates,
                let data = try? JSONEncoder().encode(snapshot.value),
-               state.lastData == data {
+               self.state.lastData == data {
                 return []
             } else if removeDuplicates {
-                state.lastData = try? JSONEncoder().encode(snapshot.value)
+                self.state.lastData = try? JSONEncoder().encode(snapshot.value)
             }
-            return Array(state.subscribers.values)
-        }
+            return Array(self.state.subscribers.values)
+        }()
+        self.stateLock.unlock()
+        
         subscribers.forEach { $0(snapshot) }
+        
+        self.stateLock.lock()
+        self.state.isPublishing = false
+        self.stateLock.unlock()
     }
 }
 
 private struct PipelineState<Value: Codable & Sendable> {
     var subscribers: [UUID: MetricPipeline<Value>.Subscriber] = [:]
     var lastData: Data?
+    var isPublishing: Bool = false
 }
 
 public final class LevelDBMetricHistoryStore: MetricStore, @unchecked Sendable {
@@ -133,16 +144,21 @@ public final class RemoteMetricPublisher: @unchecked Sendable {
 }
 
 public final class MetricCache<Value: Codable & Sendable>: @unchecked Sendable {
-    private let state = OSAllocatedUnfairLock(initialState: Optional<MetricSnapshot<Value>>.none)
+    private let stateLock = NSRecursiveLock()
+    private nonisolated(unsafe) var state: MetricSnapshot<Value>? = nil
     
     public init() {}
     
     public var latest: MetricSnapshot<Value>? {
-        self.state.withLock { $0 }
+        self.stateLock.lock()
+        defer { self.stateLock.unlock() }
+        return self.state
     }
     
     public func update(_ snapshot: MetricSnapshot<Value>) {
-        self.state.withLock { $0 = snapshot }
+        self.stateLock.lock()
+        defer { self.stateLock.unlock() }
+        self.state = snapshot
     }
 }
 

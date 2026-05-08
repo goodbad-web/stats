@@ -326,6 +326,14 @@ public class Disk: Module {
         self.setReaders([self.capacityReader, self.activityReader, self.processReader])
     }
     
+    public override func updateReaderActivityModes() {
+        let detailVisible = self.isPopupVisible || self.isSettingsWindowVisible
+        let mainMode = SamplingPolicy.mode(hasActiveValueWidget: self.hasActiveValueWidget, detailVisible: detailVisible)
+        self.capacityReader?.setActivityMode(mainMode)
+        self.activityReader?.setActivityMode(mainMode)
+        self.processReader?.setActivityMode(SamplingPolicy.popupMode(popupVisible: self.isPopupVisible))
+    }
+    
     private func capacityCallback(_ value: Disks) {
         guard self.enabled else { return }
         
