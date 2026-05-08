@@ -46,10 +46,10 @@ public class Sensors: Module {
     }
     
     private var selectedStackLine1: String {
-        Store.shared.string(key: "Sensors_stack_line1", defaultValue: "")
+        Store.shared.string(key: "Sensors_stack_line1", defaultValue: "Average CPU")
     }
     private var selectedStackLine2: String {
-        Store.shared.string(key: "Sensors_stack_line2", defaultValue: "")
+        Store.shared.string(key: "Sensors_stack_line2", defaultValue: "Hottest CPU")
     }
     private var selectedBarChartSensors: [String] {
         Store.shared.string(key: "Sensors_barChart_sensors", defaultValue: "Fans,Temperature")
@@ -226,19 +226,32 @@ public class Sensors: Module {
 
     private func stackSensors(from sensors: [Sensor_p]) -> [Sensor_p] {
         var list: [Sensor_p] = []
-        if let sensor = sensors.first(where: { $0.key == self.selectedStackLine1 }) {
-            list.append(sensor)
+        self.appendSensor(self.selectedStackLine1, from: sensors, to: &list)
+        self.appendSensor(self.selectedStackLine2, from: sensors, to: &list)
+
+        for key in Self.stackSensorFallbacks where list.count < 2 {
+            self.appendSensor(key, from: sensors, to: &list)
         }
-        if let sensor = sensors.first(where: { $0.key == self.selectedStackLine2 }) {
-            list.append(sensor)
-        }
-        if !list.isEmpty {
+
+        if list.count == 2 {
             return list
         }
 
-        return Self.stackSensorFallbacks.compactMap { key in
-            sensors.first(where: { $0.key == key })
-        }.prefix(2).map { $0 }
+        for type in [SensorType.temperature, .power, .fan] where list.count < 2 {
+            if let sensor = sensors.first(where: { candidate in
+                candidate.type == type && !list.contains(where: { $0.key == candidate.key })
+            }) {
+                list.append(sensor)
+            }
+        }
+        return list
+    }
+
+    private func appendSensor(_ key: String, from sensors: [Sensor_p], to list: inout [Sensor_p]) {
+        guard !key.isEmpty, !list.contains(where: { $0.key == key }) else { return }
+        if let sensor = sensors.first(where: { $0.key == key }) {
+            list.append(sensor)
+        }
     }
 
     private func setupSensorDependentViews(_ sensors: [Sensor_p]?, force: Bool = false) {

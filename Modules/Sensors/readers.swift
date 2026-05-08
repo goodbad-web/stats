@@ -294,7 +294,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                     if let idx = sensors.firstIndex(where: { $0.key == "Average Fan" }) {
                         sensors[idx].value = fanSensors.map{ $0.value }.reduce(0, +) / Double(fanSensors.count)
                     }
-                    if let idx = sensors.firstIndex(where: { $0.key == "Fastest Fan" }) {
+                    if let idx = sensors.firstIndex(where: { $0.key == "Fastest fan" }) {
                         sensors[idx].value = fanSensors.map{ $0.value }.max() ?? 0
                     }
                 }

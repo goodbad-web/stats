@@ -74,8 +74,8 @@ struct SensorsSettingsView: View {
     @AppStorage(AppSettingsKeys.moduleString("Sensors", "fanValue", defaultValue: "percentage").rawValue) private var fanValueState: String = "percentage"
     @AppStorage(AppSettingsKeys.moduleString("Sensors", "sensor", defaultValue: "Average CPU").rawValue) private var selectedSensor: String = "Average CPU"
     @AppStorage(AppSettingsKeys.moduleBool("Sensors", "fanSafety", defaultValue: true).rawValue) private var fanSafetyState: Bool = true
-    @AppStorage(AppSettingsKeys.moduleString("Sensors", "stack_line1", defaultValue: "").rawValue) private var selectedStackLine1: String = ""
-    @AppStorage(AppSettingsKeys.moduleString("Sensors", "stack_line2", defaultValue: "").rawValue) private var selectedStackLine2: String = ""
+    @AppStorage(AppSettingsKeys.moduleString("Sensors", "stack_line1", defaultValue: "Average CPU").rawValue) private var selectedStackLine1: String = "Average CPU"
+    @AppStorage(AppSettingsKeys.moduleString("Sensors", "stack_line2", defaultValue: "Hottest CPU").rawValue) private var selectedStackLine2: String = "Hottest CPU"
     @AppStorage(AppSettingsKeys.moduleString("Sensors", "barChart_sensors", defaultValue: "Fans,Temperature").rawValue) private var selectedBarChartSensors: String = "Fans,Temperature"
     @AppStorage(AppSettingsKeys.moduleBool("Sensors", "fanBatteryAuto", defaultValue: false).rawValue) private var fanBatteryAutoState: Bool = false
     
