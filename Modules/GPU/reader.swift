@@ -229,11 +229,14 @@ private actor GPUReaderWorker {
         let power = self.readPower()
         let anePower = power["ANE"] ?? 0
         let gpuPower = power["GPU"] ?? 0
+        let mediaPower = power["Media"] ?? 0
         let aneUtil = anePower / self.aneMaxPower
+        let mediaUtil = mediaPower / 1.0 // Estimate for now, or use maxMediaPower
         let fpsValue = self.readFrames()
         
         for i in updatedGPUs.list.indices where updatedGPUs.list[i].IOClass.lowercased().contains("agx") {
             updatedGPUs.list[i].aneUtilization = min(1, max(0, aneUtil))
+            updatedGPUs.list[i].mediaUtilization = min(1, max(0, mediaUtil))
             updatedGPUs.list[i].gpuPower = gpuPower
             updatedGPUs.list[i].fps = fpsValue
         }
@@ -299,6 +302,8 @@ private actor GPUReaderWorker {
                 key = "ANE"
             } else if channel.starts(with: "GPU") {
                 key = "GPU"
+            } else if channel.hasSuffix("Media Energy") || channel.starts(with: "VCP") || channel.starts(with: "DCP") {
+                key = "Media"
             } else {
                 continue
             }

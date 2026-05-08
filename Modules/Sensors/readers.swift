@@ -118,7 +118,7 @@ private actor SensorsReaderWorker {
     
     private var channels: CFMutableDictionary?
     private var subscription: IOReportSubscriptionRef?
-    private var powers: (CPU: Double, GPU: Double, ANE: Double, RAM: Double, PCI: Double) = (0.0, 0.0, 0.0, 0.0, 0.0)
+    private var powers: (CPU: Double, GPU: Double, ANE: Double, RAM: Double, PCI: Double, Media: Double) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     
     init() {
         let (c, s) = Self.initializeIOReport()
@@ -249,7 +249,7 @@ private actor SensorsReaderWorker {
             sensors[idx].value = 0
         }
 
-        if scope.isFull || scope.needsIOSensors, let (cpu, gpu, ane, ram, pci) = self.IOSensors() {
+        if scope.isFull || scope.needsIOSensors, let (cpu, gpu, ane, ram, pci, media) = self.IOSensors() {
             if let idx = sensors.firstIndex(where: { $0.key == "CPU Power" }) {
                 sensors[idx].value = cpu
             }
@@ -264,6 +264,9 @@ private actor SensorsReaderWorker {
             }
             if let idx = sensors.firstIndex(where: { $0.key == "PCI Power" }) {
                 sensors[idx].value = pci
+            }
+            if let idx = sensors.firstIndex(where: { $0.key == "Media Power" }) {
+                sensors[idx].value = media
             }
         }
         
@@ -505,13 +508,14 @@ private actor SensorsReaderWorker {
     }
     
     private func initIOSensors() -> [Sensor] {
-        guard let (cpu, gpu, ane, ram, pci) = self.IOSensors() else { return [] }
+        guard let (cpu, gpu, ane, ram, pci, media) = self.IOSensors() else { return [] }
         return [
             Sensor(key: "CPU Power", name: "CPU Power", value: cpu, group: .CPU, type: .power, platforms: Platform.apple, isComputed: true),
             Sensor(key: "GPU Power", name: "GPU Power", value: gpu, group: .GPU, type: .power, platforms: Platform.apple, isComputed: true),
             Sensor(key: "ANE Power", name: "ANE Power", value: ane, group: .system, type: .power, platforms: Platform.apple, isComputed: true),
             Sensor(key: "RAM Power", name: "RAM Power", value: ram, group: .system, type: .power, platforms: Platform.apple, isComputed: true),
-            Sensor(key: "PCI Power", name: "PCI Power", value: pci, group: .system, type: .power, platforms: Platform.apple, isComputed: true)
+            Sensor(key: "PCI Power", name: "PCI Power", value: pci, group: .system, type: .power, platforms: Platform.apple, isComputed: true),
+            Sensor(key: "Media Power", name: "Media Power", value: media, group: .system, type: .power, platforms: Platform.apple, isComputed: true)
         ]
     }
     
@@ -590,10 +594,9 @@ private actor SensorsReaderWorker {
 
         return channel
     }
-
-    private func IOSensors() -> (Double, Double, Double, Double, Double)? {
+    private func IOSensors() -> (Double, Double, Double, Double, Double, Double)? {
         guard let reportSample = IOReportCreateSamples(self.subscription, self.channels, nil)?.takeRetainedValue(),
-              let dict = (reportSample as AnyObject) as? [String: Any] else {
+               let dict = (reportSample as AnyObject) as? [String: Any] else {
             return nil
         }
         guard let items = dict["IOReportChannels"] as? NSArray else {
@@ -606,6 +609,7 @@ private actor SensorsReaderWorker {
         let prevANE = self.powers.ANE
         let prevRAM = self.powers.RAM
         let prevPCI = self.powers.PCI
+        let prevMedia = self.powers.Media
 
         for i in 0..<items.count {
             guard let item = items[i] as? NSDictionary else { continue }
@@ -628,16 +632,18 @@ private actor SensorsReaderWorker {
                 self.powers.RAM = value.power(unit)
             } else if channel.starts(with: "PCI") && channel.hasSuffix("Energy") {
                 self.powers.PCI = value.power(unit)
+            } else if channel.hasSuffix("Media Energy") || channel.starts(with: "VCP") || channel.starts(with: "DCP") {
+                self.powers.Media = value.power(unit)
             }
         }
 
         guard let lastIOSensorsRead = self.lastIOSensorsRead else {
             self.lastIOSensorsRead = now
-            return (0, 0, 0, 0, 0)
+            return (0, 0, 0, 0, 0, 0)
         }
         guard prevCPU != 0 else {
             self.lastIOSensorsRead = now
-            return (0, 0, 0, 0, 0)
+            return (0, 0, 0, 0, 0, 0)
         }
 
         let elapsed = now.timeIntervalSince(lastIOSensorsRead)
@@ -647,9 +653,11 @@ private actor SensorsReaderWorker {
             (self.powers.GPU - prevGPU) / elapsed,
             (self.powers.ANE - prevANE) / elapsed,
             (self.powers.RAM - prevRAM) / elapsed,
-            (self.powers.PCI - prevPCI) / elapsed
+            (self.powers.PCI - prevPCI) / elapsed,
+            (self.powers.Media - prevMedia) / elapsed
         )
     }
+
     
     static private func m1Preset(type: SensorType) -> (Int32, Int32, Int32) {
         var page: Int32 = 0

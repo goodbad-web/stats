@@ -113,6 +113,8 @@ private struct ReaderState<T> {
     private var effectiveInterval: Int?
     private var activityMode: ReaderActivityMode = .active
     
+    private static let efficiencyQueue = DispatchQueue(label: "eu.exelban.Stats.Efficiency", qos: .background)
+    
     private var alignWorkItem: DispatchWorkItem?
     private let alignQueue = DispatchQueue(label: "eu.exelban.readerAlignQueue")
     
@@ -140,6 +142,10 @@ private struct ReaderState<T> {
             }
         }
         self.setup()
+        
+        if SystemKit.shared.device.platform != nil {
+            self.alignToSecondBoundary = true
+        }
         
         debug("Successfully initialize reader", log: self.log)
     }
@@ -177,7 +183,7 @@ private struct ReaderState<T> {
     
     open func start() {
         if (self.popup || self.preview) && self.locked {
-            DispatchQueue.global(qos: .background).async {
+            Self.efficiencyQueue.async {
                 self.read()
             }
             return
@@ -188,12 +194,12 @@ private struct ReaderState<T> {
                 self.startAlignedRepeater()
             } else {
                 self.startNormalRepeater()
-                DispatchQueue.global(qos: .background).async { self.read() }
+                Self.efficiencyQueue.async { self.read() }
                 self.repeatTask?.start()
             }
             self.initlizalized = true
         } else if (self.popup || self.sleep) && !self.active {
-            DispatchQueue.global(qos: .background).async { self.read() }
+            Self.efficiencyQueue.async { self.read() }
             self.repeatTask?.start()
         } else {
             self.repeatTask?.start()

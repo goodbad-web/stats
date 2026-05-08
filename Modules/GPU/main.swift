@@ -41,6 +41,7 @@ public struct GPU_Info: Codable, Equatable {
     public var renderUtilization: Double? = nil
     public var tilerUtilization: Double? = nil
     public var aneUtilization: Double? = nil
+    public var mediaUtilization: Double? = nil
     public var vramTotal: Int64? = nil
     public var vramUsed: Double? = nil
     public var gpuPower: Double? = nil
@@ -74,6 +75,7 @@ public struct GPU_Info: Codable, Equatable {
             abs((lhs.renderUtilization ?? 0) - (rhs.renderUtilization ?? 0)) < 0.01 &&
             abs((lhs.tilerUtilization ?? 0) - (rhs.tilerUtilization ?? 0)) < 0.01 &&
             abs((lhs.aneUtilization ?? 0) - (rhs.aneUtilization ?? 0)) < 0.01 &&
+            abs((lhs.mediaUtilization ?? 0) - (rhs.mediaUtilization ?? 0)) < 0.01 &&
             lhs.temperature == rhs.temperature &&
             lhs.vramUsed == rhs.vramUsed &&
             lhs.gpuPower == rhs.gpuPower
