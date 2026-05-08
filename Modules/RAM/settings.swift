@@ -44,15 +44,17 @@ You can use a combination of any of the variables.
 """
 
 struct RAMSettingsView: View {
-    @AppStorage("RAM_updateInterval") private var updateInterval = 1
-    @AppStorage("RAM_updateTopInterval") private var updateTopInterval = 1
-    @AppStorage("RAM_processes") private var numberOfProcesses = 8
-    @AppStorage("RAM_splitValue") private var splitValue = false
-    @AppStorage("RAM_combinedProcesses") private var combinedProcesses = false
-    @AppStorage("RAM_textWidgetValue") private var textWidgetValue = "$mem.used/$mem.total ($pressure.value)"
+    @AppStorage(AppSettingsKeys.moduleInt("RAM", "updateInterval", defaultValue: 1).rawValue) private var updateInterval = 1
+    @AppStorage(AppSettingsKeys.moduleInt("RAM", "updateTopInterval", defaultValue: 1).rawValue) private var updateTopInterval = 1
+    @AppStorage(AppSettingsKeys.moduleInt("RAM", "processes", defaultValue: 8).rawValue) private var numberOfProcesses = 8
+    @AppStorage(AppSettingsKeys.moduleBool("RAM", "splitValue", defaultValue: false).rawValue) private var splitValue = false
+    @AppStorage(AppSettingsKeys.moduleBool("RAM", "combinedProcesses", defaultValue: false).rawValue) private var combinedProcesses = false
+    @AppStorage(
+        AppSettingsKeys.moduleString("RAM", "textWidgetValue", defaultValue: "$mem.used/$mem.total ($pressure.value)").rawValue
+    ) private var textWidgetValue = "$mem.used/$mem.total ($pressure.value)"
     
-    @AppStorage("RAM_mini_sensor") private var selectedMiniSensor: String = "Usage"
-    @AppStorage("RAM_stack_sensor") private var selectedStackSensor: String = "Used/Free"
+    @AppStorage(AppSettingsKeys.moduleString("RAM", "mini_sensor", defaultValue: "Usage").rawValue) private var selectedMiniSensor: String = "Usage"
+    @AppStorage(AppSettingsKeys.moduleString("RAM", "stack_sensor", defaultValue: "Used/Free").rawValue) private var selectedStackSensor: String = "Used/Free"
     
     var widgets: [widget_t]
     var callback: () -> Void

@@ -69,7 +69,7 @@ internal class Settings: NSHostingView<BluetoothSettingsView>, Settings_v {
         self.rootView = BluetoothSettingsView(
             devices: self.devices,
             onToggle: { [weak self] id, value in
-                Store.shared.set(key: "ble_\(id)", value: value)
+                UserDefaultsSettingsStore.shared.set(AppSettingsKeys.bool("ble_\(id)", defaultValue: false), value: value)
                 self?.callback()
             }
         )

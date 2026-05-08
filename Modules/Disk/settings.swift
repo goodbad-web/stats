@@ -33,16 +33,16 @@ You can use a combination of any of the variables.
 """
 
 struct DiskSettingsView: View {
-    @AppStorage("Disk_updateInterval") private var updateInterval = 10
-    @AppStorage("Disk_processes") private var numberOfProcesses = 5
-    @AppStorage("Disk_disk") private var selectedDisk = ""
-    @AppStorage("Disk_removable") private var removableDisks = false
-    @AppStorage("Disk_base") private var base = "byte"
-    @AppStorage("Disk_SMART") private var smartData = true
-    @AppStorage("Disk_textWidgetValue") private var textValue = "$capacity.free/$capacity.total"
+    @AppStorage(AppSettingsKeys.moduleInt("Disk", "updateInterval", defaultValue: 10).rawValue) private var updateInterval = 10
+    @AppStorage(AppSettingsKeys.moduleInt("Disk", "processes", defaultValue: 5).rawValue) private var numberOfProcesses = 5
+    @AppStorage(AppSettingsKeys.moduleString("Disk", "disk", defaultValue: "").rawValue) private var selectedDisk = ""
+    @AppStorage(AppSettingsKeys.moduleBool("Disk", "removable", defaultValue: false).rawValue) private var removableDisks = false
+    @AppStorage(AppSettingsKeys.moduleString("Disk", "base", defaultValue: "byte").rawValue) private var base = "byte"
+    @AppStorage(AppSettingsKeys.moduleBool("Disk", "SMART", defaultValue: true).rawValue) private var smartData = true
+    @AppStorage(AppSettingsKeys.moduleString("Disk", "textWidgetValue", defaultValue: "$capacity.free/$capacity.total").rawValue) private var textValue = "$capacity.free/$capacity.total"
     
-    @AppStorage("Disk_mini_sensor") private var selectedMiniSensor: String = "Percentage"
-    @AppStorage("Disk_stack_sensor") private var selectedStackSensor: String = "Capacity"
+    @AppStorage(AppSettingsKeys.moduleString("Disk", "mini_sensor", defaultValue: "Percentage").rawValue) private var selectedMiniSensor: String = "Percentage"
+    @AppStorage(AppSettingsKeys.moduleString("Disk", "stack_sensor", defaultValue: "Capacity").rawValue) private var selectedStackSensor: String = "Capacity"
     
     var disks: [String]
     var widgets: [widget_t]

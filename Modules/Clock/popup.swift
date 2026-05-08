@@ -25,8 +25,8 @@ internal class Popup: PopupWrapper {
         self.orientation = .vertical
         self.spacing = Constants.Popup.margins
         
-        self.calendarState = Store.shared.bool(key: "\(self.title)_calendar", defaultValue: self.calendarState)
-        self.weekNumbersState = Store.shared.bool(key: "\(self.title)_calendarWeekNumbers", defaultValue: self.weekNumbersState)
+        self.calendarState = UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.moduleBool(self.title, "calendar", defaultValue: self.calendarState))
+        self.weekNumbersState = UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.moduleBool(self.title, "calendarWeekNumbers", defaultValue: self.weekNumbersState))
         self.calendarView = CalendarView(self.frame.width, showWeekNumbers: self.weekNumbersState)
         
         if let calendar = self.calendarView, self.calendarState {
@@ -115,7 +115,7 @@ internal class Popup: PopupWrapper {
     
     private func toggleCalendar(state: Bool) {
         self.calendarState = state
-        Store.shared.set(key: "\(self.title)_calendar", value: self.calendarState)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleBool(self.title, "calendar", defaultValue: self.calendarState), value: self.calendarState)
         
         guard let view = self.calendarView else { return }
         if self.calendarState {
@@ -128,7 +128,7 @@ internal class Popup: PopupWrapper {
     
     private func toggleWeekNumbers(state: Bool) {
         self.weekNumbersState = state
-        Store.shared.set(key: "\(self.title)_calendarWeekNumbers", value: self.weekNumbersState)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleBool(self.title, "calendarWeekNumbers", defaultValue: self.weekNumbersState), value: self.weekNumbersState)
         self.calendarView?.setShowWeekNumbers(self.weekNumbersState)
         self.recalculateHeight()
     }

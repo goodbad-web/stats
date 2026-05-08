@@ -128,7 +128,9 @@ private class GPUView: NSStackView {
     }
     
     private func initProcesses() -> NSView {
-        let numberOfProcesses = Store.shared.int(key: "GPU_processes", defaultValue: 5)
+        let numberOfProcesses = UserDefaultsSettingsStore.shared.int(
+            AppSettingsKeys.moduleInt("GPU", "processes", defaultValue: 5)
+        )
         if numberOfProcesses == 0 { return NSView() }
         
         let h: CGFloat = 22

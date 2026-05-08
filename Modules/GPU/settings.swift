@@ -14,13 +14,13 @@ import Kit
 import SwiftUI
 
 struct GPUSettingsView: View {
-    @AppStorage("GPU_updateInterval") private var updateInterval = 1
-    @AppStorage("GPU_gpu") private var selectedGPU = "automatic"
+    @AppStorage(AppSettingsKeys.moduleInt("GPU", "updateInterval", defaultValue: 1).rawValue) private var updateInterval = 1
+    @AppStorage(AppSettingsKeys.moduleString("GPU", "gpu", defaultValue: "automatic").rawValue) private var selectedGPU = "automatic"
     
-    @AppStorage("GPU_mini_sensor") private var selectedMiniSensor: String = "Utilization"
-    @AppStorage("GPU_stack_sensor") private var selectedStackSensor: String = "Utilization/Render"
+    @AppStorage(AppSettingsKeys.moduleString("GPU", "mini_sensor", defaultValue: "Utilization").rawValue) private var selectedMiniSensor: String = "Utilization"
+    @AppStorage(AppSettingsKeys.moduleString("GPU", "stack_sensor", defaultValue: "Utilization/Render").rawValue) private var selectedStackSensor: String = "Utilization/Render"
     
-    @AppStorage("GPU_processes") private var numberOfProcesses = 5
+    @AppStorage(AppSettingsKeys.moduleInt("GPU", "processes", defaultValue: 5).rawValue) private var numberOfProcesses = 5
     
     var widgets: [widget_t]
     var gpuList: [KeyValue_t]

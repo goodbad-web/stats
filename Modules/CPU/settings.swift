@@ -14,15 +14,15 @@ import Kit
 import SwiftUI
 
 struct CPUSettingsView: View {
-    @AppStorage("CPU_updateInterval") private var updateInterval: Int = 1
-    @AppStorage("CPU_updateTopInterval") private var updateTopInterval: Int = 1
-    @AppStorage("CPU_processes") private var numberOfProcesses: Int = 8
-    @AppStorage("CPU_usagePerCore") private var usagePerCore: Bool = false
-    @AppStorage("CPU_clustersGroup") private var clustersGroup: Bool = false
-    @AppStorage("CPU_splitValue") private var splitValue: Bool = false
+    @AppStorage(AppSettingsKeys.moduleInt("CPU", "updateInterval", defaultValue: 1).rawValue) private var updateInterval: Int = 1
+    @AppStorage(AppSettingsKeys.moduleInt("CPU", "updateTopInterval", defaultValue: 1).rawValue) private var updateTopInterval: Int = 1
+    @AppStorage(AppSettingsKeys.moduleInt("CPU", "processes", defaultValue: 8).rawValue) private var numberOfProcesses: Int = 8
+    @AppStorage(AppSettingsKeys.moduleBool("CPU", "usagePerCore", defaultValue: false).rawValue) private var usagePerCore: Bool = false
+    @AppStorage(AppSettingsKeys.moduleBool("CPU", "clustersGroup", defaultValue: false).rawValue) private var clustersGroup: Bool = false
+    @AppStorage(AppSettingsKeys.moduleBool("CPU", "splitValue", defaultValue: false).rawValue) private var splitValue: Bool = false
     
-    @AppStorage("CPU_mini_sensor") private var selectedMiniSensor: String = "Total"
-    @AppStorage("CPU_stack_sensor") private var selectedStackSensor: String = "Total/Free"
+    @AppStorage(AppSettingsKeys.moduleString("CPU", "mini_sensor", defaultValue: "Total").rawValue) private var selectedMiniSensor: String = "Total"
+    @AppStorage(AppSettingsKeys.moduleString("CPU", "stack_sensor", defaultValue: "Total/Free").rawValue) private var selectedStackSensor: String = "Total/Free"
     
     @State private var hasBarChart: Bool = false
     @State var widgets: [widget_t] = []

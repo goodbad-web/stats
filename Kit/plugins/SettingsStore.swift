@@ -105,6 +105,18 @@ public enum AppSettingsKeys {
         SettingsKey<Int>("\(module)_updateInterval", defaultValue: defaultValue)
     }
 
+    public static func moduleBool(_ module: String, _ suffix: String, defaultValue: Bool) -> SettingsKey<Bool> {
+        SettingsKey<Bool>("\(module)_\(suffix)", defaultValue: defaultValue)
+    }
+
+    public static func moduleInt(_ module: String, _ suffix: String, defaultValue: Int) -> SettingsKey<Int> {
+        SettingsKey<Int>("\(module)_\(suffix)", defaultValue: defaultValue)
+    }
+
+    public static func moduleString(_ module: String, _ suffix: String, defaultValue: String) -> SettingsKey<String> {
+        SettingsKey<String>("\(module)_\(suffix)", defaultValue: defaultValue)
+    }
+
     public static func moduleOneView(_ module: String, defaultValue: Bool = false) -> SettingsKey<Bool> {
         SettingsKey<Bool>("\(module)_oneView", defaultValue: defaultValue)
     }

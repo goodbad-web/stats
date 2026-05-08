@@ -45,8 +45,8 @@ internal class Settings: NSStackView, Settings_v {
 struct ClockSettingsView: View {
     var callback: () -> Void
     
-    @AppStorage("Clock_ntpSync") private var ntpSync: Bool = false
-    @AppStorage("Clock_list") private var clockListData: Data = Data()
+    @AppStorage(AppSettingsKeys.moduleBool("Clock", "ntpSync", defaultValue: false).rawValue) private var ntpSync: Bool = false
+    @AppStorage(AppSettingsKeys.moduleString("Clock", "list", defaultValue: "").rawValue) private var clockListData: Data = Data()
     
     @State private var list: [Clock_t] = []
     

@@ -31,7 +31,7 @@ internal class Popup: PopupWrapper {
     private var processesInitialized: Bool = false
     
     private var numberOfProcesses: Int {
-        Store.shared.int(key: "\(self.title)_processes", defaultValue: 8)
+        UserDefaultsSettingsStore.shared.int(AppSettingsKeys.moduleInt(self.title, "processes", defaultValue: 8))
     }
     private var processesHeight: CGFloat {
         (22*CGFloat(self.numberOfProcesses)) + (self.numberOfProcesses == 0 ? 0 : Constants.Popup.separatorHeight + 22)
@@ -45,9 +45,9 @@ internal class Popup: PopupWrapper {
     public init(_ module: ModuleType) {
         super.init(module, frame: NSRect(x: 0, y: 0, width: Constants.Popup.width, height: 0))
         
-        self.readColorState = SColor.fromString(Store.shared.string(key: "\(self.title)_readColor", defaultValue: self.readColorState.key))
-        self.writeColorState = SColor.fromString(Store.shared.string(key: "\(self.title)_writeColor", defaultValue: self.writeColorState.key))
-        self.reverseOrderState = Store.shared.bool(key: "\(self.title)_reverseOrder", defaultValue: self.reverseOrderState)
+        self.readColorState = SColor.fromString(UserDefaultsSettingsStore.shared.string(AppSettingsKeys.moduleString(self.title, "readColor", defaultValue: self.readColorState.key)))
+        self.writeColorState = SColor.fromString(UserDefaultsSettingsStore.shared.string(AppSettingsKeys.moduleString(self.title, "writeColor", defaultValue: self.writeColorState.key)))
+        self.reverseOrderState = UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.moduleBool(self.title, "reverseOrder", defaultValue: self.reverseOrderState))
         
         self.orientation = .vertical
         self.distribution = .fill
@@ -236,7 +236,7 @@ internal class Popup: PopupWrapper {
             return
         }
         self.writeColorState = newValue
-        Store.shared.set(key: "\(self.title)_writeColor", value: key)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleString(self.title, "writeColor", defaultValue: ""), value: key)
         if let color = newValue.additional as? NSColor {
             self.processes?.setColor(1, color)
             for view in self.disks.subviews.filter({ $0 is DiskView }).map({ $0 as! DiskView }) {
@@ -250,7 +250,7 @@ internal class Popup: PopupWrapper {
             return
         }
         self.readColorState = newValue
-        Store.shared.set(key: "\(self.title)_readColor", value: key)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleString(self.title, "readColor", defaultValue: ""), value: key)
         if let color = newValue.additional as? NSColor {
             self.processes?.setColor(0, color)
             for view in self.disks.subviews.filter({ $0 is DiskView }).map({ $0 as! DiskView }) {
@@ -263,12 +263,15 @@ internal class Popup: PopupWrapper {
         for view in self.disks.subviews.filter({ $0 is DiskView }).map({ $0 as! DiskView }) {
             view.setChartReverseOrder(self.reverseOrderState)
         }
-        Store.shared.set(key: "\(self.title)_reverseOrder", value: self.reverseOrderState)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleBool(self.title, "reverseOrder", defaultValue: self.reverseOrderState), value: self.reverseOrderState)
         self.display()
     }
     @objc private func toggleDisk(_ sender: NSControl) {
         guard let id = sender.identifier else { return }
-        Store.shared.set(key: "\(self.title)_\(id.rawValue)_popup", value: controlState(sender))
+        UserDefaultsSettingsStore.shared.set(
+            AppSettingsKeys.bool("\(self.title)_\(id.rawValue)_popup", defaultValue: true),
+            value: controlState(sender)
+        )
     }
 }
 
@@ -288,8 +291,8 @@ internal class DiskView: NSStackView {
     private var detailsView: DetailsView
     
     private var detailsState: Bool {
-        get { Store.shared.bool(key: "\(self.uuid)_details", defaultValue: false) }
-        set { Store.shared.set(key: "\(self.uuid)_details", value: newValue) }
+        get { UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.bool("\(self.uuid)_details", defaultValue: false)) }
+        set { UserDefaultsSettingsStore.shared.set(AppSettingsKeys.bool("\(self.uuid)_details", defaultValue: false), value: newValue) }
     }
     
     init(width: CGFloat, uuid: String, name: String, size: Int64 = 1, free: Int64 = 1, path: URL? = nil, smart: smart_t? = nil, resize: @escaping () -> Void, refresh: @escaping (String) -> Void) {
@@ -395,10 +398,14 @@ internal class NameView: NSStackView {
     private var writeState: NSView? = nil
     
     private var readColor: NSColor {
-        SColor.fromString(Store.shared.string(key: "\(ModuleType.disk.stringValue)_readColor", defaultValue: SColor.secondBlue.key)).additional as! NSColor
+        SColor.fromString(UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.moduleString(ModuleType.disk.stringValue, "readColor", defaultValue: SColor.secondBlue.key)
+        )).additional as! NSColor
     }
     private var writeColor: NSColor {
-        SColor.fromString(Store.shared.string(key: "\(ModuleType.disk.stringValue)_writeColor", defaultValue: SColor.secondRed.key)).additional as! NSColor
+        SColor.fromString(UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.moduleString(ModuleType.disk.stringValue, "writeColor", defaultValue: SColor.secondRed.key)
+        )).additional as! NSColor
     }
     
     public init(width: CGFloat, name: String, size: Int64, free: Int64, path: URL?) {
@@ -518,13 +525,19 @@ internal class DiskChartView: NSStackView {
     private var ready: Bool = false
     
     private var readColor: NSColor {
-        SColor.fromString(Store.shared.string(key: "\(ModuleType.disk.stringValue)_readColor", defaultValue: SColor.secondBlue.key)).additional as! NSColor
+        SColor.fromString(UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.moduleString(ModuleType.disk.stringValue, "readColor", defaultValue: SColor.secondBlue.key)
+        )).additional as! NSColor
     }
     private var writeColor: NSColor {
-        SColor.fromString(Store.shared.string(key: "\(ModuleType.disk.stringValue)_writeColor", defaultValue: SColor.secondRed.key)).additional as! NSColor
+        SColor.fromString(UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.moduleString(ModuleType.disk.stringValue, "writeColor", defaultValue: SColor.secondRed.key)
+        )).additional as! NSColor
     }
     private var reverseOrder: Bool {
-        Store.shared.bool(key: "\(ModuleType.disk.stringValue)_reverseOrder", defaultValue: false)
+        UserDefaultsSettingsStore.shared.bool(
+            AppSettingsKeys.moduleBool(ModuleType.disk.stringValue, "reverseOrder", defaultValue: false)
+        )
     }
     
     public init(width: CGFloat) {
@@ -576,8 +589,8 @@ private class LegendView: NSView {
     private var ready: Bool = false
     
     private var showUsedSpace: Bool {
-        get { Store.shared.bool(key: "\(self.id)_usedSpace", defaultValue: false) }
-        set { Store.shared.set(key: "\(self.id)_usedSpace", value: newValue) }
+        get { UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.bool("\(self.id)_usedSpace", defaultValue: false)) }
+        set { UserDefaultsSettingsStore.shared.set(AppSettingsKeys.bool("\(self.id)_usedSpace", defaultValue: false), value: newValue) }
     }
     
     private var legendField: NSTextField? = nil
@@ -712,10 +725,14 @@ internal class DetailsView: NSStackView {
     private var powerOnHoursValueField: ValueField?
     
     private var readColor: NSColor {
-        SColor.fromString(Store.shared.string(key: "\(ModuleType.disk.stringValue)_readColor", defaultValue: SColor.secondBlue.key)).additional as! NSColor
+        SColor.fromString(UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.moduleString(ModuleType.disk.stringValue, "readColor", defaultValue: SColor.secondBlue.key)
+        )).additional as! NSColor
     }
     private var writeColor: NSColor {
-        SColor.fromString(Store.shared.string(key: "\(ModuleType.disk.stringValue)_writeColor", defaultValue: SColor.secondRed.key)).additional as! NSColor
+        SColor.fromString(UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.moduleString(ModuleType.disk.stringValue, "writeColor", defaultValue: SColor.secondRed.key)
+        )).additional as! NSColor
     }
     
     public init(width: CGFloat, id: String, smart: smart_t? = nil) {

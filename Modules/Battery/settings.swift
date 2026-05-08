@@ -61,11 +61,11 @@ internal class Settings: NSStackView, Settings_v {
 
 struct BatterySettingsView: View {
     let title: String
-    @AppStorage("Battery_processes") private var numberOfProcesses: Int = 8
-    @AppStorage("Battery_timeFormat") private var timeFormat: String = "short"
+    @AppStorage(AppSettingsKeys.moduleInt("Battery", "processes", defaultValue: 8).rawValue) private var numberOfProcesses: Int = 8
+    @AppStorage(AppSettingsKeys.moduleString("Battery", "timeFormat", defaultValue: "short").rawValue) private var timeFormat: String = "short"
     
-    @AppStorage("Battery_mini_sensor") private var selectedMiniSensor: String = "Level"
-    @AppStorage("Battery_stack_sensor") private var selectedStackSensor: String = "Level/Time"
+    @AppStorage(AppSettingsKeys.moduleString("Battery", "mini_sensor", defaultValue: "Level").rawValue) private var selectedMiniSensor: String = "Level"
+    @AppStorage(AppSettingsKeys.moduleString("Battery", "stack_sensor", defaultValue: "Level/Time").rawValue) private var selectedStackSensor: String = "Level/Time"
     
     @State var widgets: [widget_t] = []
     

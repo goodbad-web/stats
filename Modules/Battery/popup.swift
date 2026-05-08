@@ -51,13 +51,13 @@ internal class Popup: PopupWrapper {
     private var processesInitialized: Bool = false
     
     private var numberOfProcesses: Int {
-        Store.shared.int(key: "\(self.title)_processes", defaultValue: 8)
+        UserDefaultsSettingsStore.shared.int(AppSettingsKeys.moduleInt(self.title, "processes", defaultValue: 8))
     }
     private var processesHeight: CGFloat {
         (self.processHeight*CGFloat(self.numberOfProcesses)) + (self.numberOfProcesses == 0 ? 0 : Constants.Popup.separatorHeight + 22)
     }
     private var timeFormat: String {
-        Store.shared.string(key: "\(self.title)_timeFormat", defaultValue: "short")
+        UserDefaultsSettingsStore.shared.string(AppSettingsKeys.moduleString(self.title, "timeFormat", defaultValue: "short"))
     }
     
     public init(_ module: ModuleType) {
@@ -402,7 +402,7 @@ internal class Popup: PopupWrapper {
 import SwiftUI
 
 struct BatteryPopupSettingsView: View {
-    @AppStorage("Battery_color") private var colorState: Bool = false
+    @AppStorage(AppSettingsKeys.moduleBool("Battery", "color", defaultValue: false).rawValue) private var colorState: Bool = false
     
     var onColorChange: () -> Void = {}
     
@@ -421,7 +421,7 @@ internal class BatteryView: NSView {
     private var percentage: Double = 0
     
     private var colorState: Bool {
-        return Store.shared.bool(key: "Battery_color", defaultValue: false)
+        return UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.moduleBool("Battery", "color", defaultValue: false))
     }
     
     public override init(frame: NSRect = NSRect.zero) {

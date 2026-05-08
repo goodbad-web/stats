@@ -120,7 +120,7 @@ internal class Popup: PopupWrapper {
     private let temperatureReader: TemperatureReader
     
     private var numberOfProcesses: Int {
-        Store.shared.int(key: "\(self.title)_processes", defaultValue: 8)
+        UserDefaultsSettingsStore.shared.int(AppSettingsKeys.moduleInt(self.title, "processes", defaultValue: 8))
     }
     private var processesHeight: CGFloat {
         (self.processHeight*CGFloat(self.numberOfProcesses)) + (self.numberOfProcesses == 0 ? 0 : Constants.Popup.separatorHeight + 22)
@@ -149,16 +149,16 @@ internal class Popup: PopupWrapper {
         self.spacing = 0
         self.orientation = .vertical
         
-        self.systemColorState = SColor.fromString(Store.shared.string(key: "\(self.title)_systemColor", defaultValue: self.systemColorState.key))
-        self.userColorState = SColor.fromString(Store.shared.string(key: "\(self.title)_userColor", defaultValue: self.userColorState.key))
-        self.idleColorState = SColor.fromString(Store.shared.string(key: "\(self.title)_idleColor", defaultValue: self.idleColorState.key))
-        self.chartColorState = SColor.fromString(Store.shared.string(key: "\(self.title)_chartColor", defaultValue: self.chartColorState.key))
-        self.eCoresColorState = SColor.fromString(Store.shared.string(key: "\(self.title)_eCoresColor", defaultValue: self.eCoresColorState.key))
-        self.pCoresColorState = SColor.fromString(Store.shared.string(key: "\(self.title)_pCoresColor", defaultValue: self.pCoresColorState.key))
-        self.sCoresColorState = SColor.fromString(Store.shared.string(key: "\(self.title)_sCoresColor", defaultValue: self.sCoresColorState.key))
-        self.lineChartHistory = Store.shared.int(key: "\(self.title)_lineChartHistory", defaultValue: self.lineChartHistory)
-        self.lineChartScale = Scale.fromString(Store.shared.string(key: "\(self.title)_lineChartScale", defaultValue: self.lineChartScale.key))
-        self.lineChartFixedScale = Double(Store.shared.int(key: "\(self.title)_lineChartFixedScale", defaultValue: 100)) / 100
+        self.systemColorState = SColor.fromString(UserDefaultsSettingsStore.shared.string(AppSettingsKeys.moduleString(self.title, "systemColor", defaultValue: self.systemColorState.key)))
+        self.userColorState = SColor.fromString(UserDefaultsSettingsStore.shared.string(AppSettingsKeys.moduleString(self.title, "userColor", defaultValue: self.userColorState.key)))
+        self.idleColorState = SColor.fromString(UserDefaultsSettingsStore.shared.string(AppSettingsKeys.moduleString(self.title, "idleColor", defaultValue: self.idleColorState.key)))
+        self.chartColorState = SColor.fromString(UserDefaultsSettingsStore.shared.string(AppSettingsKeys.moduleString(self.title, "chartColor", defaultValue: self.chartColorState.key)))
+        self.eCoresColorState = SColor.fromString(UserDefaultsSettingsStore.shared.string(AppSettingsKeys.moduleString(self.title, "eCoresColor", defaultValue: self.eCoresColorState.key)))
+        self.pCoresColorState = SColor.fromString(UserDefaultsSettingsStore.shared.string(AppSettingsKeys.moduleString(self.title, "pCoresColor", defaultValue: self.pCoresColorState.key)))
+        self.sCoresColorState = SColor.fromString(UserDefaultsSettingsStore.shared.string(AppSettingsKeys.moduleString(self.title, "sCoresColor", defaultValue: self.sCoresColorState.key)))
+        self.lineChartHistory = UserDefaultsSettingsStore.shared.int(AppSettingsKeys.moduleInt(self.title, "lineChartHistory", defaultValue: self.lineChartHistory))
+        self.lineChartScale = Scale.fromString(UserDefaultsSettingsStore.shared.string(AppSettingsKeys.moduleString(self.title, "lineChartScale", defaultValue: self.lineChartScale.key)))
+        self.lineChartFixedScale = Double(UserDefaultsSettingsStore.shared.int(AppSettingsKeys.moduleInt(self.title, "lineChartFixedScale", defaultValue: 100))) / 100
         
         self.addArrangedSubview(self.initDashboard())
         self.addArrangedSubview(self.initChart())
@@ -619,7 +619,7 @@ internal class Popup: PopupWrapper {
             return
         }
         self.systemColorState = newValue
-        Store.shared.set(key: "\(self.title)_systemColor", value: key)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleString(self.title, "systemColor", defaultValue: ""), value: key)
         self.systemColorView?.layer?.backgroundColor = (newValue.additional as? NSColor)?.cgColor
     }
     @objc private func toggleUserColor(_ sender: NSMenuItem) {
@@ -627,7 +627,7 @@ internal class Popup: PopupWrapper {
             return
         }
         self.userColorState = newValue
-        Store.shared.set(key: "\(self.title)_userColor", value: key)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleString(self.title, "userColor", defaultValue: ""), value: key)
         self.userColorView?.layer?.backgroundColor = (newValue.additional as? NSColor)?.cgColor
     }
     @objc private func toggleIdleColor(_ sender: NSMenuItem) {
@@ -635,7 +635,7 @@ internal class Popup: PopupWrapper {
             return
         }
         self.idleColorState = newValue
-        Store.shared.set(key: "\(self.title)_idleColor", value: key)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleString(self.title, "idleColor", defaultValue: ""), value: key)
         if let color = newValue.additional as? NSColor {
             self.idleColorView?.layer?.backgroundColor = color.cgColor
         }
@@ -646,7 +646,7 @@ internal class Popup: PopupWrapper {
             return
         }
         self.chartColorState = newValue
-        Store.shared.set(key: "\(self.title)_chartColor", value: key)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleString(self.title, "chartColor", defaultValue: ""), value: key)
         if let color = newValue.additional as? NSColor {
             self.lineChart?.setColor(color)
         }
@@ -656,7 +656,7 @@ internal class Popup: PopupWrapper {
             return
         }
         self.eCoresColorState = newValue
-        Store.shared.set(key: "\(self.title)_eCoresColor", value: key)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleString(self.title, "eCoresColor", defaultValue: ""), value: key)
         if let color = (newValue.additional as? NSColor) {
             self.eCoresColorView?.layer?.backgroundColor = color.cgColor
             self.eCoresFreqColorView?.layer?.backgroundColor = color.cgColor
@@ -667,7 +667,7 @@ internal class Popup: PopupWrapper {
             return
         }
         self.pCoresColorState = newValue
-        Store.shared.set(key: "\(self.title)_pCoresColor", value: key)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleString(self.title, "pCoresColor", defaultValue: ""), value: key)
         if let color = (newValue.additional as? NSColor) {
             self.pCoresColorView?.layer?.backgroundColor = color.cgColor
             self.pCoresFreqColorView?.layer?.backgroundColor = color.cgColor
@@ -678,7 +678,7 @@ internal class Popup: PopupWrapper {
             return
         }
         self.sCoresColorState = newValue
-        Store.shared.set(key: "\(self.title)_sCoresColor", value: key)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleString(self.title, "sCoresColor", defaultValue: ""), value: key)
         if let color = (newValue.additional as? NSColor) {
             self.sCoresColorView?.layer?.backgroundColor = color.cgColor
             self.sCoresFreqColorView?.layer?.backgroundColor = color.cgColor
@@ -687,7 +687,7 @@ internal class Popup: PopupWrapper {
     @objc private func toggleLineChartHistory(_ sender: NSMenuItem) {
         guard let key = sender.representedObject as? String, let value = Int(key) else { return }
         self.lineChartHistory = value
-        Store.shared.set(key: "\(self.title)_lineChartHistory", value: value)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleInt(self.title, "lineChartHistory", defaultValue: self.lineChartHistory), value: value)
         self.lineChart?.reinit(self.lineChartHistory)
     }
     @objc private func toggleLineChartScale(_ sender: NSMenuItem) {
@@ -696,7 +696,7 @@ internal class Popup: PopupWrapper {
         self.chartPrefSection?.setRowVisibility(3, newState: value == .fixed)
         self.lineChartScale = value
         self.lineChart?.setScale(self.lineChartScale, fixedScale: self.lineChartFixedScale)
-        Store.shared.set(key: "\(self.title)_lineChartScale", value: key)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleString(self.title, "lineChartScale", defaultValue: ""), value: key)
         self.display()
     }
     @objc private func toggleLineChartFixedScale(_ sender: NSSlider) {
@@ -708,6 +708,6 @@ internal class Popup: PopupWrapper {
         
         self.lineChartFixedScale = sender.doubleValue / 100
         self.lineChart?.setScale(self.lineChartScale, fixedScale: self.lineChartFixedScale)
-        Store.shared.set(key: "\(self.title)_lineChartFixedScale", value: value)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleInt(self.title, "lineChartFixedScale", defaultValue: 100), value: value)
     }
 }

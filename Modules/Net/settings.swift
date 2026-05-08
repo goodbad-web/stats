@@ -15,25 +15,25 @@ import SystemConfiguration
 import SwiftUI
 
 struct NetSettingsView: View {
-    @AppStorage("Net_processes") private var numberOfProcesses: Int = 8
-    @AppStorage("Net_reader") private var readerType: String = "interface"
-    @AppStorage("Net_usageReset") private var usageReset: String = AppUpdateInterval.never.rawValue
-    @AppStorage("Net_VPNMode") private var vpnMode: Bool = false
-    @AppStorage("Net_widgetActivationThresholdState") private var widgetActivationThresholdState: Bool = false
-    @AppStorage("Net_widgetActivationThreshold") private var widgetActivationThreshold: Int = 0
-    @AppStorage("Net_widgetActivationThresholdSize") private var widgetActivationThresholdSize: String = SizeUnit.MB.key
-    @AppStorage("Net_ICMPHost") private var connectivityICMPHost: String = "1.1.1.1"
-    @AppStorage("Net_HTTPHost") private var connectivityHTTPHost: String = "https://google.com"
-    @AppStorage("Net_updateICMPInterval") private var updateConnectivityInterval: Int = 1
-    @AppStorage("Net_connectivityMode") private var connectivityMode: String = "icmp"
-    @AppStorage("Net_publicIP") private var publicIPState: Bool = true
-    @AppStorage("Net_publicIPRefreshInterval") private var publicIPRefreshInterval: String = "never"
-    @AppStorage("Net_base") private var base: String = "byte"
-    @AppStorage("Net_textWidgetValue") private var textValue: String = "$addr.public - $status"
-    @AppStorage("Net_interface") private var selectedInterface: String = ""
+    @AppStorage(AppSettingsKeys.moduleInt("Net", "processes", defaultValue: 8).rawValue) private var numberOfProcesses: Int = 8
+    @AppStorage(AppSettingsKeys.moduleString("Net", "reader", defaultValue: "interface").rawValue) private var readerType: String = "interface"
+    @AppStorage(AppSettingsKeys.moduleString("Net", "usageReset", defaultValue: AppUpdateInterval.never.rawValue).rawValue) private var usageReset: String = AppUpdateInterval.never.rawValue
+    @AppStorage(AppSettingsKeys.moduleBool("Net", "VPNMode", defaultValue: false).rawValue) private var vpnMode: Bool = false
+    @AppStorage(AppSettingsKeys.moduleBool("Net", "widgetActivationThresholdState", defaultValue: false).rawValue) private var widgetActivationThresholdState: Bool = false
+    @AppStorage(AppSettingsKeys.moduleInt("Net", "widgetActivationThreshold", defaultValue: 0).rawValue) private var widgetActivationThreshold: Int = 0
+    @AppStorage(AppSettingsKeys.moduleString("Net", "widgetActivationThresholdSize", defaultValue: SizeUnit.MB.key).rawValue) private var widgetActivationThresholdSize: String = SizeUnit.MB.key
+    @AppStorage(AppSettingsKeys.moduleString("Net", "ICMPHost", defaultValue: "1.1.1.1").rawValue) private var connectivityICMPHost: String = "1.1.1.1"
+    @AppStorage(AppSettingsKeys.moduleString("Net", "HTTPHost", defaultValue: "https://google.com").rawValue) private var connectivityHTTPHost: String = "https://google.com"
+    @AppStorage(AppSettingsKeys.moduleInt("Net", "updateICMPInterval", defaultValue: 1).rawValue) private var updateConnectivityInterval: Int = 1
+    @AppStorage(AppSettingsKeys.moduleString("Net", "connectivityMode", defaultValue: "icmp").rawValue) private var connectivityMode: String = "icmp"
+    @AppStorage(AppSettingsKeys.moduleBool("Net", "publicIP", defaultValue: true).rawValue) private var publicIPState: Bool = true
+    @AppStorage(AppSettingsKeys.moduleString("Net", "publicIPRefreshInterval", defaultValue: "never").rawValue) private var publicIPRefreshInterval: String = "never"
+    @AppStorage(AppSettingsKeys.moduleString("Net", "base", defaultValue: "byte").rawValue) private var base: String = "byte"
+    @AppStorage(AppSettingsKeys.moduleString("Net", "textWidgetValue", defaultValue: "$addr.public - $status").rawValue) private var textValue: String = "$addr.public - $status"
+    @AppStorage(AppSettingsKeys.moduleString("Net", "interface", defaultValue: "").rawValue) private var selectedInterface: String = ""
     
-    @AppStorage("Net_mini_sensor") private var selectedMiniSensor: String = "Download speed"
-    @AppStorage("Net_stack_sensor") private var selectedStackSensor: String = "Speed"
+    @AppStorage(AppSettingsKeys.moduleString("Net", "mini_sensor", defaultValue: "Download speed").rawValue) private var selectedMiniSensor: String = "Download speed"
+    @AppStorage(AppSettingsKeys.moduleString("Net", "stack_sensor", defaultValue: "Speed").rawValue) private var selectedStackSensor: String = "Speed"
     
     @State var widgets: [widget_t] = []
     @State private var interfaces: [Network_interface] = []

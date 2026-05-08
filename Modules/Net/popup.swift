@@ -87,10 +87,10 @@ internal class Popup: PopupWrapper {
     private var jitter: [Double] = []
     
     private var base: DataSizeBase {
-        DataSizeBase(rawValue: Store.shared.string(key: "\(self.title)_base", defaultValue: "byte")) ?? .byte
+        DataSizeBase(rawValue: UserDefaultsSettingsStore.shared.string(AppSettingsKeys.moduleString(self.title, "base", defaultValue: "byte"))) ?? .byte
     }
     private var numberOfProcesses: Int {
-        Store.shared.int(key: "\(self.title)_processes", defaultValue: 8)
+        UserDefaultsSettingsStore.shared.int(AppSettingsKeys.moduleInt(self.title, "processes", defaultValue: 8))
     }
     private var processesHeight: CGFloat {
         (22*CGFloat(self.numberOfProcesses)) + (self.numberOfProcesses == 0 ? 0 : Constants.Popup.separatorHeight + 22)
@@ -119,16 +119,18 @@ internal class Popup: PopupWrapper {
         self.spacing = 0
         self.orientation = .vertical
         
-        self.downloadColorState = SColor.fromString(Store.shared.string(key: "\(self.title)_downloadColor", defaultValue: self.downloadColorState.key))
-        self.uploadColorState = SColor.fromString(Store.shared.string(key: "\(self.title)_uploadColor", defaultValue: self.uploadColorState.key))
-        self.reverseOrderState = Store.shared.bool(key: "\(self.title)_reverseOrder", defaultValue: self.reverseOrderState)
-        self.chartHistory = Store.shared.int(key: "\(self.title)_chartHistory", defaultValue: self.chartHistory)
-        self.chartScale = Scale.fromString(Store.shared.string(key: "\(self.title)_chartScale", defaultValue: self.chartScale.key))
-        self.chartFixedScale = Store.shared.int(key: "\(self.title)_chartFixedScale", defaultValue: self.chartFixedScale)
-        self.chartFixedScaleSize = SizeUnit.fromString(Store.shared.string(key: "\(self.title)_chartFixedScaleSize", defaultValue: self.chartFixedScaleSize.key))
-        self.publicIPState = Store.shared.bool(key: "\(self.title)_publicIP", defaultValue: self.publicIPState)
-        self.interfaceDetailsState = Store.shared.bool(key: "\(self.title)_interfaceDetails", defaultValue: self.interfaceDetailsState)
-        self.emojiCCState = Store.shared.bool(key: "\(self.title)_emojiCC", defaultValue: self.emojiCCState)
+        self.downloadColorState = SColor.fromString(UserDefaultsSettingsStore.shared.string(AppSettingsKeys.moduleString(self.title, "downloadColor", defaultValue: self.downloadColorState.key)))
+        self.uploadColorState = SColor.fromString(UserDefaultsSettingsStore.shared.string(AppSettingsKeys.moduleString(self.title, "uploadColor", defaultValue: self.uploadColorState.key)))
+        self.reverseOrderState = UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.moduleBool(self.title, "reverseOrder", defaultValue: self.reverseOrderState))
+        self.chartHistory = UserDefaultsSettingsStore.shared.int(AppSettingsKeys.moduleInt(self.title, "chartHistory", defaultValue: self.chartHistory))
+        self.chartScale = Scale.fromString(UserDefaultsSettingsStore.shared.string(AppSettingsKeys.moduleString(self.title, "chartScale", defaultValue: self.chartScale.key)))
+        self.chartFixedScale = UserDefaultsSettingsStore.shared.int(AppSettingsKeys.moduleInt(self.title, "chartFixedScale", defaultValue: self.chartFixedScale))
+        self.chartFixedScaleSize = SizeUnit.fromString(UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.moduleString(self.title, "chartFixedScaleSize", defaultValue: self.chartFixedScaleSize.key)
+        ))
+        self.publicIPState = UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.moduleBool(self.title, "publicIP", defaultValue: self.publicIPState))
+        self.interfaceDetailsState = UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.moduleBool(self.title, "interfaceDetails", defaultValue: self.interfaceDetailsState))
+        self.emojiCCState = UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.moduleBool(self.title, "emojiCC", defaultValue: self.emojiCCState))
         
         self.addArrangedSubview(self.initDashboard())
         self.addArrangedSubview(self.initChart())
@@ -743,7 +745,7 @@ internal class Popup: PopupWrapper {
             return
         }
         self.uploadColorState = newValue
-        Store.shared.set(key: "\(self.title)_uploadColor", value: key)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleString(self.title, "uploadColor", defaultValue: ""), value: key)
         if let color = newValue.additional as? NSColor {
             self.processes?.setColor(1, color)
             self.uploadColorView?.layer?.backgroundColor = color.cgColor
@@ -757,7 +759,7 @@ internal class Popup: PopupWrapper {
             return
         }
         self.downloadColorState = newValue
-        Store.shared.set(key: "\(self.title)_downloadColor", value: key)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleString(self.title, "downloadColor", defaultValue: ""), value: key)
         if let color = newValue.additional as? NSColor {
             self.processes?.setColor(0, color)
             self.downloadColorView?.layer?.backgroundColor = color.cgColor
@@ -768,13 +770,13 @@ internal class Popup: PopupWrapper {
     @objc private func toggleReverseOrder(_ sender: NSControl) {
         self.reverseOrderState = controlState(sender)
         self.chart?.setReverseOrder(self.reverseOrderState)
-        Store.shared.set(key: "\(self.title)_reverseOrder", value: self.reverseOrderState)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleBool(self.title, "reverseOrder", defaultValue: self.reverseOrderState), value: self.reverseOrderState)
         self.display()
     }
     @objc private func togglechartHistory(_ sender: NSMenuItem) {
         guard let key = sender.representedObject as? String, let value = Int(key) else { return }
         self.chartHistory = value
-        Store.shared.set(key: "\(self.title)_chartHistory", value: value)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleInt(self.title, "chartHistory", defaultValue: self.chartHistory), value: value)
         self.chart?.reinit(self.chartHistory)
     }
     @objc private func toggleChartScale(_ sender: NSMenuItem) {
@@ -783,12 +785,12 @@ internal class Popup: PopupWrapper {
         self.chartScale = value
         self.chart?.setScale(self.chartScale, Double(self.chartFixedScaleSize.toBytes(self.chartFixedScale)))
         self.chartPrefSection?.setRowVisibility(2, newState: self.chartScale == .fixed)
-        Store.shared.set(key: "\(self.title)_chartScale", value: key)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleString(self.title, "chartScale", defaultValue: ""), value: key)
         self.display()
     }
     @objc private func togglePublicIP(_ sender: NSControl) {
         self.publicIPState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_publicIP", value: self.publicIPState)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleBool(self.title, "publicIP", defaultValue: self.publicIPState), value: self.publicIPState)
         
         Task { @MainActor in
             if !self.publicIPState {
@@ -801,17 +803,17 @@ internal class Popup: PopupWrapper {
     }
     @objc private func toggleFixedScale(_ newValue: Int) {
         self.chart?.setScale(self.chartScale, Double(self.chartFixedScaleSize.toBytes(newValue)))
-        Store.shared.set(key: "\(self.title)_chartFixedScale", value: newValue)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleInt(self.title, "chartFixedScale", defaultValue: self.chartFixedScale), value: newValue)
     }
     private func toggleFixedScaleSize(_ newValue: KeyValue_p) {
         guard let newUnit = newValue as? SizeUnit else { return }
         self.chartFixedScaleSize = newUnit
-        Store.shared.set(key: "\(self.title)_chartFixedScaleSize", value: self.chartFixedScaleSize.key)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleString(self.title, "chartFixedScaleSize", defaultValue: ""), value: self.chartFixedScaleSize.key)
         self.display()
     }
     @objc private func toggleInterfaceDetails() {
         self.interfaceDetailsState = !self.interfaceDetailsState
-        Store.shared.set(key: "\(self.title)_interfaceDetails", value: self.interfaceDetailsState)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleBool(self.title, "interfaceDetails", defaultValue: self.interfaceDetailsState), value: self.interfaceDetailsState)
         
         if !self.interfaceDetailsState {
             self.standardView?.removeFromSuperview()
@@ -837,7 +839,7 @@ internal class Popup: PopupWrapper {
     }
     @objc private func toggleEmojiCC(_ sender: NSControl) {
         self.emojiCCState = !controlState(sender)
-        Store.shared.set(key: "\(self.title)_emojiCC", value: self.emojiCCState)
+        UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleBool(self.title, "emojiCC", defaultValue: self.emojiCCState), value: self.emojiCCState)
     }
     
     // MARK: - helpers

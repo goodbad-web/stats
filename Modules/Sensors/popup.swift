@@ -20,8 +20,8 @@ private struct Sensor_t: KeyValue_p {
     var additional: Any?
     
     var index: Int {
-        get { Store.shared.int(key: "sensors_\(self.key)_index", defaultValue: -1) }
-        set { Store.shared.set(key: "sensors_\(self.key)_index", value: newValue) }
+        get { UserDefaultsSettingsStore.shared.int(AppSettingsKeys.int("sensors_\(self.key)_index", defaultValue: -1)) }
+        set { UserDefaultsSettingsStore.shared.set(AppSettingsKeys.int("sensors_\(self.key)_index", defaultValue: -1), value: newValue) }
     }
     
     init(key: String, value: String, name: String? = nil) {
@@ -34,21 +34,25 @@ private struct Sensor_t: KeyValue_p {
 internal class Popup: PopupWrapper {
     private var list: [String: NSView] = [:]
     
-    private var unknownSensorsState: Bool { Store.shared.bool(key: "Sensors_unknown", defaultValue: false) }
+    private var unknownSensorsState: Bool {
+        UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.moduleBool("Sensors", "unknown", defaultValue: false))
+    }
     private var fanValueState: FanValue = .percentage
     
     private var sensors: [Sensor_p] = []
     private let settingsView: NSStackView = NSStackView()
     
     private var fanControlState: Bool {
-        get { Store.shared.bool(key: "Sensors_fanControl", defaultValue: true) }
-        set { Store.shared.set(key: "Sensors_fanControl", value: newValue) }
+        get { UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.moduleBool("Sensors", "fanControl", defaultValue: true)) }
+        set { UserDefaultsSettingsStore.shared.set(AppSettingsKeys.moduleBool("Sensors", "fanControl", defaultValue: true), value: newValue) }
     }
     
     public init() {
         super.init(ModuleType.sensors, frame: NSRect( x: 0, y: 0, width: Constants.Popup.width, height: 0))
         
-        self.fanValueState = FanValue(rawValue: Store.shared.string(key: "Sensors_popup_fanValue", defaultValue: self.fanValueState.rawValue)) ?? .percentage
+        self.fanValueState = FanValue(rawValue: UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.moduleString("Sensors", "popup_fanValue", defaultValue: self.fanValueState.rawValue)
+        )) ?? .percentage
         
         self.orientation = .vertical
         self.spacing = 0
@@ -236,7 +240,10 @@ internal class Popup: PopupWrapper {
     @objc private func toggleFanValue(_ sender: NSMenuItem) {
         if let key = sender.representedObject as? String, let value = FanValue(rawValue: key) {
             self.fanValueState = value
-            Store.shared.set(key: "Sensors_popup_fanValue", value: self.fanValueState.rawValue)
+            UserDefaultsSettingsStore.shared.set(
+                AppSettingsKeys.moduleString("Sensors", "popup_fanValue", defaultValue: FanValue.percentage.rawValue),
+                value: self.fanValueState.rawValue
+            )
         }
     }
     
@@ -281,7 +288,10 @@ internal class Popup: PopupWrapper {
     
     @objc private func toggleSensor(_ sender: NSControl) {
         guard let id = sender.identifier else { return }
-        Store.shared.set(key: "sensor_\(id.rawValue)_popup", value: controlState(sender))
+        UserDefaultsSettingsStore.shared.set(
+            AppSettingsKeys.bool("sensor_\(id.rawValue)_popup", defaultValue: true),
+            value: controlState(sender)
+        )
         self.setup(reload: true)
     }
     
@@ -302,7 +312,9 @@ internal class SensorView: NSStackView {
     private var openned: Bool = false
     
     private var fanValueState: FanValue {
-        FanValue(rawValue: Store.shared.string(key: "Sensors_popup_fanValue", defaultValue: FanValue.percentage.rawValue)) ?? .percentage
+        FanValue(rawValue: UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.moduleString("Sensors", "popup_fanValue", defaultValue: FanValue.percentage.rawValue)
+        )) ?? .percentage
     }
     
     public init(_ sensor: Sensor_p, width: CGFloat, toggleable: Bool = true, callback: @escaping (() -> Void)) {
@@ -510,10 +522,10 @@ internal class FanView: NSStackView {
     private var maxBtn: NSButton? = nil
     
     private var speedState: Bool {
-        Store.shared.bool(key: "Sensors_speed", defaultValue: false)
+        UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.moduleBool("Sensors", "speed", defaultValue: false))
     }
     private var syncState: Bool {
-        Store.shared.bool(key: "Sensors_fansSync", defaultValue: false)
+        UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.moduleBool("Sensors", "fansSync", defaultValue: false))
     }
     private var speed: Double {
         get {
@@ -526,7 +538,9 @@ internal class FanView: NSStackView {
     private var resetModeAfterSleep: Bool = false
     private var controlState: Bool
     private var fanValue: FanValue {
-        FanValue(rawValue: Store.shared.string(key: "Sensors_popup_fanValue", defaultValue: FanValue.percentage.rawValue)) ?? .percentage
+        FanValue(rawValue: UserDefaultsSettingsStore.shared.string(
+            AppSettingsKeys.moduleString("Sensors", "popup_fanValue", defaultValue: FanValue.percentage.rawValue)
+        )) ?? .percentage
     }
     
     private var horizontalMargin: CGFloat {
@@ -539,7 +553,9 @@ internal class FanView: NSStackView {
     public init(_ fan: Fan, width: CGFloat, callback: @escaping (() -> Void)) {
         self.fan = fan
         self.sizeCallback = callback
-        self.controlState = Store.shared.bool(key: "Sensors_fanControl", defaultValue: true)
+        self.controlState = UserDefaultsSettingsStore.shared.bool(
+            AppSettingsKeys.moduleBool("Sensors", "fanControl", defaultValue: true)
+        )
         
         let inset: CGFloat = 5
         let contentWidth = max(width, Constants.Popup.width) - (inset*2)
@@ -1029,7 +1045,7 @@ private class ModeButtons: NSStackView {
     public var off: () -> Void = {}
     
     private var fansSyncState: Bool {
-        Store.shared.bool(key: "Sensors_fansSync", defaultValue: false)
+        UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.moduleBool("Sensors", "fansSync", defaultValue: false))
     }
     
     private var offBtn: NSButton
@@ -1139,7 +1155,7 @@ private class ModeButtons: NSStackView {
             return
         }
         
-        if !Store.shared.bool(key: "Sensors_turnOffFanAlert", defaultValue: false) {
+        if !UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.moduleBool("Sensors", "turnOffFanAlert", defaultValue: false)) {
             let alert = NSAlert()
             alert.messageText = localizedString("Turn off fan")
             alert.informativeText = localizedString("You are going to turn off the fan. This is not recommended action that can damage your mac, are you sure you want to do that?")
@@ -1149,7 +1165,10 @@ private class ModeButtons: NSStackView {
             
             if alert.runModal() == .alertFirstButtonReturn {
                 if let suppressionButton = alert.suppressionButton, suppressionButton.state == .on {
-                    Store.shared.set(key: "Sensors_turnOffFanAlert", value: true)
+                    UserDefaultsSettingsStore.shared.set(
+                        AppSettingsKeys.moduleBool("Sensors", "turnOffFanAlert", defaultValue: false),
+                        value: true
+                    )
                 }
                 self.toggleOffMode(sender)
             } else {

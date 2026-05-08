@@ -66,18 +66,18 @@ internal class Settings: NSStackView, Settings_v {
 struct SensorsSettingsView: View {
     let title: String
     
-    @AppStorage("Sensors_updateInterval") private var updateInterval: Int = 3
-    @AppStorage("Sensors_hid") private var hidState: Bool = isARM
-    @AppStorage("Sensors_speed") private var fanSpeedState: Bool = false
-    @AppStorage("Sensors_fansSync") private var fansSyncState: Bool = false
-    @AppStorage("Sensors_unknown") private var unknownSensorsState: Bool = false
-    @AppStorage("Sensors_fanValue") private var fanValueState: String = "percentage"
-    @AppStorage("Sensors_sensor") private var selectedSensor: String = "Average System Total"
-    @AppStorage("Sensors_fanSafety") private var fanSafetyState: Bool = true
-    @AppStorage("Sensors_stack_line1") private var selectedStackLine1: String = ""
-    @AppStorage("Sensors_stack_line2") private var selectedStackLine2: String = ""
-    @AppStorage("Sensors_barChart_sensors") private var selectedBarChartSensors: String = "Fans,Temp"
-    @AppStorage("Sensors_fanBatteryAuto") private var fanBatteryAutoState: Bool = false
+    @AppStorage(AppSettingsKeys.moduleInt("Sensors", "updateInterval", defaultValue: 3).rawValue) private var updateInterval: Int = 3
+    @AppStorage(AppSettingsKeys.moduleBool("Sensors", "hid", defaultValue: isARM).rawValue) private var hidState: Bool = isARM
+    @AppStorage(AppSettingsKeys.moduleBool("Sensors", "speed", defaultValue: false).rawValue) private var fanSpeedState: Bool = false
+    @AppStorage(AppSettingsKeys.moduleBool("Sensors", "fansSync", defaultValue: false).rawValue) private var fansSyncState: Bool = false
+    @AppStorage(AppSettingsKeys.moduleBool("Sensors", "unknown", defaultValue: false).rawValue) private var unknownSensorsState: Bool = false
+    @AppStorage(AppSettingsKeys.moduleString("Sensors", "fanValue", defaultValue: "percentage").rawValue) private var fanValueState: String = "percentage"
+    @AppStorage(AppSettingsKeys.moduleString("Sensors", "sensor", defaultValue: "Average System Total").rawValue) private var selectedSensor: String = "Average System Total"
+    @AppStorage(AppSettingsKeys.moduleBool("Sensors", "fanSafety", defaultValue: true).rawValue) private var fanSafetyState: Bool = true
+    @AppStorage(AppSettingsKeys.moduleString("Sensors", "stack_line1", defaultValue: "").rawValue) private var selectedStackLine1: String = ""
+    @AppStorage(AppSettingsKeys.moduleString("Sensors", "stack_line2", defaultValue: "").rawValue) private var selectedStackLine2: String = ""
+    @AppStorage(AppSettingsKeys.moduleString("Sensors", "barChart_sensors", defaultValue: "Fans,Temp").rawValue) private var selectedBarChartSensors: String = "Fans,Temp"
+    @AppStorage(AppSettingsKeys.moduleBool("Sensors", "fanBatteryAuto", defaultValue: false).rawValue) private var fanBatteryAutoState: Bool = false
     
     var allSensors: [Sensor_p] = []
     var widgets: [widget_t] = []
@@ -274,7 +274,7 @@ struct SensorToggleRow: View {
     var body: some View {
         Toggle(localizedString(sensor.name), isOn: $isOn)
             .onChange(of: isOn) { _, newValue in
-                Store.shared.set(key: "sensor_\(sensor.key)", value: newValue)
+                UserDefaultsSettingsStore.shared.set(AppSettingsKeys.bool("sensor_\(sensor.key)", defaultValue: false), value: newValue)
                 onCallback()
             }
     }
