@@ -138,14 +138,12 @@ public class ChartView: NSView {
             self.updateSwiftUI()
             guard !self.usesSwiftUIRendering else { return }
             self.needsDisplay = true
-            self.display()
         } else {
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.window != nil else { return }
                 self.updateSwiftUI()
                 guard !self.usesSwiftUIRendering else { return }
                 self.needsDisplay = true
-                self.display()
             }
         }
     }
@@ -876,19 +874,19 @@ public class ColumnChartView: ChartView {
     
     public override func mouseEntered(with event: NSEvent) {
         self.cursor = convert(event.locationInWindow, from: nil)
-        self.display()
+        self.needsDisplay = true
     }
     public override func mouseMoved(with event: NSEvent) {
         self.cursor = convert(event.locationInWindow, from: nil)
-        self.display()
+        self.needsDisplay = true
     }
     public override func mouseDragged(with event: NSEvent) {
         self.cursor = convert(event.locationInWindow, from: nil)
-        self.display()
+        self.needsDisplay = true
     }
     public override func mouseExited(with event: NSEvent) {
         self.cursor = nil
-        self.display()
+        self.needsDisplay = true
     }
     
     public override func updateTrackingAreas() {

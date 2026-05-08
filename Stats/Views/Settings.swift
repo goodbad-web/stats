@@ -400,13 +400,12 @@ private class SidebarView: NSStackView {
         button.widthAnchor.constraint(equalToConstant: 33).isActive = true
         
         let rect = NSRect(x: 0, y: 0, width: 33, height: 45)
-        let trackingArea = NSTrackingArea(
-            rect: rect,
-            options: [NSTrackingArea.Options.activeAlways, NSTrackingArea.Options.mouseEnteredAndExited, NSTrackingArea.Options.activeInActiveApp],
+        button.addTrackingArea(NSTrackingArea(
+            rect: button.bounds,
+            options: [.activeAlways, .mouseEnteredAndExited, .inVisibleRect],
             owner: self,
             userInfo: ["button": title]
-        )
-        self.addTrackingArea(trackingArea)
+        ))
         
         return button
     }
