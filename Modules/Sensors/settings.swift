@@ -67,7 +67,7 @@ struct SensorsSettingsView: View {
     let title: String
     
     @AppStorage(AppSettingsKeys.moduleInt("Sensors", "updateInterval", defaultValue: 3).rawValue) private var updateInterval: Int = 3
-    @AppStorage(AppSettingsKeys.moduleBool("Sensors", "hid", defaultValue: isARM).rawValue) private var hidState: Bool = isARM
+    @AppStorage(AppSettingsKeys.moduleBool("Sensors", "hid", defaultValue: true).rawValue) private var hidState: Bool = true
     @AppStorage(AppSettingsKeys.moduleBool("Sensors", "speed", defaultValue: false).rawValue) private var fanSpeedState: Bool = false
     @AppStorage(AppSettingsKeys.moduleBool("Sensors", "fansSync", defaultValue: false).rawValue) private var fansSyncState: Bool = false
     @AppStorage(AppSettingsKeys.moduleBool("Sensors", "unknown", defaultValue: false).rawValue) private var unknownSensorsState: Bool = false
@@ -153,12 +153,10 @@ struct SensorsSettingsView: View {
                         onUnknownCallback()
                     }
                 
-                if isARM {
-                    Toggle(localizedString("HID sensors"), isOn: $hidState)
-                        .onChange(of: hidState) { _, _ in
-                            onHIDCallback()
-                        }
-                }
+                Toggle(localizedString("HID sensors"), isOn: $hidState)
+                    .onChange(of: hidState) { _, _ in
+                        onHIDCallback()
+                    }
                 
                 Section(header: Text(localizedString("Fan control"))) {
                     Toggle(localizedString("Safety override"), isOn: $fanSafetyState)

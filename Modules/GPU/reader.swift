@@ -20,9 +20,6 @@ public struct device {
     public var used: Bool
 }
 
-let vendors: [Data: String] = [
-    Data.init([0x02, 0x10, 0x00, 0x00]): "AMD"
-]
 
 private func maxANEPower(for platform: Platform?) -> Double {
     switch platform {
@@ -61,40 +58,9 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
             self.displays = list
         }
         
-        guard let PCIdevices = fetchIOService("IOPCIDevice") else {
-            return
-        }
-        let devices = PCIdevices.filter{ $0.object(forKey: "IOName") as? String == "display" }
-        
         self.aneMaxPower = maxANEPower(for: SystemKit.shared.device.platform)
         self.setupPower()
         self.setupFrames()
-
-        devices.forEach { (dict: NSDictionary) in
-            guard let deviceID = dict["device-id"] as? Data, let vendorID = dict["vendor-id"] as? Data else {
-                error("device-id or vendor-id not found", log: self.log)
-                return
-            }
-            let pci = "0x" + Data([deviceID[1], deviceID[0], vendorID[1], vendorID[0]]).map { String(format: "%02hhX", $0) }.joined().lowercased()
-            
-            guard let modelData = dict["model"] as? Data, let modelName = String(data: modelData, encoding: .ascii) else {
-                error("GPU model not found", log: self.log)
-                return
-            }
-            let model = modelName.replacingOccurrences(of: "\0", with: "")
-            
-            var vendor: String? = nil
-            if let v = vendors.first(where: { $0.key == vendorID }) {
-                vendor = v.value
-            }
-            
-            self.devices.append(device(
-                vendor: vendor,
-                model: model,
-                pci: pci,
-                used: false
-            ))
-        }
     }
     
     @MainActor public override func terminate() {
@@ -128,21 +94,9 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
                         continue
                     }
                     
-                    var id: String = ""
                     var vendor: String? = nil
                     var model: String = ""
                     var cores: Int? = nil
-                    let accMatch = (accelerator["IOPCIMatch"] as? String ?? accelerator["IOPCIPrimaryMatch"] as? String ?? "").lowercased()
-                    
-                    for (i, device) in self.devices.enumerated() {
-                        if accMatch.range(of: device.pci) != nil && !device.used {
-                            model = device.model
-                            vendor = device.vendor
-                            id = "\(model) #\(index)"
-                            self.devices[i].used = true
-                            break
-                        }
-                    }
                     
                     let ioClass = IOClass.lowercased()
                     var predictModel = ""
@@ -179,40 +133,24 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
                     }
                     topProcesses.sort { $0.usage > $1.usage }
                     
-                    if ioClass == "nvaccelerator" || ioClass.contains("nvidia") { // nvidia
-                        predictModel = "Nvidia Graphics"
-                        type = .discrete
-                    } else if ioClass.contains("amd") { // amd
-                        predictModel = "AMD Graphics"
-                        type = .discrete
-                        
-                        if temperature == nil || temperature == 0 {
-                            if let tmp = await SMC.shared.getValue("TGDD"), tmp != 128 {
-                                temperature = Int(tmp)
-                            }
-                        }
-                    } else if ioClass.contains("agx") { // apple
-                        predictModel = stats["model"] as? String ?? "Apple Graphics"
+                    if ioClass.contains("agx") { // apple
+                        model = stats["model"] as? String ?? "Apple Graphics"
                         if let display = self.displays.first(where: { $0.vendor == "sppci_vendor_Apple" }) {
                             if let name = display.name {
-                                predictModel = name
+                                model = name
                             }
                             if let num = display.cores {
                                 cores = num
                             }
                         }
+                        vendor = "Apple"
                         type = .integrated
                     } else {
-                        predictModel = "Unknown"
+                        model = "Unknown"
                         type = .unknown
                     }
                     
-                    if model == "" {
-                        model = predictModel
-                    }
-                    if let v = vendor {
-                        model = model.removedRegexMatches(pattern: v, replaceWith: "").trimmingCharacters(in: .whitespacesAndNewlines)
-                    }
+                    let id = "\(model) #\(index)"
                     
                     if self.gpus.list.first(where: { $0.id == id }) == nil {
                         self.gpus.list.append(GPU_Info(

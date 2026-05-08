@@ -30,7 +30,7 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
     private nonisolated(unsafe) var lastIOSensorsRead: Date? = nil
     
     private var hidState: Bool {
-        Store.shared.bool(key: "Sensors_hid", defaultValue: isARM)
+        Store.shared.bool(key: "Sensors_hid", defaultValue: true)
     }
     private var unknownSensorsState: Bool
     

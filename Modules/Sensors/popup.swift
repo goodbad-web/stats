@@ -200,7 +200,7 @@ internal class Popup: PopupWrapper {
     
     internal func usageCallback(_ values: [Sensor_p]) {
         Task { @MainActor in
-            values.filter({ $0 is Sensor }).forEach { (s: Sensor_p) in
+            values.forEach { (s: Sensor_p) in
                 if let sensor = self.list[s.key] as? SensorView {
                     sensor.addHistoryPoint(s)
                 }

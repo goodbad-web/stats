@@ -247,16 +247,14 @@ internal class Preview: PreviewWrapper {
         
         self.coresFreqField = previewRow(view, title: "\(localizedString("All cores")):", value: "")
         
-        if isARM {
-            if SystemKit.shared.device.info.cpu?.eCores != nil {
-                self.eCoresFreqField = previewRow(view, color: self.eCoresColor, title: "\(localizedString("Efficiency cores")):", value: "")
-            }
-            if SystemKit.shared.device.info.cpu?.pCores != nil {
-                self.pCoresFreqField = previewRow(view, color: self.pCoresColor, title: "\(localizedString("Performance cores")):", value: "")
-            }
-            if SystemKit.shared.device.info.cpu?.sCores != nil {
-                self.sCoresFreqField = previewRow(view, color: self.sCoresColor, title: "\(localizedString("Super cores")):", value: "")
-            }
+        if SystemKit.shared.device.info.cpu?.eCores != nil {
+            self.eCoresFreqField = previewRow(view, color: self.eCoresColor, title: "\(localizedString("Efficiency cores")):", value: "")
+        }
+        if SystemKit.shared.device.info.cpu?.pCores != nil {
+            self.pCoresFreqField = previewRow(view, color: self.pCoresColor, title: "\(localizedString("Performance cores")):", value: "")
+        }
+        if SystemKit.shared.device.info.cpu?.sCores != nil {
+            self.sCoresFreqField = previewRow(view, color: self.sCoresColor, title: "\(localizedString("Super cores")):", value: "")
         }
         
         return view

@@ -149,7 +149,7 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
                     }
                     usage.voltage = self.getVoltage() ?? 0
                     usage.temperature = self.getTemperature() ?? 0
-                    usage.systemPower = await SMC.shared.getValue("PSTR") ?? abs(usage.voltage * Double(usage.amperage) / 1000.0)
+                    usage.systemPower = abs(usage.voltage * Double(usage.amperage) / 1000.0)
                     
                     var ACwatts: Int = 0
                     if let ACDetails = IOPSCopyExternalPowerAdapterDetails() {
@@ -169,24 +169,6 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
                                 usage.ACwatts = watts
                             }
                         }
-                    }
-                    
-                    var padc = await SMC.shared.getValue("ID0R")
-                    if padc == nil {
-                        padc = await SMC.shared.getValue("PADC")
-                    }
-                    if let val = padc {
-                        usage.adapterCurrent = Int(abs(val) * 1000)
-                    }
-                    var padv = await SMC.shared.getValue("VD0R")
-                    if padv == nil {
-                        padv = await SMC.shared.getValue("PADV")
-                    }
-                    if let val = padv {
-                        usage.adapterVoltage = Int(abs(val) * 1000)
-                    }
-                    if let pdtr = await SMC.shared.getValue("PDTR") {
-                        usage.adapterPower = abs(pdtr)
                     }
                     
                     if let chargerData = self.getChargerData() {

@@ -18,7 +18,7 @@ internal class Popup: PopupWrapper {
     private let chartHeight: CGFloat = 120 + Constants.Popup.separatorHeight
     private var detailsHeight: CGFloat {
         get {
-            var count: CGFloat = isARM ? 4 : 6
+            var count: CGFloat = 4
             if SystemKit.shared.device.info.cpu?.eCores != nil {
                 count += 1
             }
@@ -277,10 +277,6 @@ internal class Popup: PopupWrapper {
         (self.userColorView, _, self.userField) = popupWithColorRow(container, color: self.userColor, title: "\(localizedString("User")):", value: "")
         (self.idleColorView, _, self.idleField) = popupWithColorRow(container, color: self.idleColor.withAlphaComponent(0.5), title: "\(localizedString("Idle")):", value: "")
         
-        if !isARM {
-            self.shedulerLimitField = popupRow(container, title: "\(localizedString("Scheduler limit")):", value: "").1
-            self.speedLimitField = popupRow(container, title: "\(localizedString("Speed limit")):", value: "").1
-        }
         
         if SystemKit.shared.device.info.cpu?.eCores != nil {
             (self.eCoresColorView, _, self.eCoresField) = popupWithColorRow(container, color: self.eCoresColor, title: "\(localizedString("Efficiency cores")):", value: "")
@@ -329,16 +325,14 @@ internal class Popup: PopupWrapper {
         
         self.coresFreqField = popupRow(container, title: "\(localizedString("All cores")):", value: "").1
         
-        if isARM {
-            if SystemKit.shared.device.info.cpu?.eCores != nil {
-                (self.eCoresFreqColorView, _, self.eCoresFreqField) = popupWithColorRow(container, color: self.eCoresColor, title: "\(localizedString("Efficiency cores")):", value: "")
-            }
-            if SystemKit.shared.device.info.cpu?.pCores != nil {
-                (self.pCoresFreqColorView, _, self.pCoresFreqField) = popupWithColorRow(container, color: self.pCoresColor, title: "\(localizedString("Performance cores")):", value: "")
-            }
-            if SystemKit.shared.device.info.cpu?.sCores != nil {
-                (self.sCoresFreqColorView, _, self.sCoresFreqField) = popupWithColorRow(container, color: self.sCoresColor, title: "\(localizedString("Super cores")):", value: "")
-            }
+        if SystemKit.shared.device.info.cpu?.eCores != nil {
+            (self.eCoresFreqColorView, _, self.eCoresFreqField) = popupWithColorRow(container, color: self.eCoresColor, title: "\(localizedString("Efficiency cores")):", value: "")
+        }
+        if SystemKit.shared.device.info.cpu?.pCores != nil {
+            (self.pCoresFreqColorView, _, self.pCoresFreqField) = popupWithColorRow(container, color: self.pCoresColor, title: "\(localizedString("Performance cores")):", value: "")
+        }
+        if SystemKit.shared.device.info.cpu?.sCores != nil {
+            (self.sCoresFreqColorView, _, self.sCoresFreqField) = popupWithColorRow(container, color: self.sCoresColor, title: "\(localizedString("Super cores")):", value: "")
         }
         
         view.addSubview(separator)

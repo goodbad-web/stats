@@ -248,6 +248,11 @@ public class LineChartView: ChartView {
         super.updateTrackingAreas()
     }
     
+    public override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        self.hostingView?.frame = NSRect(origin: .zero, size: newSize)
+    }
+    
     public func addValue(_ value: DoubleValue) {
         self.write {
             guard !self.points.isEmpty else { return }
@@ -515,6 +520,11 @@ public class PieChartView: ChartView {
             openCircle: self.read { self.openCircle }
         )
         self.hostingView?.rootView = content
+    }
+    
+    public override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        self.hostingView?.frame = NSRect(origin: .zero, size: newSize)
     }
     
     public func setValue(_ value: Double) {
@@ -837,6 +847,11 @@ public class BarChartView: ChartView {
         self.hostingView?.rootView = content
     }
     
+    public override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        self.hostingView?.frame = NSRect(origin: .zero, size: newSize)
+    }
+    
     public func setValue(_ values: ColorValue) {
         self.write { self.values = [[values]] }
         self.displayIfVisible()
@@ -948,6 +963,7 @@ public struct BarChartContent: View {
         }
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
+        .padding(0)
     }
 }
 

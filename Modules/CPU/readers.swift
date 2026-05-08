@@ -316,28 +316,16 @@ public class TemperatureReader: Reader<Double>, @unchecked Sendable {
             let temp = await Task.detached(priority: .background) {
                 var temperature: Double? = nil
                 
-                if let value = await SMC.shared.getValue("TC0D"), value < 110 {
-                    temperature = value
-                } else if let value = await SMC.shared.getValue("TC0E"), value < 110 {
-                    temperature = value
-                } else if let value = await SMC.shared.getValue("TC0F"), value < 110 {
-                    temperature = value
-                } else if let value = await SMC.shared.getValue("TC0P"), value < 110 {
-                    temperature = value
-                } else if let value = await SMC.shared.getValue("TC0H"), value < 110 {
-                    temperature = value
-                } else {
-                    var total: Double = 0
-                    var counter: Double = 0
-                    for key in localList {
-                        if let value = await SMC.shared.getValue(key) {
-                            total += value
-                            counter += 1
-                        }
+                var total: Double = 0
+                var counter: Double = 0
+                for key in localList {
+                    if let value = await SMC.shared.getValue(key) {
+                        total += value
+                        counter += 1
                     }
-                    if total != 0 && counter != 0 {
-                        temperature = total / counter
-                    }
+                }
+                if total != 0 && counter != 0 {
+                    temperature = total / counter
                 }
                 return temperature
             }.value

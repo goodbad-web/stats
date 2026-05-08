@@ -286,9 +286,7 @@ public extension Notification.Name {
     static let fanControlOverride = Notification.Name("fanControlOverride")
 }
 
-public var isARM: Bool {
-    true
-}
+public let isARM: Bool = true
 
 public let notificationLevels: [KeyValue_t] = [
     KeyValue_t(key: "", value: "Disabled"),

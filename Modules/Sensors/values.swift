@@ -395,36 +395,8 @@ internal let SensorsList: [Sensor] = [
     Sensor(key: "TA%P", name: "Ambient %", group: .sensor, type: .temperature, platforms: Platform.all),
     Sensor(key: "TZ%C", name: "Thermal zone %", group: .sensor, type: .temperature, platforms: Platform.all),
     
-    Sensor(key: "TC0D", name: "CPU diode", group: .CPU, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TC0E", name: "CPU diode virtual", group: .CPU, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TC0F", name: "CPU diode filtered", group: .CPU, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TC0H", name: "CPU heatsink", group: .CPU, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TC0P", name: "CPU proximity", group: .CPU, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TCAD", name: "CPU package", group: .CPU, type: .temperature, platforms: Platform.all),
-    
     Sensor(key: "TC%c", name: "CPU core %", group: .CPU, type: .temperature, platforms: Platform.all, average: true),
     Sensor(key: "TC%C", name: "CPU Core %", group: .CPU, type: .temperature, platforms: Platform.all, average: true),
-    
-    Sensor(key: "TCGC", name: "GPU Intel Graphics", group: .GPU, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TG0D", name: "GPU diode", group: .GPU, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TGDD", name: "GPU AMD Radeon", group: .GPU, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TG0H", name: "GPU heatsink", group: .GPU, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TG0P", name: "GPU proximity", group: .GPU, type: .temperature, platforms: Platform.all),
-    
-    Sensor(key: "Tm0P", name: "Mainboard", group: .system, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TW0P", name: "Airport", group: .system, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TL0P", name: "Display", group: .system, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TI%P", name: "Thunderbolt %", group: .system, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TH%A", name: "Disk % (A)", group: .system, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TH%B", name: "Disk % (B)", group: .system, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TH%C", name: "Disk % (C)", group: .system, type: .temperature, platforms: Platform.all),
-    
-    Sensor(key: "TTLD", name: "Thunderbolt left", group: .system, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TTRD", name: "Thunderbolt right", group: .system, type: .temperature, platforms: Platform.all),
-    
-    Sensor(key: "TN0D", name: "Northbridge diode", group: .system, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TN0H", name: "Northbridge heatsink", group: .system, type: .temperature, platforms: Platform.all),
-    Sensor(key: "TN0P", name: "Northbridge proximity", group: .system, type: .temperature, platforms: Platform.all),
     
     // Apple Silicon
     Sensor(key: "Tp09", name: "CPU efficiency core 1", group: .CPU, type: .temperature, platforms: Platform.m1Gen, average: true),
@@ -565,65 +537,13 @@ internal let SensorsList: [Sensor] = [
     Sensor(key: "TW0P", name: "Airport", group: .system, type: .temperature, platforms: Platform.apple),
     
     // Voltage
-    Sensor(key: "VCAC", name: "CPU IA", group: .CPU, type: .voltage, platforms: Platform.all),
-    Sensor(key: "VCSC", name: "CPU System Agent", group: .CPU, type: .voltage, platforms: Platform.all),
-    Sensor(key: "VC%C", name: "CPU Core %", group: .CPU, type: .voltage, platforms: Platform.all),
-    
-    Sensor(key: "VCTC", name: "GPU Intel Graphics", group: .GPU, type: .voltage, platforms: Platform.all),
-    Sensor(key: "VG0C", name: "GPU", group: .GPU, type: .voltage, platforms: Platform.all),
-    
-    Sensor(key: "VM0R", name: "Memory", group: .system, type: .voltage, platforms: Platform.all),
-    Sensor(key: "Vb0R", name: "CMOS", group: .system, type: .voltage, platforms: Platform.all),
-    
-    Sensor(key: "VD0R", name: "DC In", group: .sensor, type: .voltage, platforms: Platform.all),
-    Sensor(key: "VP0R", name: "12V rail", group: .sensor, type: .voltage, platforms: Platform.all),
-    Sensor(key: "Vp0C", name: "12V vcc", group: .sensor, type: .voltage, platforms: Platform.all),
-    Sensor(key: "VV2S", name: "3V", group: .sensor, type: .voltage, platforms: Platform.all),
-    Sensor(key: "VR3R", name: "3.3V", group: .sensor, type: .voltage, platforms: Platform.all),
-    Sensor(key: "VV1S", name: "5V", group: .sensor, type: .voltage, platforms: Platform.all),
-    Sensor(key: "VV9S", name: "12V", group: .sensor, type: .voltage, platforms: Platform.all),
-    Sensor(key: "VeES", name: "PCI 12V", group: .sensor, type: .voltage, platforms: Platform.all),
+    Sensor(key: "battery_voltage", name: "Battery", group: .sensor, type: .voltage, platforms: Platform.all),
     
     // Current
-    Sensor(key: "IC0R", name: "CPU High side", group: .sensor, type: .current, platforms: Platform.all),
-    Sensor(key: "IG0R", name: "GPU High side", group: .sensor, type: .current, platforms: Platform.all),
-    Sensor(key: "ID0R", name: "DC In", group: .sensor, type: .current, platforms: Platform.all),
-    Sensor(key: "IPBR", name: "Battery Power Bus", group: .sensor, type: .current, platforms: Platform.all),
     Sensor(key: "battery_amperage", name: "Battery", group: .sensor, type: .current, platforms: Platform.all),
-    Sensor(key: "IDBR", name: "Brightness", group: .sensor, type: .current, platforms: Platform.all),
-    Sensor(key: "IU1R", name: "Thunderbolt Left", group: .sensor, type: .current, platforms: Platform.all),
-    Sensor(key: "IU2R", name: "Thunderbolt Right", group: .sensor, type: .current, platforms: Platform.all),
     
     // Power
-    Sensor(key: "PC0C", name: "CPU Core", group: .CPU, type: .power, platforms: Platform.all),
-    Sensor(key: "PCAM", name: "CPU Core (IMON)", group: .CPU, type: .power, platforms: Platform.all),
-    Sensor(key: "PCPC", name: "CPU Package", group: .CPU, type: .power, platforms: Platform.all),
-    Sensor(key: "PCTR", name: "CPU Total", group: .CPU, type: .power, platforms: Platform.all),
-    Sensor(key: "PCPT", name: "CPU Package total", group: .CPU, type: .power, platforms: Platform.all),
-    Sensor(key: "PCPR", name: "CPU Package total (SMC)", group: .CPU, type: .power, platforms: Platform.all),
-    Sensor(key: "PC0R", name: "CPU Computing high side", group: .CPU, type: .power, platforms: Platform.all),
-    Sensor(key: "PC0G", name: "CPU GFX", group: .CPU, type: .power, platforms: Platform.all),
-    Sensor(key: "PCEC", name: "CPU VccEDRAM", group: .CPU, type: .power, platforms: Platform.all),
-    
-    Sensor(key: "PCPG", name: "GPU Intel Graphics", group: .GPU, type: .power, platforms: Platform.all),
-    Sensor(key: "PG0C", name: "GPU", group: .GPU, type: .power, platforms: Platform.all),
-    Sensor(key: "PG0R", name: "GPU 1", group: .GPU, type: .power, platforms: Platform.all),
-    Sensor(key: "PG1R", name: "GPU 2", group: .GPU, type: .power, platforms: Platform.all),
-    Sensor(key: "PCGC", name: "Intel GPU", group: .GPU, type: .power, platforms: Platform.all),
-    Sensor(key: "PCGM", name: "Intel GPU (IMON)", group: .GPU, type: .power, platforms: Platform.all),
-    
-    Sensor(key: "PC3C", name: "RAM", group: .sensor, type: .power, platforms: Platform.all),
-    Sensor(key: "PPBR", name: "Battery Power Bus", group: .sensor, type: .power, platforms: Platform.all),
-    Sensor(key: "PBRS", name: "Battery", group: .sensor, type: .power, platforms: Platform.all),
-    Sensor(key: "PB0R", name: "Battery", group: .sensor, type: .power, platforms: Platform.all),
     Sensor(key: "battery_power", name: "Battery", group: .sensor, type: .power, platforms: Platform.all),
-    Sensor(key: "PDTR", name: "DC In", group: .sensor, type: .power, platforms: Platform.all),
-    Sensor(key: "PMTR", name: "Memory Total", group: .sensor, type: .power, platforms: Platform.all),
-    Sensor(key: "PSTR", name: "System Total", group: .sensor, type: .power, platforms: Platform.all),
-    
-    Sensor(key: "PU1R", name: "Thunderbolt Left", group: .sensor, type: .power, platforms: Platform.all),
-    Sensor(key: "PU2R", name: "Thunderbolt Right", group: .sensor, type: .power, platforms: Platform.all),
-    
     Sensor(key: "PDBR", name: "Power Delivery Brightness", group: .sensor, type: .power, platforms: [.m1, .m1Pro, .m1Max, .m1Ultra, .m4, .m4Pro, .m4Max, .m4Ultra])
 ]
 
