@@ -162,7 +162,13 @@ struct SensorsSettingsView: View {
                 
                 Section(header: Text(localizedString("Fan control"))) {
                     Toggle(localizedString("Safety override"), isOn: $fanSafetyState)
+                        .onChange(of: fanSafetyState) { _, _ in
+                            onCallback()
+                        }
                     Toggle(localizedString("Auto mode on battery"), isOn: $fanBatteryAutoState)
+                        .onChange(of: fanBatteryAutoState) { _, _ in
+                            onCallback()
+                        }
                 }
                 
                 if widgets.contains(where: { $0 == .mini }) {

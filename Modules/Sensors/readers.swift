@@ -17,6 +17,12 @@ import os
 internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
     nonisolated static let HIDtypes: [SensorType] = [.temperature, .voltage]
     
+    internal enum ActivityMode {
+        case active
+        case passive
+        case paused
+    }
+    
     internal nonisolated(unsafe) var list: Sensors_List = Sensors_List()
     
     private nonisolated(unsafe) var lastRead: Date = Date()
@@ -31,6 +37,9 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
     private nonisolated(unsafe) var channels: CFMutableDictionary? = nil
     private nonisolated(unsafe) var subscription: IOReportSubscriptionRef? = nil
     private nonisolated(unsafe) var powers: (CPU: Double, GPU: Double, ANE: Double, RAM: Double, PCI: Double) = (0.0, 0.0, 0.0, 0.0, 0.0)
+    private var userInterval: Int = Store.shared.int(key: "Sensors_updateInterval", defaultValue: 3)
+    private var activityMode: ActivityMode = .active
+    private var effectiveInterval: Int?
     
     @MainActor init(callback: @escaping (T?) -> Void = {_ in }) {
         self.unknownSensorsState = Store.shared.bool(key: "Sensors_unknown", defaultValue: false)
@@ -47,6 +56,37 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
                 self.list.sensors = list
             }
         }
+    }
+    
+    internal func setUserInterval(_ value: Int) {
+        guard self.userInterval != value else { return }
+        self.userInterval = value
+        self.applyActivityMode()
+    }
+    
+    internal func setActivityMode(_ mode: ActivityMode) {
+        guard self.activityMode != mode else { return }
+        self.activityMode = mode
+        self.applyActivityMode()
+    }
+    
+    private func applyActivityMode() {
+        switch self.activityMode {
+        case .active:
+            self.applyInterval(self.userInterval)
+            self.sleepMode(state: false)
+        case .passive:
+            self.applyInterval(max(self.userInterval * 3, 10))
+            self.sleepMode(state: false)
+        case .paused:
+            self.sleepMode(state: true)
+        }
+    }
+    
+    private func applyInterval(_ value: Int) {
+        guard self.effectiveInterval != value else { return }
+        self.effectiveInterval = value
+        super.setInterval(value)
     }
     
     private func sensors() async -> [Sensor_p] {

@@ -63,7 +63,7 @@ public class Sensors: Module {
             self?.sensorsReader?.read()
         }
         self.settingsView.setInterval = { [weak self] value in
-            self?.sensorsReader?.setInterval(value)
+            self?.sensorsReader?.setUserInterval(value)
         }
         self.settingsView.HIDcallback = { [weak self] in
             Task { @MainActor in
@@ -135,7 +135,7 @@ public class Sensors: Module {
         self.notificationsView.usageCallback(value.sensors)
         
         let activeWidgets = self.menuBar.widgets.filter{ $0.isActive }
-        self.sensorsReader?.sleepMode(state: activeWidgets.contains(where: {$0.item is Label}) && activeWidgets.count == 1)
+        self.sensorsReader?.setActivityMode(self.sensorsActivityMode(for: activeWidgets))
         
         activeWidgets.forEach { (w: SWidget) in
             switch w.item {
@@ -187,6 +187,17 @@ public class Sensors: Module {
             default: break
             }
         }
+    }
+    
+    private func sensorsActivityMode(for activeWidgets: [SWidget]) -> SensorsReader.ActivityMode {
+        let hasValueWidget = activeWidgets.contains { !($0.item is Label) }
+        if hasValueWidget {
+            return .active
+        }
+        
+        let fanSafetyState = Store.shared.bool(key: "Sensors_fanSafety", defaultValue: true)
+        let batteryAutoState = Store.shared.bool(key: "Sensors_fanBatteryAuto", defaultValue: false)
+        return fanSafetyState || batteryAutoState ? .passive : .paused
     }
     
     private func getStackItem(_ s: Sensor_p) -> Stack_t {

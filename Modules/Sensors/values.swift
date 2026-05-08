@@ -90,12 +90,45 @@ public class Sensors_List: Codable, Equatable {
         let r = rhs.sensors
         if l.count != r.count { return false }
         for i in 0..<l.count {
-            if l[i].key != r[i].key { return false }
-            let diff = abs(l[i].value - r[i].value)
-            let threshold: Double = l[i].type == .temperature ? 0.5 : 0.1
-            if diff > threshold { return false }
+            if !Self.isSameSensor(l[i], r[i]) { return false }
+            if !Self.isEquivalentValue(l[i], r[i]) { return false }
         }
         return true
+    }
+    
+    private static func isSameSensor(_ lhs: Sensor_p, _ rhs: Sensor_p) -> Bool {
+        lhs.key == rhs.key &&
+        lhs.name == rhs.name &&
+        lhs.group == rhs.group &&
+        lhs.type == rhs.type &&
+        lhs.isComputed == rhs.isComputed &&
+        lhs.average == rhs.average
+    }
+    
+    private static func isEquivalentValue(_ lhs: Sensor_p, _ rhs: Sensor_p) -> Bool {
+        if let lhsFan = lhs as? Fan, let rhsFan = rhs as? Fan {
+            guard lhsFan.mode == rhsFan.mode,
+                  lhsFan.minSpeed == rhsFan.minSpeed,
+                  lhsFan.maxSpeed == rhsFan.maxSpeed else {
+                return false
+            }
+            
+            let rpmDiff = abs(lhsFan.value - rhsFan.value)
+            let percentageDiff = abs(lhsFan.percentage - rhsFan.percentage)
+            return rpmDiff <= 25 && percentageDiff <= 2
+        }
+        
+        let diff = abs(lhs.value - rhs.value)
+        switch lhs.type {
+        case .temperature:
+            return diff <= 0.5
+        case .voltage:
+            return diff <= 0.05
+        case .current, .power, .energy:
+            return diff <= 0.1
+        case .fan:
+            return diff <= 25
+        }
     }
 }
 
