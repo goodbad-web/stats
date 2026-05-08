@@ -11,7 +11,7 @@
 
 import Cocoa
 
-public class Mini: WidgetWrapper {
+public class Mini: WidgetWrapper, WidgetConfigurable {
     private var labelState: Bool = true
     private var colorState: SColor = .monochrome
     private var alignmentState: String = "left"
@@ -25,6 +25,7 @@ public class Mini: WidgetWrapper {
     
     private var defaultLabel: String
     private var _label: String
+    public lazy var widgetConfiguration: WidgetSettingsConfiguration = MiniWidgetConfiguration(widget: self)
     
     private var width: CGFloat {
         (self.labelState ? 31 : 36) + (2*Constants.Widget.margin.x)
@@ -191,53 +192,90 @@ public class Mini: WidgetWrapper {
             self.display()
         })
     }
+
+    fileprivate func availableColors() -> [SColor] {
+        self.colors
+    }
+
+    fileprivate func configurationState() -> (label: Bool, color: SColor, alignment: String) {
+        (self.labelState, self.colorState, self.alignmentState)
+    }
+
+    fileprivate func applyConfigurationState(label: Bool? = nil, color: SColor? = nil, alignment: String? = nil) {
+        if let label {
+            self.labelState = label
+        }
+        if let color {
+            self.colorState = color
+        }
+        if let alignment {
+            self.alignmentState = alignment
+        }
+        self.display()
+    }
     
     // MARK: - Settings
     
     public override func settings() -> NSView {
+        self.widgetConfiguration.settingsView()
+    }
+}
+
+private final class MiniWidgetConfiguration: BaseWidgetConfiguration {
+    private weak var widget: Mini?
+
+    init(widget: Mini) {
+        self.widget = widget
+        super.init(title: widget.title, type: widget.type)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func settingsView() -> NSView {
+        guard let widget else { return NSView() }
+        let state = widget.configurationState()
         let view = SettingsContainerView()
-        
         view.addArrangedSubview(PreferencesSection([
             PreferencesRow(localizedString("Label"), component: switchView(
                 action: #selector(self.toggleLabel),
-                state: self.labelState
+                state: state.label
             )),
             PreferencesRow(localizedString("Color"), component: selectView(
                 action: #selector(self.toggleColor),
-                items: self.colors,
-                selected: self.colorState.key
+                items: widget.availableColors(),
+                selected: state.color.key
             )),
             PreferencesRow(localizedString("Alignment"), component: selectView(
                 action: #selector(self.toggleAlignment),
                 items: Alignments,
-                selected: self.alignmentState
+                selected: state.alignment
             ))
         ]))
-        
         return view
     }
-    
+
     @objc private func toggleColor(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String else { return }
-        if let newColor = SColor.allCases.first(where: { $0.key == key }) {
-            self.colorState = newColor
-        }
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_color", value: key)
-        self.display()
+        guard let widget,
+              let key = sender.representedObject as? String,
+              let newColor = SColor.allCases.first(where: { $0.key == key }) else { return }
+        self.writeString("color", value: key)
+        widget.applyConfigurationState(color: newColor)
     }
-    
+
     @objc private func toggleLabel(_ sender: NSControl) {
-        self.labelState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_label", value: self.labelState)
-        self.display()
+        guard let widget else { return }
+        let value = controlState(sender)
+        self.writeBool("label", value: value)
+        widget.applyConfigurationState(label: value)
     }
-    
+
     @objc private func toggleAlignment(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String else { return }
-        if let newAlignment = Alignments.first(where: { $0.key == key }) {
-            self.alignmentState = newAlignment.key
-        }
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_alignment", value: key)
-        self.display()
+        guard let widget,
+              let key = sender.representedObject as? String,
+              Alignments.first(where: { $0.key == key }) != nil else { return }
+        self.writeString("alignment", value: key)
+        widget.applyConfigurationState(alignment: key)
     }
 }

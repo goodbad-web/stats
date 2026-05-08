@@ -11,7 +11,7 @@
 
 import Cocoa
 
-public class SpeedWidget: WidgetWrapper {
+public class SpeedWidget: WidgetWrapper, WidgetConfigurable {
     private var icon: String = "dots"
     private var valueState: Bool = true
     private var unitsState: Bool = true
@@ -39,6 +39,7 @@ public class SpeedWidget: WidgetWrapper {
     private var iconAlignmentView: NSPopUpButton? = nil
     private var iconColorView: NSPopUpButton? = nil
     private var displayModeView: NSPopUpButton? = nil
+    public lazy var widgetConfiguration: WidgetSettingsConfiguration = SpeedWidgetConfiguration(widget: self)
     
     private var inputColor: (String) -> NSColor {{ state in
         if state == "none" { return .textColor }
@@ -470,193 +471,10 @@ public class SpeedWidget: WidgetWrapper {
         str = NSAttributedString.init(string: self.symbols.output, attributes: outputAttributes)
         str.draw(with: rect)
     }
-    
-    // MARK: - settings
-    
-    public override func settings() -> NSView {
-        let view = SettingsContainerView()
-        
-        let valueAlignment = selectView(
-            action: #selector(self.toggleValueAlignment),
-            items: Alignments,
-            selected: self.valueAlignmentState
-        )
-        valueAlignment.isEnabled = self.valueState
-        self.valueAlignmentView = valueAlignment
-        
-        let iconAlignment = selectView(
-            action: #selector(self.toggleIconAlignment),
-            items: Alignments.filter({ $0.key != "center" }),
-            selected: self.iconAlignmentState
-        )
-        iconAlignment.isEnabled = self.icon != "none"
-        self.iconAlignmentView = iconAlignment
-        
-        let iconColor = selectView(
-            action: #selector(self.toggleIconColor),
-            items: SpeedPictogramColor.filter({ $0.key != "none" }),
-            selected: self.iconColorState
-        )
-        iconColor.isEnabled = self.icon != "none"
-        self.iconColorView = iconColor
-        
-        let valueColor = selectView(
-            action: #selector(self.toggleValueColor),
-            items: SpeedPictogramColor,
-            selected: self.valueColorState
-        )
-        valueColor.isEnabled = self.valueState
-        self.valueColorView = valueColor
-        
-        let displayMode = selectView(
-            action: #selector(self.changeDisplayMode),
-            items: SensorsWidgetMode.filter({ $0.key == "oneRow" || $0.key == "twoRows"}),
-            selected: self.modeState
-        )
-        displayMode.isEnabled = self.displayValueState.count > 1
-        self.displayModeView = displayMode
-        
-        let sensorWidgetValue = SensorsWidgetValue.map { v in
-            var value = v.value.replacingOccurrences(of: "input", with: localizedString(self.words.input), options: .literal, range: nil)
-            value = value.replacingOccurrences(of: "output", with: localizedString(self.words.output), options: .literal, range: nil)
-            return KeyValue_t(key: v.key, value: value)
-        }
-        
-        view.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("Value"), component: selectView(
-                action: #selector(self.changeDisplayValue),
-                items: sensorWidgetValue,
-                selected: self.displayValueState
-            )),
-            PreferencesRow(localizedString("Display mode"), component: displayMode)
-        ]))
-        
-        view.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("Pictogram"), component: selectView(
-                action: #selector(self.toggleIcon),
-                items: SpeedPictogram,
-                selected: self.icon
-            )),
-            PreferencesRow(localizedString("Colorize"), component: iconColor),
-            PreferencesRow(localizedString("Alignment"), component: iconAlignment)
-        ]))
-        
-        view.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("Value"), component: switchView(
-                action: #selector(self.toggleValue),
-                state: self.valueState
-            )),
-            PreferencesRow(localizedString("Colorize value"), component: valueColor),
-            PreferencesRow(localizedString("Alignment"), component: valueAlignment),
-            PreferencesRow(localizedString("Units"), component: switchView(
-                action: #selector(self.toggleUnits),
-                state: self.unitsState
-            ))
-        ]))
-        
-        view.addArrangedSubview(PreferencesSection([
-            PreferencesRow(localizedString("Monochrome accent"), component: switchView(
-                action: #selector(self.toggleMonochrome),
-                state: self.monochromeState
-            )),
-            PreferencesRow(localizedString("Color of download"), component: selectView(
-                action: #selector(self.toggleInputColor),
-                items: SColor.allColors,
-                selected: self.inputColorState.key
-            )),
-            PreferencesRow(localizedString("Color of upload"), component: selectView(
-                action: #selector(self.toggleOutputColor),
-                items: SColor.allColors,
-                selected: self.outputColorState.key
-            ))
-        ]))
-        
-        return view
-    }
-    
-    @objc private func changeDisplayValue(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String else { return }
-        self.displayValueState = key
-        
-        if key.count == 1 {
-            if self.modeState != "oneRow" {
-                self.modeState = "oneRow"
-                Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_mode", value: self.modeState)
-            }
-            self.displayModeView?.selectItem(at: 0)
-        }
-        self.displayModeView?.isEnabled = key.count > 1
-        
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_displayValue", value: key)
-        self.display()
-    }
-    
-    @objc private func changeDisplayMode(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String else { return }
-        self.modeState = key
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_mode", value: key)
-        self.display()
-    }
-    
-    @objc private func toggleValue(_ sender: NSControl) {
-        self.valueState = controlState(sender)
-        
-        self.valueColorView?.isEnabled = self.valueState
-        self.valueAlignmentView?.isEnabled = self.valueState
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_value", value: self.valueState)
-        self.display()
-    }
-    
-    @objc private func toggleUnits(_ sender: NSControl) {
-        self.unitsState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_units", value: self.unitsState)
-        self.display()
-    }
-    
-    @objc private func toggleIcon(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String else { return }
-        self.icon = key
-        self.iconColorView?.isEnabled = self.icon != "none"
-        self.iconAlignmentView?.isEnabled = self.icon != "none"
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_icon", value: key)
-        self.display()
-    }
-    
-    @objc private func toggleMonochrome(_ sender: NSControl) {
-        self.monochromeState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_monochrome", value: self.monochromeState)
-        self.display()
-    }
-    
-    @objc private func toggleValueColor(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String else { return }
-        if let newColor = SpeedPictogramColor.first(where: { $0.key == key }) {
-            self.valueColorState = newColor.key
-        }
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_valueColor", value: key)
-        self.display()
-    }
-    
-    @objc private func toggleOutputColor(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String,
-              let newValue = SColor.allColors.first(where: { $0.key == key }) else {
-            return
-        }
-        self.outputColorState = newValue
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_uploadColor", value: key)
-    }
-    @objc private func toggleInputColor(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String,
-              let newValue = SColor.allColors.first(where: { $0.key == key }) else {
-            return
-        }
-        self.inputColorState = newValue
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_downloadColor", value: key)
-    }
-    
+
     public func setValue(input: Int64, output: Int64) {
         var updated: Bool = false
-        
+
         if self.inputValue != input {
             self.inputValue = abs(input)
             updated = true
@@ -665,38 +483,302 @@ public class SpeedWidget: WidgetWrapper {
             self.outputValue = abs(output)
             updated = true
         }
-        
+
         if updated {
             DispatchQueue.main.async(execute: {
                 self.display()
             })
         }
     }
-    
+
+    fileprivate func configurationState() -> (
+        icon: String,
+        valueState: Bool,
+        unitsState: Bool,
+        monochromeState: Bool,
+        valueColorState: String,
+        iconColorState: String,
+        valueAlignmentState: String,
+        modeState: String,
+        iconAlignmentState: String,
+        displayValueState: String,
+        inputColorState: SColor,
+        outputColorState: SColor
+    ) {
+        (
+            self.icon,
+            self.valueState,
+            self.unitsState,
+            self.monochromeState,
+            self.valueColorState,
+            self.iconColorState,
+            self.valueAlignmentState,
+            self.modeState,
+            self.iconAlignmentState,
+            self.displayValueState,
+            self.inputColorState,
+            self.outputColorState
+        )
+    }
+
+    fileprivate func configurationWords() -> (input: String, output: String) {
+        self.words
+    }
+
+    fileprivate func applyConfiguration(
+        icon: String? = nil,
+        valueState: Bool? = nil,
+        unitsState: Bool? = nil,
+        monochromeState: Bool? = nil,
+        valueColorState: String? = nil,
+        iconColorState: String? = nil,
+        valueAlignmentState: String? = nil,
+        modeState: String? = nil,
+        iconAlignmentState: String? = nil,
+        displayValueState: String? = nil,
+        inputColorState: SColor? = nil,
+        outputColorState: SColor? = nil
+    ) {
+        if let icon { self.icon = icon }
+        if let valueState { self.valueState = valueState }
+        if let unitsState { self.unitsState = unitsState }
+        if let monochromeState { self.monochromeState = monochromeState }
+        if let valueColorState { self.valueColorState = valueColorState }
+        if let iconColorState { self.iconColorState = iconColorState }
+        if let valueAlignmentState { self.valueAlignmentState = valueAlignmentState }
+        if let modeState { self.modeState = modeState }
+        if let iconAlignmentState { self.iconAlignmentState = iconAlignmentState }
+        if let displayValueState { self.displayValueState = displayValueState }
+        if let inputColorState { self.inputColorState = inputColorState }
+        if let outputColorState { self.outputColorState = outputColorState }
+        self.display()
+    }
+
+    // MARK: - settings
+
+    public override func settings() -> NSView {
+        self.widgetConfiguration.settingsView()
+    }
+}
+
+private final class SpeedWidgetConfiguration: BaseWidgetConfiguration {
+    private weak var widget: SpeedWidget?
+    private weak var valueColorView: NSPopUpButton?
+    private weak var valueAlignmentView: NSPopUpButton?
+    private weak var iconAlignmentView: NSPopUpButton?
+    private weak var iconColorView: NSPopUpButton?
+    private weak var displayModeView: NSPopUpButton?
+
+    init(widget: SpeedWidget) {
+        self.widget = widget
+        super.init(title: widget.title, type: widget.type)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func settingsView() -> NSView {
+        guard let widget else { return NSView() }
+        let state = widget.configurationState()
+        let view = SettingsContainerView()
+
+        let valueAlignment = selectView(
+            action: #selector(self.toggleValueAlignment),
+            items: Alignments,
+            selected: state.valueAlignmentState
+        )
+        valueAlignment.isEnabled = state.valueState
+        self.valueAlignmentView = valueAlignment
+
+        let iconAlignment = selectView(
+            action: #selector(self.toggleIconAlignment),
+            items: Alignments.filter({ $0.key != "center" }),
+            selected: state.iconAlignmentState
+        )
+        iconAlignment.isEnabled = state.icon != "none"
+        self.iconAlignmentView = iconAlignment
+
+        let iconColor = selectView(
+            action: #selector(self.toggleIconColor),
+            items: SpeedPictogramColor.filter({ $0.key != "none" }),
+            selected: state.iconColorState
+        )
+        iconColor.isEnabled = state.icon != "none"
+        self.iconColorView = iconColor
+
+        let valueColor = selectView(
+            action: #selector(self.toggleValueColor),
+            items: SpeedPictogramColor,
+            selected: state.valueColorState
+        )
+        valueColor.isEnabled = state.valueState
+        self.valueColorView = valueColor
+
+        let displayMode = selectView(
+            action: #selector(self.changeDisplayMode),
+            items: SensorsWidgetMode.filter({ $0.key == "oneRow" || $0.key == "twoRows" }),
+            selected: state.modeState
+        )
+        displayMode.isEnabled = state.displayValueState.count > 1
+        self.displayModeView = displayMode
+
+        let words = widget.configurationWords()
+        let sensorWidgetValue = SensorsWidgetValue.map { v in
+            var value = v.value.replacingOccurrences(of: "input", with: localizedString(words.input), options: .literal, range: nil)
+            value = value.replacingOccurrences(of: "output", with: localizedString(words.output), options: .literal, range: nil)
+            return KeyValue_t(key: v.key, value: value)
+        }
+
+        view.addArrangedSubview(PreferencesSection([
+            PreferencesRow(localizedString("Value"), component: selectView(
+                action: #selector(self.changeDisplayValue),
+                items: sensorWidgetValue,
+                selected: state.displayValueState
+            )),
+            PreferencesRow(localizedString("Display mode"), component: displayMode)
+        ]))
+
+        view.addArrangedSubview(PreferencesSection([
+            PreferencesRow(localizedString("Pictogram"), component: selectView(
+                action: #selector(self.toggleIcon),
+                items: SpeedPictogram,
+                selected: state.icon
+            )),
+            PreferencesRow(localizedString("Colorize"), component: iconColor),
+            PreferencesRow(localizedString("Alignment"), component: iconAlignment)
+        ]))
+
+        view.addArrangedSubview(PreferencesSection([
+            PreferencesRow(localizedString("Value"), component: switchView(
+                action: #selector(self.toggleValue),
+                state: state.valueState
+            )),
+            PreferencesRow(localizedString("Colorize value"), component: valueColor),
+            PreferencesRow(localizedString("Alignment"), component: valueAlignment),
+            PreferencesRow(localizedString("Units"), component: switchView(
+                action: #selector(self.toggleUnits),
+                state: state.unitsState
+            ))
+        ]))
+
+        view.addArrangedSubview(PreferencesSection([
+            PreferencesRow(localizedString("Monochrome accent"), component: switchView(
+                action: #selector(self.toggleMonochrome),
+                state: state.monochromeState
+            )),
+            PreferencesRow(localizedString("Color of download"), component: selectView(
+                action: #selector(self.toggleInputColor),
+                items: SColor.allColors,
+                selected: state.inputColorState.key
+            )),
+            PreferencesRow(localizedString("Color of upload"), component: selectView(
+                action: #selector(self.toggleOutputColor),
+                items: SColor.allColors,
+                selected: state.outputColorState.key
+            ))
+        ]))
+
+        return view
+    }
+
+    @objc private func changeDisplayValue(_ sender: NSMenuItem) {
+        guard let widget, let key = sender.representedObject as? String else { return }
+        var modeState = widget.configurationState().modeState
+        if key.count == 1 {
+            if modeState != "oneRow" {
+                modeState = "oneRow"
+                self.writeString("mode", value: modeState)
+            }
+            self.displayModeView?.selectItem(at: 0)
+        }
+        self.displayModeView?.isEnabled = key.count > 1
+        self.writeString("displayValue", value: key)
+        widget.applyConfiguration(modeState: modeState, displayValueState: key)
+    }
+
+    @objc private func changeDisplayMode(_ sender: NSMenuItem) {
+        guard let widget, let key = sender.representedObject as? String else { return }
+        self.writeString("mode", value: key)
+        widget.applyConfiguration(modeState: key)
+    }
+
+    @objc private func toggleValue(_ sender: NSControl) {
+        guard let widget else { return }
+        let value = controlState(sender)
+        self.valueColorView?.isEnabled = value
+        self.valueAlignmentView?.isEnabled = value
+        self.writeBool("value", value: value)
+        widget.applyConfiguration(valueState: value)
+    }
+
+    @objc private func toggleUnits(_ sender: NSControl) {
+        guard let widget else { return }
+        let value = controlState(sender)
+        self.writeBool("units", value: value)
+        widget.applyConfiguration(unitsState: value)
+    }
+
+    @objc private func toggleIcon(_ sender: NSMenuItem) {
+        guard let widget, let key = sender.representedObject as? String else { return }
+        self.iconColorView?.isEnabled = key != "none"
+        self.iconAlignmentView?.isEnabled = key != "none"
+        self.writeString("icon", value: key)
+        widget.applyConfiguration(icon: key)
+    }
+
+    @objc private func toggleMonochrome(_ sender: NSControl) {
+        guard let widget else { return }
+        let value = controlState(sender)
+        self.writeBool("monochrome", value: value)
+        widget.applyConfiguration(monochromeState: value)
+    }
+
+    @objc private func toggleValueColor(_ sender: NSMenuItem) {
+        guard let widget,
+              let key = sender.representedObject as? String,
+              SpeedPictogramColor.first(where: { $0.key == key }) != nil else { return }
+        self.writeString("valueColor", value: key)
+        widget.applyConfiguration(valueColorState: key)
+    }
+
+    @objc private func toggleOutputColor(_ sender: NSMenuItem) {
+        guard let widget,
+              let key = sender.representedObject as? String,
+              let newValue = SColor.allColors.first(where: { $0.key == key }) else { return }
+        self.writeString("uploadColor", value: key)
+        widget.applyConfiguration(outputColorState: newValue)
+    }
+
+    @objc private func toggleInputColor(_ sender: NSMenuItem) {
+        guard let widget,
+              let key = sender.representedObject as? String,
+              let newValue = SColor.allColors.first(where: { $0.key == key }) else { return }
+        self.writeString("downloadColor", value: key)
+        widget.applyConfiguration(inputColorState: newValue)
+    }
+
     @objc private func toggleValueAlignment(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String else { return }
-        if let newAlignment = Alignments.first(where: { $0.key == key }) {
-            self.valueAlignmentState = newAlignment.key
-        }
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_valueAlignment", value: key)
-        self.display()
+        guard let widget,
+              let key = sender.representedObject as? String,
+              Alignments.first(where: { $0.key == key }) != nil else { return }
+        self.writeString("valueAlignment", value: key)
+        widget.applyConfiguration(valueAlignmentState: key)
     }
-    
+
     @objc private func toggleIconAlignment(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String else { return }
-        if let newAlignment = Alignments.first(where: { $0.key == key }) {
-            self.iconAlignmentState = newAlignment.key
-        }
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_iconAlignment", value: key)
-        self.display()
+        guard let widget,
+              let key = sender.representedObject as? String,
+              Alignments.first(where: { $0.key == key }) != nil else { return }
+        self.writeString("iconAlignment", value: key)
+        widget.applyConfiguration(iconAlignmentState: key)
     }
-    
+
     @objc private func toggleIconColor(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String else { return }
-        if let newColor = SpeedPictogramColor.first(where: { $0.key == key }) {
-            self.iconColorState = newColor.key
-        }
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_iconColor", value: key)
-        self.display()
+        guard let widget,
+              let key = sender.representedObject as? String,
+              SpeedPictogramColor.first(where: { $0.key == key }) != nil else { return }
+        self.writeString("iconColor", value: key)
+        widget.applyConfiguration(iconColorState: key)
     }
 }

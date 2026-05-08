@@ -276,7 +276,7 @@ import Cocoa
             self.widgetSettingsContainer?.addArrangedSubview(WidgetSettings(
                 title: list[i].type.name(),
                 image: list[i].image,
-                settingsView: list[i].item.settings()
+                settingsView: list[i].configuration.settingsView()
             ))
         }
     }

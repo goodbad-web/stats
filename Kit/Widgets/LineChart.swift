@@ -11,7 +11,7 @@
 
 import Cocoa
 
-public class LineChart: WidgetWrapper {
+public class LineChart: WidgetWrapper, WidgetConfigurable {
     private var labelState: Bool = false
     private var boxState: Bool = true
     private var frameState: Bool = false
@@ -56,6 +56,7 @@ public class LineChart: WidgetWrapper {
     
     private var boxSettingsView: NSSwitch? = nil
     private var frameSettingsView: NSSwitch? = nil
+    public lazy var widgetConfiguration: WidgetSettingsConfiguration = LineChartWidgetConfiguration(widget: self)
     
     public var NSLabelCharts: [NSAttributedString] = []
     
@@ -266,125 +267,194 @@ public class LineChart: WidgetWrapper {
             self.needsDisplay = true
         })
     }
+
+    fileprivate func configurationState() -> (
+        label: Bool,
+        box: Bool,
+        frame: Bool,
+        value: Bool,
+        valueColor: Bool,
+        color: SColor,
+        historyCount: Int,
+        scale: Scale
+    ) {
+        (
+            self.labelState,
+            self.boxState,
+            self.frameState,
+            self.valueState,
+            self.valueColorState,
+            self.colorState,
+            self.historyCount,
+            self.scaleState
+        )
+    }
+
+    fileprivate func configurationColors() -> [SColor] { self.colors }
+    fileprivate func configurationHistoryNumbers() -> [KeyValue_p] { self.historyNumbers }
+
+    fileprivate func applyConfiguration(
+        label: Bool? = nil,
+        box: Bool? = nil,
+        frame: Bool? = nil,
+        value: Bool? = nil,
+        valueColor: Bool? = nil,
+        color: SColor? = nil,
+        historyCount: Int? = nil,
+        scale: Scale? = nil
+    ) {
+        if let label { self.labelState = label }
+        if let box { self.boxState = box }
+        if let frame { self.frameState = frame }
+        if let value { self.valueState = value }
+        if let valueColor { self.valueColorState = valueColor }
+        if let color { self.colorState = color }
+        if let historyCount {
+            self.historyCount = historyCount
+            self.chart.reinit(historyCount)
+        }
+        if let scale {
+            self.scaleState = scale
+            self.chart.setScale(scale)
+        }
+        self.needsDisplay = true
+    }
     
     // MARK: - Settings
     
     public override func settings() -> NSView {
+        self.widgetConfiguration.settingsView()
+    }
+}
+
+private final class LineChartWidgetConfiguration: BaseWidgetConfiguration {
+    private weak var widget: LineChart?
+    private weak var boxSettingsView: NSSwitch?
+    private weak var frameSettingsView: NSSwitch?
+
+    init(widget: LineChart) {
+        self.widget = widget
+        super.init(title: widget.title, type: widget.type)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func settingsView() -> NSView {
+        guard let widget else { return NSView() }
+        let state = widget.configurationState()
         let view = SettingsContainerView()
-        
-        let box = switchView(
-            action: #selector(self.toggleBox),
-            state: self.boxState
-        )
+
+        let box = switchView(action: #selector(self.toggleBox), state: state.box)
         self.boxSettingsView = box
-        let frame = switchView(
-            action: #selector(self.toggleFrame),
-            state: self.frameState
-        )
+        let frame = switchView(action: #selector(self.toggleFrame), state: state.frame)
         self.frameSettingsView = frame
-        
+
         view.addArrangedSubview(PreferencesSection([
             PreferencesRow(localizedString("Label"), component: switchView(
                 action: #selector(self.toggleLabel),
-                state: self.labelState
+                state: state.label
             )),
             PreferencesRow(localizedString("Value"), component: switchView(
                 action: #selector(self.toggleValue),
-                state: self.valueState
+                state: state.value
             )),
             PreferencesRow(localizedString("Box"), component: box),
             PreferencesRow(localizedString("Frame"), component: frame),
             PreferencesRow(localizedString("Color"), component: selectView(
                 action: #selector(self.toggleColor),
-                items: self.colors,
-                selected: self.colorState.key
+                items: widget.configurationColors(),
+                selected: state.color.key
             )),
             PreferencesRow(localizedString("Colorize value"), component: switchView(
                 action: #selector(self.toggleValueColor),
-                state: self.valueColorState
+                state: state.valueColor
             )),
             PreferencesRow(localizedString("Number of reads in the chart"), component: selectView(
                 action: #selector(self.toggleHistoryCount),
-                items: self.historyNumbers,
-                selected: "\(self.historyCount)"
+                items: widget.configurationHistoryNumbers(),
+                selected: "\(state.historyCount)"
             )),
             PreferencesRow(localizedString("Scaling"), component: selectView(
                 action: #selector(self.toggleScale),
                 items: Scale.allCases.filter({ $0 != .fixed }),
-                selected: self.scaleState.key
+                selected: state.scale.key
             ))
         ]))
-        
         return view
     }
-    
+
     @objc private func toggleLabel(_ sender: NSControl) {
-        self.labelState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_label", value: self.labelState)
-        self.needsDisplay = true
+        guard let widget else { return }
+        let value = controlState(sender)
+        self.writeBool("label", value: value)
+        widget.applyConfiguration(label: value)
     }
-    
+
     @objc private func toggleBox(_ sender: NSControl) {
-        self.boxState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_box", value: self.boxState)
-        
-        if self.frameState {
+        guard let widget else { return }
+        let box = controlState(sender)
+        var frame = widget.configurationState().frame
+        self.writeBool("box", value: box)
+
+        if frame {
+            frame = false
             self.frameSettingsView?.state = .off
-            self.frameState = false
-            Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_frame", value: self.frameState)
+            self.writeBool("frame", value: frame)
         }
-        
-        self.needsDisplay = true
+        widget.applyConfiguration(box: box, frame: frame)
     }
-    
+
     @objc private func toggleFrame(_ sender: NSControl) {
-        self.frameState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_frame", value: self.frameState)
-        
-        if self.boxState {
+        guard let widget else { return }
+        var frame = controlState(sender)
+        var box = widget.configurationState().box
+        self.writeBool("frame", value: frame)
+
+        if box {
+            box = false
             self.boxSettingsView?.state = .off
-            self.boxState = false
-            Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_box", value: self.boxState)
+            self.writeBool("box", value: box)
         }
-        
-        self.needsDisplay = true
+        widget.applyConfiguration(box: box, frame: frame)
     }
-    
+
     @objc private func toggleValue(_ sender: NSControl) {
-        self.valueState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_value", value: self.valueState)
-        self.needsDisplay = true
+        guard let widget else { return }
+        let value = controlState(sender)
+        self.writeBool("value", value: value)
+        widget.applyConfiguration(value: value)
     }
-    
+
     @objc private func toggleColor(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String else { return }
-        if let newColor = SColor.allCases.first(where: { $0.key == key }) {
-            self.colorState = newColor
-        }
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_color", value: key)
-        self.needsDisplay = true
+        guard let widget,
+              let key = sender.representedObject as? String,
+              let value = SColor.allCases.first(where: { $0.key == key }) else { return }
+        self.writeString("color", value: key)
+        widget.applyConfiguration(color: value)
     }
-    
+
     @objc private func toggleValueColor(_ sender: NSControl) {
-        self.valueColorState = controlState(sender)
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_valueColor", value: self.valueColorState)
-        self.needsDisplay = true
+        guard let widget else { return }
+        let value = controlState(sender)
+        self.writeBool("valueColor", value: value)
+        widget.applyConfiguration(valueColor: value)
     }
-    
+
     @objc private func toggleHistoryCount(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String, let value = Int(key) else { return }
-        self.historyCount = value
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_historyCount", value: value)
-        self.chart.reinit(value)
-        self.needsDisplay = true
+        guard let widget,
+              let key = sender.representedObject as? String,
+              let value = Int(key) else { return }
+        self.writeInt("historyCount", value: value)
+        widget.applyConfiguration(historyCount: value)
     }
-    
+
     @objc private func toggleScale(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String,
+        guard let widget,
+              let key = sender.representedObject as? String,
               let value = Scale.allCases.first(where: { $0.key == key }) else { return }
-        self.scaleState = value
-        self.chart.setScale(value)
-        Store.shared.set(key: "\(self.title)_\(self.type.rawValue)_scale", value: key)
-        self.needsDisplay = true
+        self.writeString("scale", value: key)
+        widget.applyConfiguration(scale: value)
     }
 }

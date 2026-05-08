@@ -11,6 +11,73 @@
 
 import Cocoa
 
+public protocol WidgetSettingsConfiguration: AnyObject {
+    func settingsView() -> NSView
+}
+
+public protocol WidgetConfigurable {
+    var widgetConfiguration: WidgetSettingsConfiguration { get }
+}
+
+open class BaseWidgetConfiguration: NSView, WidgetSettingsConfiguration {
+    public let title: String
+    public let type: widget_t
+
+    public init(title: String, type: widget_t) {
+        self.title = title
+        self.type = type
+        super.init(frame: .zero)
+    }
+
+    required public init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    open func settingsView() -> NSView {
+        NSView()
+    }
+
+    public func key(_ suffix: String) -> String {
+        "\(self.title)_\(self.type.rawValue)_\(suffix)"
+    }
+
+    public func readBool(_ suffix: String, defaultValue: Bool) -> Bool {
+        Store.shared.bool(key: self.key(suffix), defaultValue: defaultValue)
+    }
+
+    public func writeBool(_ suffix: String, value: Bool) {
+        Store.shared.set(key: self.key(suffix), value: value)
+    }
+
+    public func readInt(_ suffix: String, defaultValue: Int) -> Int {
+        Store.shared.int(key: self.key(suffix), defaultValue: defaultValue)
+    }
+
+    public func writeInt(_ suffix: String, value: Int) {
+        Store.shared.set(key: self.key(suffix), value: value)
+    }
+
+    public func readString(_ suffix: String, defaultValue: String) -> String {
+        Store.shared.string(key: self.key(suffix), defaultValue: defaultValue)
+    }
+
+    public func writeString(_ suffix: String, value: String) {
+        Store.shared.set(key: self.key(suffix), value: value)
+    }
+}
+
+private final class LegacyWidgetConfiguration: WidgetSettingsConfiguration {
+    private weak var widget: widget_p?
+
+    init(widget: widget_p) {
+        self.widget = widget
+    }
+
+    func settingsView() -> NSView {
+        self.widget?.settings() ?? NSView()
+    }
+}
+
 public enum widget_t: String {
     case unknown = ""
     case mini = "mini"
@@ -120,7 +187,21 @@ public enum widget_t: String {
         }
         
         if let item = item, let image = image {
-            return SWidget(self, defaultWidget: defaultWidget, module: module, item: item, image: image)
+            let configuration: WidgetSettingsConfiguration
+            if let configurable = item as? WidgetConfigurable {
+                configuration = configurable.widgetConfiguration
+            } else {
+                configuration = LegacyWidgetConfiguration(widget: item)
+            }
+
+            return SWidget(
+                self,
+                defaultWidget: defaultWidget,
+                module: module,
+                item: item,
+                image: image,
+                configuration: configuration
+            )
         }
         
         return nil
@@ -256,6 +337,7 @@ public class SWidget {
     public let module: String
     public let image: NSImage
     public var item: widget_p
+    public let configuration: WidgetSettingsConfiguration
     
     public var isActive: Bool {
         get { self.list.contains{ $0 == self.type } }
@@ -301,12 +383,20 @@ public class SWidget {
     private var menuBarItem: NSStatusItem? = nil
     private var originX: CGFloat
     
-    public init(_ type: widget_t, defaultWidget: widget_t, module: String, item: widget_p, image: NSImage) {
+    public init(
+        _ type: widget_t,
+        defaultWidget: widget_t,
+        module: String,
+        item: widget_p,
+        image: NSImage,
+        configuration: WidgetSettingsConfiguration
+    ) {
         self.type = type
         self.module = module
         self.item = item
         self.defaultWidget = defaultWidget
         self.image = image
+        self.configuration = configuration
         self.originX = item.frame.origin.x
         
         self.item.widthHandler = { [weak self] in
