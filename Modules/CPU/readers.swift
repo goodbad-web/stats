@@ -385,7 +385,6 @@ internal struct CPULoadReadScope: Equatable, Sendable {
 internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
     private let worker = CPUReaderWorker()
     private let scopeLock = OSAllocatedUnfairLock(initialState: CPULoadReadScope.totalOnly)
-    private let readLock = OSAllocatedUnfairLock(initialState: false)
     
     public override func setup() {}
 
@@ -393,23 +392,9 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
         self.scopeLock.withLock { $0 = scope }
     }
     
-    nonisolated public override func read() {
-        let isReading = self.readLock.withLock { $0 }
-        guard !isReading else { return }
-        self.readLock.withLock { $0 = true }
-        
+    public override func readAsync() async -> CPU_Load? {
         let scope = self.scopeLock.withLock { $0 }
-        let worker = self.worker
-        
-        Task(priority: .background) {
-            defer { self.readLock.withLock { $0 = false } }
-            if let updatedResponse = await worker.readLoad(scope: scope) {
-                if let old = self.value, old == updatedResponse {
-                    return
-                }
-                self.callback(updatedResponse)
-            }
-        }
+        return await self.worker.readLoad(scope: scope)
     }
 }
 
@@ -428,23 +413,10 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
         self.setInterval(Store.shared.int(key: "\(self.title)_updateTopInterval", defaultValue: 5))
     }
     
-    nonisolated public override func read() {
-        let isReading = self.readLock.withLock { $0 }
-        guard !isReading else { return }
-        self.readLock.withLock { $0 = true }
-        
+    public override func readAsync() async -> [TopProcess]? {
         let limit = self.numberOfProcesses
-        let worker = self.worker
-        
-        Task(priority: .background) {
-            defer { self.readLock.withLock { $0 = false } }
-            if limit == 0 { return }
-            let processes = await worker.getTopProcesses(limit: limit)
-            if let old = self.value, old == processes {
-                return
-            }
-            self.callback(processes)
-        }
+        if limit == 0 { return nil }
+        return await self.worker.getTopProcesses(limit: limit)
     }
 }
 
@@ -466,32 +438,18 @@ public class TemperatureReader: Reader<Double>, @unchecked Sendable {
     }()
     
     private let worker = CPUReaderWorker()
-    private let readLock = OSAllocatedUnfairLock(initialState: false)
     
     public override func setup() {
         self.popup = true
     }
     
-    nonisolated public override func read() {
-        let isReading = self.readLock.withLock { $0 }
-        guard !isReading else { return }
-        self.readLock.withLock { $0 = true }
-        
-        let worker = self.worker
-        
-        Task(priority: .background) {
-            defer { self.readLock.withLock { $0 = false } }
-            let localList = await MainActor.run { Self.list }
-            if let temp = await worker.readTemperature(list: localList) {
-                self.callback(temp)
-            }
-        }
+    public override func readAsync() async -> Double? {
+        return await self.worker.readTemperature(list: Self.list)
     }
 }
 
 public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
     private let worker = CPUReaderWorker()
-    private let readLock = OSAllocatedUnfairLock(initialState: false)
     
     public override func setup() {
         self.popup = true
@@ -500,65 +458,28 @@ public class FrequencyReader: Reader<CPU_Frequency>, @unchecked Sendable {
     
     public override func terminate() {}
     
-    nonisolated public override func read() {
-        let isReading = self.readLock.withLock { $0 }
-        guard !isReading else { return }
-        self.readLock.withLock { $0 = true }
-        
-        let worker = self.worker
-        Task(priority: .background) {
-            defer { self.readLock.withLock { $0 = false } }
-            if let result = await worker.readFrequency() {
-                if let old = self.value, old == result {
-                    return
-                }
-                self.callback(result)
-            }
-        }
+    public override func readAsync() async -> CPU_Frequency? {
+        return await self.worker.readFrequency()
     }
 }
 
 public class LimitReader: Reader<CPU_Limit>, @unchecked Sendable {
     private let worker = CPUReaderWorker()
-    private let readLock = OSAllocatedUnfairLock(initialState: false)
     
-    nonisolated public override func read() {
-        let isReading = self.readLock.withLock { $0 }
-        guard !isReading else { return }
-        self.readLock.withLock { $0 = true }
-        
-        let worker = self.worker
-        Task {
-            defer { self.readLock.withLock { $0 = false } }
-            let limit = await worker.readLimits()
-            self.callback(limit)
-        }
+    public override func readAsync() async -> CPU_Limit? {
+        return await self.worker.readLimits()
     }
 }
 
 public class AverageLoadReader: Reader<CPU_AverageLoad>, @unchecked Sendable {
     private let worker = CPUReaderWorker()
-    private let readLock = OSAllocatedUnfairLock(initialState: false)
     
     public override func setup() {
         self.popup = false
         self.setInterval(15)
     }
     
-    nonisolated public override func read() {
-        let isReading = self.readLock.withLock { $0 }
-        guard !isReading else { return }
-        self.readLock.withLock { $0 = true }
-        
-        let worker = self.worker
-        Task {
-            defer { self.readLock.withLock { $0 = false } }
-            if let load = await worker.readAverageLoad() {
-                if let old = self.value, old == load {
-                    return
-                }
-                self.callback(load)
-            }
-        }
+    public override func readAsync() async -> CPU_AverageLoad? {
+        return await self.worker.readAverageLoad()
     }
 }

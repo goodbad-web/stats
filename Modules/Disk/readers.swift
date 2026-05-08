@@ -405,48 +405,26 @@ private actor DiskReaderWorker {
 }
 
 internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
-    private let listLock = OSAllocatedUnfairLock(initialState: Disks())
-    internal var list: Disks {
+    nonisolated private let listLock = OSAllocatedUnfairLock(initialState: Disks())
+    nonisolated internal var list: Disks {
         get { self.listLock.withLock { $0 } }
         set { self.listLock.withLock { $0 = newValue } }
     }
     private let worker = DiskReaderWorker()
     
-    private nonisolated var SMART: Bool {
-        Store.shared.bool(key: "\(ModuleType.disk.stringValue)_SMART", defaultValue: true)
-    }
-    private let readLock = OSAllocatedUnfairLock(initialState: false)
-    
-    nonisolated public override func read() {
-        let alreadyReading = self.readLock.withLock { state in
-            if state { return true }
-            state = true
-            return false
-        }
-        if alreadyReading { return }
-        
+    public override func readAsync() async -> Disks? {
         let config = DiskCapacityConfig(
             removableState: Store.shared.bool(key: "Disk_removable", defaultValue: false),
-            smartState: self.SMART
+            smartState: Store.shared.bool(key: "\(ModuleType.disk.stringValue)_SMART", defaultValue: true)
         )
-        let worker = self.worker
-
-        Task { [weak self] in
-            guard let self else { return }
-            let localList = await MainActor.run { self.list }
-            let updatedList = await worker.readCapacity(config: config, currentList: localList)
-            
-            if let old = self.value, old == updatedList {
-                self.readLock.withLock { $0 = false }
-                return
-            }
-            
-            await MainActor.run {
-                self.list = updatedList
-                self.callback(updatedList)
-            }
-            self.readLock.withLock { $0 = false }
+        let updatedList = await self.worker.readCapacity(config: config, currentList: self.list)
+        
+        if let old = self.value, old == updatedList {
+            return nil
         }
+        
+        self.list = updatedList
+        return updatedList
     }
     
     public func resetPurgableSpace(for uuid: String) {
@@ -458,8 +436,8 @@ internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
 }
 
 internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
-    private let listLock = OSAllocatedUnfairLock(initialState: Disks())
-    internal var list: Disks {
+    nonisolated private let listLock = OSAllocatedUnfairLock(initialState: Disks())
+    nonisolated internal var list: Disks {
         get { self.listLock.withLock { $0 } }
         set { self.listLock.withLock { $0 = newValue } }
     }
@@ -469,36 +447,17 @@ internal class ActivityReader: Reader<Disks>, @unchecked Sendable {
         self.setInterval(Store.shared.int(key: "Disk_updateInterval", defaultValue: self.defaultInterval))
     }
     
-    private let activityLock = OSAllocatedUnfairLock(initialState: false)
-    
-    nonisolated public override func read() {
-        let alreadyReading = self.activityLock.withLock { state in
-            if state { return true }
-            state = true
-            return false
-        }
-        if alreadyReading { return }
-        
+    public override func readAsync() async -> Disks? {
         let interval = Int64(self.interval ?? 1)
         let removableState = Store.shared.bool(key: "Disk_removable", defaultValue: false)
-        let worker = self.worker
-
-        Task { [weak self] in
-            guard let self else { return }
-            let localList = await MainActor.run { self.list }
-            let updatedList = await worker.readActivity(currentInterval: interval, removableState: removableState, currentList: localList)
-            
-            if let old = self.value, old == updatedList {
-                self.activityLock.withLock { $0 = false }
-                return
-            }
-            
-            await MainActor.run {
-                self.list = updatedList
-                self.callback(updatedList)
-            }
-            self.activityLock.withLock { $0 = false }
+        let updatedList = await self.worker.readActivity(currentInterval: interval, removableState: removableState, currentList: self.list)
+        
+        if let old = self.value, old == updatedList {
+            return nil
         }
+        
+        self.list = updatedList
+        return updatedList
     }
 }
 
@@ -515,32 +474,11 @@ public class ProcessReader: Reader<[Disk_process]>, @unchecked Sendable {
         self.setInterval(Store.shared.int(key: "Disk_updateTopInterval", defaultValue: 5))
     }
     
-    private let processLock = OSAllocatedUnfairLock(initialState: false)
-    
-    nonisolated public override func read() {
-        let alreadyReading = self.processLock.withLock { state in
-            if state { return true }
-            state = true
-            return false
-        }
-        if alreadyReading { return }
-        
+    public override func readAsync() async -> [Disk_process]? {
         let limit = self.numberOfProcesses
-        if limit == 0 {
-            self.processLock.withLock { $0 = false }
-            return
-        }
-        
+        if limit == 0 { return nil }
         let interval = Int(self.interval ?? 1)
-        let worker = self.worker
-
-        Task { [weak self] in
-            guard let self else { return }
-            let result = await worker.readProcesses(limit: limit, currentInterval: interval)
-            
-            self.callback(result)
-            self.processLock.withLock { $0 = false }
-        }
+        return await self.worker.readProcesses(limit: limit, currentInterval: interval)
     }
 }
 

@@ -109,6 +109,7 @@ private let efficiencyQueue = DispatchQueue(label: "eu.exelban.Stats.Efficiency"
     nonisolated private let pipeline = MetricPipeline<T>()
     nonisolated private let cache = MetricCache<T>()
     nonisolated private let metricStore: LevelDBMetricHistoryStore
+    nonisolated private let readLock = OSAllocatedUnfairLock(initialState: false)
     private var repeatTask: Repeater?
     private var initlizalized: Bool = false
     private var userInterval: Int?
@@ -177,7 +178,20 @@ private let efficiencyQueue = DispatchQueue(label: "eu.exelban.Stats.Efficiency"
         }
     }
     
-    nonisolated open func read() {}
+    nonisolated open func read() {
+        let isReading = self.readLock.withLock { $0 }
+        guard !isReading else { return }
+        self.readLock.withLock { $0 = true }
+
+        Task(priority: .background) { [weak self] in
+            defer { self?.readLock.withLock { $0 = false } }
+            if let value = await self?.readAsync() {
+                self?.callback(value)
+            }
+        }
+    }
+
+    nonisolated open func readAsync() async -> T? { return nil }
     open func setup() {}
     open func terminate() {}
     

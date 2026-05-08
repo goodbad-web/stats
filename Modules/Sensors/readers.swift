@@ -692,8 +692,8 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
         case paused
     }
 
-    private let listLock = OSAllocatedUnfairLock(initialState: Sensors_List())
-    internal var list: Sensors_List {
+    nonisolated private let listLock = OSAllocatedUnfairLock(initialState: Sensors_List())
+    nonisolated internal var list: Sensors_List {
         get { self.listLock.withLock { $0 } }
         set { self.listLock.withLock { $0 = newValue } }
     }
@@ -702,12 +702,11 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
     private nonisolated var hidState: Bool {
         Store.shared.bool(key: "Sensors_hid", defaultValue: true)
     }
-    private let unknownSensorsStateLock = OSAllocatedUnfairLock(initialState: false)
-
     private var userInterval: Int = Store.shared.int(key: "Sensors_updateInterval", defaultValue: 3)
     private var activityMode: ActivityMode = .active
     private var effectiveInterval: Int?
-    private let readScopeLock = OSAllocatedUnfairLock(initialState: SensorsReadScope.full)
+    nonisolated private let unknownSensorsStateLock = OSAllocatedUnfairLock(initialState: false)
+    nonisolated private let readScopeLock = OSAllocatedUnfairLock(initialState: SensorsReadScope.full)
 
     @MainActor init(callback: @escaping (T?) -> Void = {_ in }) {
         self.unknownSensorsStateLock.withLock { $0 = Store.shared.bool(key: "Sensors_unknown", defaultValue: false) }
@@ -762,69 +761,46 @@ internal class SensorsReader: Reader<Sensors_List>, @unchecked Sendable {
         super.setInterval(value)
     }
 
-    private let readLock = OSAllocatedUnfairLock(initialState: false)
-
-    nonisolated public override func read() {
-        let isReading = self.readLock.withLock { $0 }
-        guard !isReading else { return }
-        self.readLock.withLock { $0 = true }
-
+    public override func readAsync() async -> Sensors_List? {
         let scope = self.readScopeLock.withLock { $0 }
         let unknownState = self.unknownSensorsStateLock.withLock { $0 }
-        let worker = self.worker
+        let currentSensors = self.list.sensors
         
-        Task(priority: .background) { [weak self] in
-            guard let self else { return }
-            
-            let (hidState, localSensors) = await MainActor.run {
-                (self.hidState, self.list.sensors)
-            }
-            
-            let updatedSensors = await worker.read(
-                scope: scope, 
-                unknownSensorsState: unknownState, 
-                hidState: hidState, 
-                currentSensors: localSensors
-            )
-            
-            await MainActor.run {
-                let safetyState = Store.shared.bool(key: "Sensors_fanSafety", defaultValue: true)
-                if safetyState {
-                    let hottest = updatedSensors.filter{ $0.type == .temperature && ($0.group == .CPU || $0.group == .GPU || $0.group == .hid) }.map{ $0.value }.max() ?? 0
-                    if hottest > 95 {
-                        if updatedSensors.compactMap({ $0 as? Fan }).contains(where: { $0.mode == .forced }) {
-                            Task {
-                                await SMCHelper.shared.resetFanControl()
-                            }
-                            NotificationCenter.default.post(name: .fanControlOverride, object: nil, userInfo: ["reason": "high_temp"])
-                        }
+        let updatedSensors = await self.worker.read(
+            scope: scope, 
+            unknownSensorsState: unknownState, 
+            hidState: self.hidState, 
+            currentSensors: currentSensors
+        )
+        
+        let safetyState = Store.shared.bool(key: "Sensors_fanSafety", defaultValue: true)
+        if safetyState {
+            let hottest = updatedSensors.filter{ $0.type == .temperature && ($0.group == .CPU || $0.group == .GPU || $0.group == .hid) }.map{ $0.value }.max() ?? 0
+            if hottest > 95 {
+                if updatedSensors.compactMap({ $0 as? Fan }).contains(where: { $0.mode == .forced }) {
+                    await SMCHelper.shared.resetFanControl()
+                    await MainActor.run {
+                        NotificationCenter.default.post(name: .fanControlOverride, object: nil, userInfo: ["reason": "high_temp"])
                     }
                 }
-
-                let batteryAutoState = Store.shared.bool(key: "Sensors_fanBatteryAuto", defaultValue: false)
-                if batteryAutoState {
-                    Task {
-                        let isAC = await worker.isAC()
-                        if !isAC && updatedSensors.compactMap({ $0 as? Fan }).contains(where: { $0.mode == .forced }) {
-                            await SMCHelper.shared.resetFanControl()
-                            NotificationCenter.default.post(name: .fanControlOverride, object: nil, userInfo: ["reason": "battery"])
-                        }
-                    }
-                }
-
-                let newList = Sensors_List()
-                newList.sensors = updatedSensors
-
-                if let old = self.value, old == newList {
-                    self.readLock.withLock { $0 = false }
-                    return
-                }
-
-                self.list.sensors = updatedSensors
-                self.callback(self.list)
-                self.readLock.withLock { $0 = false }
             }
         }
+
+        let batteryAutoState = Store.shared.bool(key: "Sensors_fanBatteryAuto", defaultValue: false)
+        if batteryAutoState {
+            let isAC = await self.worker.isAC()
+            if !isAC && updatedSensors.compactMap({ $0 as? Fan }).contains(where: { $0.mode == .forced }) {
+                await SMCHelper.shared.resetFanControl()
+                await MainActor.run {
+                    NotificationCenter.default.post(name: .fanControlOverride, object: nil, userInfo: ["reason": "battery"])
+                }
+            }
+        }
+        
+        let newList = self.list
+        newList.sensors = updatedSensors
+        self.list = newList
+        return newList
     }
 
     public func unknownCallback() {
