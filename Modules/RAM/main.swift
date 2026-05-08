@@ -33,7 +33,11 @@ public struct RAM_Usage: Codable, Equatable, RemoteType {
     var swapouts: Int64
     
     public var usage: Double {
-        get { self.total == 0 ? 0 : Double((self.total - self.free) / self.total) }
+        get {
+            if self.total == 0 { return 0 }
+            let val = (self.total - self.free) / self.total
+            return val.isFinite ? val : 0
+        }
     }
     
     public func remote() -> Data? {
@@ -95,26 +99,17 @@ public class RAM: Module {
     private var appColor: NSColor {
         let color = SColor.secondBlue
         let key = Store.shared.string(key: "\(self.config.name)_appColor", defaultValue: color.key)
-        if let c = SColor.fromString(key).additional as? NSColor {
-            return c
-        }
-        return color.additional as! NSColor
+        return SColor.fromString(key).additional as? NSColor ?? color.additional as? NSColor ?? NSColor.systemBlue
     }
     private var wiredColor: NSColor {
         let color = SColor.secondOrange
         let key = Store.shared.string(key: "\(self.config.name)_wiredColor", defaultValue: color.key)
-        if let c = SColor.fromString(key).additional as? NSColor {
-            return c
-        }
-        return color.additional as! NSColor
+        return SColor.fromString(key).additional as? NSColor ?? color.additional as? NSColor ?? NSColor.systemOrange
     }
     private var compressedColor: NSColor {
         let color = SColor.pink
         let key = Store.shared.string(key: "\(self.config.name)_compressedColor", defaultValue: color.key)
-        if let c = SColor.fromString(key).additional as? NSColor {
-            return c
-        }
-        return color.additional as! NSColor
+        return SColor.fromString(key).additional as? NSColor ?? color.additional as? NSColor ?? NSColor.systemPink
     }
     
     private var selectedMiniSensor: String {

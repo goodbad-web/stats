@@ -154,7 +154,7 @@ public class ProcessView: NSStackView {
             self.killView.bezelStyle = .regularSquare
             self.killView.translatesAutoresizingMaskIntoConstraints = false
             self.killView.imageScaling = .scaleNone
-            self.killView.image = Bundle(for: type(of: self)).image(forResource: "cancel")!
+            self.killView.image = Bundle(for: type(of: self)).image(forResource: "cancel") ?? NSImage(named: NSImage.stopProgressFreestandingTemplateName)
             self.killView.contentTintColor = .lightGray
             self.killView.isBordered = false
             self.killView.action = #selector(self.kill)
@@ -265,7 +265,7 @@ public class ProcessView: NSStackView {
     
     @objc private func kill() {
         if let pid = self.pid {
-            _ = syncShell("kill -9 \(pid)")
+            Darwin.kill(pid_t(pid), SIGKILL)
             self.clear()
             self.setLock(false)
         }
