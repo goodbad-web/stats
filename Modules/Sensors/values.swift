@@ -221,25 +221,25 @@ public struct Sensor: Sensor_p, Codable {
         case .temperature:
             return temperature(value)
         case .voltage:
-            let val = value >= 100 ? "\(Int(value))" : String(format: "%.3f", value)
+            let val = value >= 100 ? "\(value.finiteInt())" : String(format: "%.3f", value)
             return "\(val)\(unit)"
         case .power:
             if value < 0.1 {
-                return "\(Int(value * 1000)) mW"
+                return "\(value.finiteInt(multipliedBy: 1000)) mW"
             }
-            let val = value >= 100 ? "\(Int(value))" : String(format: "%.2f", value)
+            let val = value >= 100 ? "\(value.finiteInt())" : String(format: "%.2f", value)
             return "\(val)\(unit)"
         case .energy:
-            let val = value >= 100 ? "\(Int(value))" : String(format: "%.2f", value)
+            let val = value >= 100 ? "\(value.finiteInt())" : String(format: "%.2f", value)
             return "\(val)\(unit)"
         case .current:
             if value < 0.1 {
-                return "\(Int(value * 1000)) mA"
+                return "\(value.finiteInt(multipliedBy: 1000)) mA"
             }
-            let val = value >= 100 ? "\(Int(value))" : String(format: "%.2f", value)
+            let val = value >= 100 ? "\(value.finiteInt())" : String(format: "%.2f", value)
             return "\(val)\(unit)"
         case .fan:
-            return "\(Int(value)) \(unit)"
+            return "\(value.finiteInt()) \(unit)"
         }
     }
     public var formattedPopupValue: String {
@@ -247,25 +247,25 @@ public struct Sensor: Sensor_p, Codable {
         case .temperature:
             return temperature(value, fractionDigits: 1)
         case .voltage:
-            let val = value >= 100 ? "\(Int(value))" : String(format: "%.3f", value)
+            let val = value >= 100 ? "\(value.finiteInt())" : String(format: "%.3f", value)
             return "\(val)\(unit)"
         case .power:
             if value < 0.1 {
-                return "\(Int(value * 1000)) mW"
+                return "\(value.finiteInt(multipliedBy: 1000)) mW"
             }
-            let val = value >= 100 ? "\(Int(value))" : String(format: "%.2f", value)
+            let val = value >= 100 ? "\(value.finiteInt())" : String(format: "%.2f", value)
             return "\(val)\(unit)"
         case .energy:
-            let val = value >= 100 ? "\(Int(value))" : String(format: "%.2f", value)
+            let val = value >= 100 ? "\(value.finiteInt())" : String(format: "%.2f", value)
             return "\(val)\(unit)"
         case .current:
             if value < 0.1 {
-                return "\(Int(value * 1000)) mA"
+                return "\(value.finiteInt(multipliedBy: 1000)) mA"
             }
-            let val = value >= 100 ? "\(Int(value))" : String(format: "%.2f", value)
+            let val = value >= 100 ? "\(value.finiteInt())" : String(format: "%.2f", value)
             return "\(val)\(unit)"
         case .fan:
-            return "\(Int(value)) \(unit)"
+            return "\(value.finiteInt()) \(unit)"
         }
     }
     public var formattedMiniValue: String {

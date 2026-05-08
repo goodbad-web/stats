@@ -113,6 +113,16 @@ public extension Double {
         return (self * divisor).rounded() / divisor
     }
     
+    func finiteInt(multipliedBy multiplier: Double = 1, fallback: Int = 0) -> Int {
+        let value = self * multiplier
+        guard value.isFinite,
+              value >= Double(Int.min),
+              value <= Double(Int.max) else {
+            return fallback
+        }
+        return Int(value)
+    }
+    
     func usageColor(zones: colorZones = (0.6, 0.8), reversed: Bool = false) -> NSColor {
         let firstColor: NSColor = NSColor.systemBlue
         let secondColor: NSColor = NSColor.orange

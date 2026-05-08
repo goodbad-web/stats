@@ -323,12 +323,12 @@ internal class SensorView: NSStackView {
         self.chartView.setToolTipFunc { (v: DoubleValue) -> String in
             let value = v.value * 100
             if type == .current && value < 0.1 {
-                return "\(Int(value * 1000)) mA"
+                return "\(value.finiteInt(multipliedBy: 1000)) mA"
             }
             if type == .power && value < 0.1 {
-                return "\(Int(value * 1000)) mW"
+                return "\(value.finiteInt(multipliedBy: 1000)) mW"
             }
-            let val = value >= 100 ? "\(Int(value))" : String(format: "%.2f", value)
+            let val = value >= 100 ? "\(value.finiteInt())" : String(format: "%.2f", value)
             return "\(val)\(unit)"
         }
         

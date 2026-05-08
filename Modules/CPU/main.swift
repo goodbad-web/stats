@@ -257,11 +257,11 @@ public class CPU: Module {
             case let widget as StackWidget:
                 var list: [Stack_t] = []
                 if self.selectedStackSensor == "Total/Free" {
-                    list.append(Stack_t(key: "total", value: "\(Int(value.totalUsage * 100))%", label: localizedString("Total")))
-                    list.append(Stack_t(key: "idle", value: "\(Int(value.idleLoad * 100))%", label: localizedString("Idle")))
+                    list.append(Stack_t(key: "total", value: "\(value.totalUsage.finiteInt(multipliedBy: 100))%", label: localizedString("Total")))
+                    list.append(Stack_t(key: "idle", value: "\(value.idleLoad.finiteInt(multipliedBy: 100))%", label: localizedString("Idle")))
                 } else if self.selectedStackSensor == "System/User" {
-                    list.append(Stack_t(key: "system", value: "\(Int(value.systemLoad * 100))%", label: localizedString("System")))
-                    list.append(Stack_t(key: "user", value: "\(Int(value.userLoad * 100))%", label: localizedString("User")))
+                    list.append(Stack_t(key: "system", value: "\(value.systemLoad.finiteInt(multipliedBy: 100))%", label: localizedString("System")))
+                    list.append(Stack_t(key: "user", value: "\(value.userLoad.finiteInt(multipliedBy: 100))%", label: localizedString("User")))
                 }
                 widget.setValues(list)
             case let widget as BarChart:

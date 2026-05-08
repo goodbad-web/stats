@@ -332,12 +332,13 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
         
         var total: Int64 = 0
         for i in 0..<items.count {
-            let item = items[i] as! CFDictionary
-            guard let group = IOReportChannelGetGroup(item)?.takeUnretainedValue() as? String,
+            guard let item = items[i] as? NSDictionary else { continue }
+            let channelInfo = item as CFDictionary
+            guard let group = IOReportChannelGetGroup(channelInfo)?.takeUnretainedValue() as? String,
                   group.hasPrefix("DCP"),
-                  let sub = IOReportChannelGetSubGroup(item)?.takeUnretainedValue() as? String,
+                  let sub = IOReportChannelGetSubGroup(channelInfo)?.takeUnretainedValue() as? String,
                   sub == "swap" else { continue }
-            total += IOReportSimpleGetIntegerValue(item, 0)
+            total += IOReportSimpleGetIntegerValue(channelInfo, 0)
         }
         
         let now = CFAbsoluteTimeGetCurrent()
@@ -380,11 +381,12 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
         
         var energies: [String: Double] = [:]
         for i in 0..<items.count {
-            let item = items[i] as! CFDictionary
+            guard let item = items[i] as? NSDictionary else { continue }
+            let channelInfo = item as CFDictionary
             
-            guard let group = IOReportChannelGetGroup(item)?.takeUnretainedValue() as? String,
+            guard let group = IOReportChannelGetGroup(channelInfo)?.takeUnretainedValue() as? String,
                   group == "Energy Model",
-                  let channel = IOReportChannelGetChannelName(item)?.takeUnretainedValue() as? String else { continue }
+                  let channel = IOReportChannelGetChannelName(channelInfo)?.takeUnretainedValue() as? String else { continue }
             
             let key: String
             if channel.starts(with: "ANE") {
@@ -395,8 +397,8 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
                 continue
             }
             
-            let raw = Double(IOReportSimpleGetIntegerValue(item, 0))
-            let unit = (IOReportChannelGetUnitLabel(item)?.takeUnretainedValue() as? String)?
+            let raw = Double(IOReportSimpleGetIntegerValue(channelInfo, 0))
+            let unit = (IOReportChannelGetUnitLabel(channelInfo)?.takeUnretainedValue() as? String)?
                 .trimmingCharacters(in: .whitespaces) ?? ""
             
             let joules: Double

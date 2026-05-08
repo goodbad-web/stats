@@ -8,6 +8,13 @@
 
 import Cocoa
 
+public var widgetsUserDefaults: UserDefaults? {
+    guard let teamId = Bundle.main.object(forInfoDictionaryKey: "TeamId") as? String else {
+        return nil
+    }
+    return UserDefaults(suiteName: "\(teamId).eu.exelban.Stats.widgets")
+}
+
 public struct module_c {
     public var name: String
     public var icon: NSImage?
@@ -91,10 +98,7 @@ public struct module_c {
         set { Store.shared.set(key: "\(self.name)_position", value: newValue) }
     }
     public var userDefaults: UserDefaults? = {
-        guard let teamId = Bundle.main.object(forInfoDictionaryKey: "TeamId") as? String else {
-            return nil
-        }
-        return UserDefaults(suiteName: "\(teamId).eu.exelban.Stats.widgets")
+        widgetsUserDefaults
     }()
     
     public var popupKeyboardShortcut: [UInt16] { self.popupView?.keyboardShortcut ?? [] }

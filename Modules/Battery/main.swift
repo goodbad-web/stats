@@ -161,7 +161,7 @@ public class Battery: Module {
                 case let widget as StackWidget:
                     var list: [Stack_t] = []
                     if self.selectedStackSensor == "Level/Time" {
-                        list.append(Stack_t(key: "level", value: "\(Int(value.level * 100))%", label: localizedString("Level")))
+                        list.append(Stack_t(key: "level", value: "\(value.level.finiteInt(multipliedBy: 100))%", label: localizedString("Level")))
                         let time = value.timeToEmpty == 0 && value.timeToCharge != 0 ? value.timeToCharge : value.timeToEmpty
                         list.append(Stack_t(key: "time", value: Double(time).printSecondsToHoursMinutesSeconds(), label: localizedString("Time")))
                     } else if self.selectedStackSensor == "Power/Voltage" {

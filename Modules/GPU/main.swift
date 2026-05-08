@@ -233,14 +233,14 @@ public class GPU: Module {
             case let widget as StackWidget:
                 var list: [Stack_t] = []
                 if self.selectedStackSensor == "Utilization/Render" {
-                    list.append(Stack_t(key: "utilization", value: "\(Int(utilization * 100))%", label: localizedString("Utilization")))
-                    list.append(Stack_t(key: "render", value: "\(Int((selectedGPU.renderUtilization ?? 0) * 100))%", label: localizedString("Render")))
+                    list.append(Stack_t(key: "utilization", value: "\(utilization.finiteInt(multipliedBy: 100))%", label: localizedString("Utilization")))
+                    list.append(Stack_t(key: "render", value: "\((selectedGPU.renderUtilization ?? 0).finiteInt(multipliedBy: 100))%", label: localizedString("Render")))
                 } else if self.selectedStackSensor == "Render/Tiler" {
-                    list.append(Stack_t(key: "render", value: "\(Int((selectedGPU.renderUtilization ?? 0) * 100))%", label: localizedString("Render")))
-                    list.append(Stack_t(key: "tiler", value: "\(Int((selectedGPU.tilerUtilization ?? 0) * 100))%", label: localizedString("Tiler")))
+                    list.append(Stack_t(key: "render", value: "\((selectedGPU.renderUtilization ?? 0).finiteInt(multipliedBy: 100))%", label: localizedString("Render")))
+                    list.append(Stack_t(key: "tiler", value: "\((selectedGPU.tilerUtilization ?? 0).finiteInt(multipliedBy: 100))%", label: localizedString("Tiler")))
                 } else if self.selectedStackSensor == "Utilization/ANE" {
-                    list.append(Stack_t(key: "utilization", value: "\(Int(utilization * 100))%", label: localizedString("Utilization")))
-                    list.append(Stack_t(key: "ane", value: "\(Int((selectedGPU.aneUtilization ?? 0) * 100))%", label: localizedString("ANE")))
+                    list.append(Stack_t(key: "utilization", value: "\(utilization.finiteInt(multipliedBy: 100))%", label: localizedString("Utilization")))
+                    list.append(Stack_t(key: "ane", value: "\((selectedGPU.aneUtilization ?? 0).finiteInt(multipliedBy: 100))%", label: localizedString("ANE")))
                 }
                 widget.setValues(list)
             case let widget as BarChart: widget.setValue([[ColorValue(utilization)]])

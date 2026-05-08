@@ -27,7 +27,7 @@ public struct CPU_entry: TimelineEntry {
 public struct Provider: TimelineProvider {
     public typealias Entry = CPU_entry
     
-    private let userDefaults: UserDefaults? = UserDefaults(suiteName: "\(Bundle.main.object(forInfoDictionaryKey: "TeamId") as! String).eu.exelban.Stats.widgets")
+    private let userDefaults: UserDefaults? = widgetsUserDefaults
     
     public var systemWidgetsUpdatesState: Bool {
         self.userDefaults?.bool(forKey: "systemWidgetsUpdates_state") ?? false

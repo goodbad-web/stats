@@ -655,14 +655,15 @@ extension SensorsReader {
         let prevPCI = self.powers.PCI
         
         for i in 0..<items.count {
-            let item = items[i] as! CFDictionary
+            guard let item = items[i] as? NSDictionary else { continue }
+            let channelInfo = item as CFDictionary
             
-            guard let group = IOReportChannelGetGroup(item)?.takeUnretainedValue() as? String,
+            guard let group = IOReportChannelGetGroup(channelInfo)?.takeUnretainedValue() as? String,
                   group == "Energy Model",
-                  let channel = IOReportChannelGetChannelName(item)?.takeUnretainedValue() as? String,
-                  let unit = IOReportChannelGetUnitLabel(item)?.takeUnretainedValue() as? String else { continue }
+                  let channel = IOReportChannelGetChannelName(channelInfo)?.takeUnretainedValue() as? String,
+                  let unit = IOReportChannelGetUnitLabel(channelInfo)?.takeUnretainedValue() as? String else { continue }
             
-            let value = Double(IOReportSimpleGetIntegerValue(item, 0))
+            let value = Double(IOReportSimpleGetIntegerValue(channelInfo, 0))
             
             if channel.hasSuffix("CPU Energy") {
                 self.powers.CPU = value.power(unit)
