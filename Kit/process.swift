@@ -317,6 +317,7 @@ public actor ProcessMonitor {
     
     private var lastCPUUsage: [Int32: UInt64] = [:]
     private var lastTime: UInt64 = 0
+    private var nameCache: [Int32: String] = [:]
     
     private init() {}
     
@@ -329,7 +330,7 @@ public actor ProcessMonitor {
         var pids = [Int32](repeating: 0, count: Int(pidsCount))
         let actualCount = proc_listpids(PROC_ALL_PIDS, 0, &pids, Int32(pids.count * MemoryLayout<Int32>.size))
         
-        var list: [TopProcess] = []
+        var tempList: [(pid: Int32, usage: Double)] = []
         let now = mach_absolute_time()
         
         var timebaseInfo = mach_timebase_info_data_t()
@@ -363,28 +364,44 @@ public actor ProcessMonitor {
             }
             
             if usage > 0 || category == "RAM" {
-                list.append(TopProcess(pid: Int(pid), name: self.getName(pid), usage: usage))
+                tempList.append((pid: pid, usage: usage))
             }
         }
         
         self.lastTime = now
         
-        list.sort { $0.usage > $1.usage }
-        return Array(list.prefix(limit))
+        tempList.sort { $0.usage > $1.usage }
+        
+        var list: [TopProcess] = []
+        for item in tempList.prefix(limit) {
+            list.append(TopProcess(pid: Int(item.pid), name: self.getName(item.pid), usage: item.usage))
+        }
+        
+        // Periodically clear cache if it grows too large
+        if self.nameCache.count > 1000 {
+            self.nameCache.removeAll()
+        }
+        
+        return list
     }
     
     private func getName(_ pid: Int32) -> String {
+        if let cached = self.nameCache[pid] {
+            return cached
+        }
+        
         var buffer = [UInt8](repeating: 0, count: Int(PROC_PIDPATHINFO_MAXSIZE))
         let result = proc_name(pid, &buffer, UInt32(PROC_PIDPATHINFO_MAXSIZE))
+        var name = "Unknown"
+        
         if result > 0 {
-            return String(cString: buffer)
+            name = String(cString: buffer)
+        } else if let app = NSRunningApplication(processIdentifier: pid), let n = app.localizedName {
+            name = n
         }
         
-        if let app = NSRunningApplication(processIdentifier: pid), let name = app.localizedName {
-            return name
-        }
-        
-        return "Unknown"
+        self.nameCache[pid] = name
+        return name
     }
     
     private func getTopByShell(limit: Int, category: String) async -> [TopProcess] {
