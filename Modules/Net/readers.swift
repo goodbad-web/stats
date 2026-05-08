@@ -452,7 +452,7 @@ extension CWChannel {
 
 internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked Sendable {
     private let reachabilityLock = OSAllocatedUnfairLock(initialState: Reachability(start: true))
-    private var reachability: Reachability {
+    nonisolated private var reachability: Reachability {
         self.reachabilityLock.withLock { $0 }
     }
     private let worker = NetworkUsageWorker()
@@ -629,7 +629,7 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
     nonisolated private var HTTPHost: String { Store.shared.string(key: "Net_HTTPHost", defaultValue: "https://google.com") }
     nonisolated private var connectivityMode: String { Store.shared.string(key: "Net_connectivityMode", defaultValue: "icmp") }
 
-    private struct ConnectivityState {
+    private struct ConnectivityState: @unchecked Sendable {
         var lastHost: String = ""
         var addr: Data? = nil
         var prepareToken: UUID = UUID()
@@ -722,7 +722,8 @@ internal class ConnectivityReader: Reader<Network_Connectivity>, @unchecked Send
                 return
             }
 
-            self.stateLock.withLock { $0.wrapper = updatedWrapper }
+            let finalWrapper = updatedWrapper
+            self.stateLock.withLock { $0.wrapper = finalWrapper }
             self.callback(updatedWrapper)
         }
     }

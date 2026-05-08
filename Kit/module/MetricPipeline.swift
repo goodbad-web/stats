@@ -60,12 +60,16 @@ public final class MetricPipeline<Value: Codable & Sendable>: @unchecked Sendabl
     @discardableResult
     public func subscribe(_ subscriber: @escaping Subscriber) -> UUID {
         let id = UUID()
-        self.stateLock.withLock { $0.subscribers[id] = subscriber }
+        self.stateLock.withLock { state in
+            state.subscribers[id] = subscriber
+        }
         return id
     }
     
     public func unsubscribe(_ id: UUID) {
-        self.stateLock.withLock { $0.subscribers.removeValue(forKey: id) }
+        self.stateLock.withLock { state in
+            _ = state.subscribers.removeValue(forKey: id)
+        }
     }
     
     public func publish(_ snapshot: MetricSnapshot<Value>, removeDuplicates: Bool = false) {

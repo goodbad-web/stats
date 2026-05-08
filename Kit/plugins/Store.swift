@@ -119,7 +119,8 @@ public final class Store: @unchecked Sendable {
             }
         }
         
-        self.lock.withLock { $0 = importedDict }
+        let finalDict = importedDict
+        self.lock.withLock { $0 = finalDict }
         
         self.defaults.setPersistentDomain(importedDict, forName: id)
         restartApp(self)
