@@ -730,16 +730,20 @@ public func localizedString(_ key: String, _ params: String..., comment: String 
     return string
 }
 
+private var systemTemperatureUnit: UnitTemperature = {
+    let measureFormatter = MeasurementFormatter()
+    let measurement = Measurement(value: 0, unit: UnitTemperature.celsius)
+    return measureFormatter.string(from: measurement).hasSuffix("C") ? .celsius : .fahrenheit
+}()
+
 public extension UnitTemperature {
     static var system: UnitTemperature {
-        let measureFormatter = MeasurementFormatter()
-        let measurement = Measurement(value: 0, unit: UnitTemperature.celsius)
-        return measureFormatter.string(from: measurement).hasSuffix("C") ? .celsius : .fahrenheit
+        return systemTemperatureUnit
     }
     
     static var current: UnitTemperature {
         let stringUnit: String = Store.shared.string(key: "temperature_units", defaultValue: "system")
-        var unit = UnitTemperature.system
+        var unit = systemTemperatureUnit
         if stringUnit != "system" {
             if let value = TemperatureUnits.first(where: { $0.key == stringUnit }), let temperatureUnit = value.additional as? UnitTemperature {
                 unit = temperatureUnit
@@ -749,19 +753,23 @@ public extension UnitTemperature {
     }
 }
 
-public func temperature(_ value: Double, defaultUnit: UnitTemperature = UnitTemperature.celsius, fractionDigits: Int = 0) -> String {
+private let temperatureFormatter: MeasurementFormatter = {
     let formatter = MeasurementFormatter()
     formatter.locale = Locale.init(identifier: "en_US")
-    formatter.numberFormatter.maximumFractionDigits = fractionDigits
-    if fractionDigits != 0 {
-        formatter.numberFormatter.minimumFractionDigits = fractionDigits
-    }
     formatter.unitOptions = .providedUnit
+    return formatter
+}()
+
+public func temperature(_ value: Double, defaultUnit: UnitTemperature = UnitTemperature.celsius, fractionDigits: Int = 0) -> String {
+    temperatureFormatter.numberFormatter.maximumFractionDigits = fractionDigits
+    if fractionDigits != 0 {
+        temperatureFormatter.numberFormatter.minimumFractionDigits = fractionDigits
+    }
     
     var measurement = Measurement(value: value, unit: defaultUnit)
     measurement.convert(to: UnitTemperature.current)
     
-    return formatter.string(from: measurement)
+    return temperatureFormatter.string(from: measurement)
 }
 
 public func sysctlByName(_ name: String) -> Int64 {
