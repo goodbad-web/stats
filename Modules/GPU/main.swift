@@ -191,6 +191,12 @@ public class GPU: Module {
         self.setReaders([self.infoReader])
     }
     
+    public override func updateReaderActivityModes() {
+        let detailVisible = self.isPopupVisible || self.isSettingsWindowVisible
+        let mode: ReaderActivityMode = self.hasActiveValueWidget || detailVisible ? .active : .passive
+        self.infoReader?.setActivityMode(mode)
+    }
+    
     private func infoCallback(_ raw: GPUs?) {
         guard raw != nil && !raw!.list.isEmpty, let value = raw, self.enabled else { return }
         

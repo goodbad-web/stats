@@ -13,7 +13,14 @@ import Cocoa
 
 import os
 
+public enum ReaderActivityMode {
+    case active
+    case passive
+    case paused
+}
+
 @MainActor public protocol Reader_p: Sendable {
+    var name: String { get }
     var popup: Bool { get }
     var preview: Bool { get }
     var sleep: Bool { get }
@@ -31,6 +38,7 @@ import os
     
     func initStoreValues(title: String)
     func setInterval(_ value: Int)
+    func setActivityMode(_ mode: ReaderActivityMode)
     func sleepMode(state: Bool)
 }
 
@@ -88,6 +96,9 @@ private struct ReaderState<T> {
     private var history: Bool
     private var repeatTask: Repeater?
     private var initlizalized: Bool = false
+    private var userInterval: Int?
+    private var effectiveInterval: Int?
+    private var activityMode: ReaderActivityMode = .active
     
     private var lastDBWrite: Date? = nil
     
@@ -120,9 +131,10 @@ private struct ReaderState<T> {
     }
     
     public func initStoreValues(title: String) {
-        guard self.interval == nil else { return }
+        guard self.userInterval == nil else { return }
         let updateInterval = Store.shared.int(key: "\(title)_updateInterval", defaultValue: self.defaultInterval)
-        self.interval = Double(updateInterval)
+        self.userInterval = updateInterval
+        self.applyActivityMode(restart: false)
     }
     
     nonisolated public func callback(_ value: T?) {
@@ -193,10 +205,42 @@ private struct ReaderState<T> {
     }
     
     public func setInterval(_ value: Int) {
-        guard self.interval != Double(value) else { return }
+        guard self.userInterval != value else { return }
         debug("Set update interval: \(value) sec", log: self.log)
-        self.interval = Double(value)
+        self.userInterval = value
+        self.applyActivityMode(restart: true)
+    }
+    
+    public func setActivityMode(_ mode: ReaderActivityMode) {
+        guard self.activityMode != mode else { return }
+        debug("Set activity mode: \(mode)", log: self.log)
+        self.activityMode = mode
+        self.applyActivityMode(restart: false)
+    }
+    
+    private func applyActivityMode(restart: Bool) {
+        guard let userInterval = self.userInterval else { return }
         
+        switch self.activityMode {
+        case .active:
+            self.applyInterval(userInterval, restart: restart)
+        case .passive:
+            self.applyInterval(max(userInterval * 3, 10), restart: restart)
+        case .paused:
+            self.pause()
+        }
+    }
+    
+    private func applyInterval(_ value: Int, restart: Bool) {
+        guard self.effectiveInterval != value else {
+            if self.initlizalized && !self.active {
+                self.start()
+            }
+            return
+        }
+        self.effectiveInterval = value
+        self.interval = Double(value)
+
         if self.alignToSecondBoundary {
             self.repeatTask?.pause()
             self.repeatTask = nil
@@ -205,7 +249,11 @@ private struct ReaderState<T> {
                 self.startAlignedRepeater()
             }
         } else {
-            self.repeatTask?.reset(seconds: value, restart: true)
+            self.repeatTask?.reset(seconds: value, restart: restart)
+        }
+        
+        if self.initlizalized && !self.active {
+            self.start()
         }
     }
     

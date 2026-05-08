@@ -180,6 +180,13 @@ public class RAM: Module {
         self.setReaders([self.usageReader, self.processReader])
     }
     
+    public override func updateReaderActivityModes() {
+        let detailVisible = self.isPopupVisible || self.isSettingsWindowVisible
+        let usageMode: ReaderActivityMode = self.hasActiveValueWidget || detailVisible ? .active : .passive
+        self.usageReader?.setActivityMode(usageMode)
+        self.processReader?.setActivityMode(self.isPopupVisible ? .active : .paused)
+    }
+    
     private func loadCallback(_ raw: RAM_Usage?) {
         guard let value = raw, self.enabled else { return }
         

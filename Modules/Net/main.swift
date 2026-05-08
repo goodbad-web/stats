@@ -282,6 +282,17 @@ public class Network: Module {
         self.setUsageReset()
     }
     
+    public override func updateReaderActivityModes() {
+        let activeWidgets = self.menuBar.widgets.filter { $0.isActive }
+        let detailVisible = self.isPopupVisible || self.isSettingsWindowVisible
+        let hasNetworkValueWidget = activeWidgets.contains { !($0.item is Label) }
+        let hasConnectivityWidget = activeWidgets.contains { $0.item is DotWidget || $0.item is TextWidget }
+        
+        self.usageReader?.setActivityMode(hasNetworkValueWidget || detailVisible ? .active : .passive)
+        self.connectivityReader?.setActivityMode(hasConnectivityWidget || detailVisible ? .active : .passive)
+        self.processReader?.setActivityMode(self.isPopupVisible ? .active : .paused)
+    }
+    
     public override func isAvailable() -> Bool {
         var list: [String] = []
         for interface in SCNetworkInterfaceCopyAll() as NSArray {

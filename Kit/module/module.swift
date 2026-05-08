@@ -98,6 +98,11 @@ public struct module_c {
     }()
     
     public var popupKeyboardShortcut: [UInt16] { self.popupView?.keyboardShortcut ?? [] }
+    public var isPopupVisible: Bool { self.popupVisible }
+    public var isSettingsWindowVisible: Bool { self.settingsWindowVisible }
+    public var hasActiveValueWidget: Bool {
+        self.menuBar.widgets.contains { $0.isActive && !($0.item is Label) }
+    }
     
     private var moduleType: ModuleType
     
@@ -106,6 +111,8 @@ public struct module_c {
     private var popupView: Popup_p? = nil
     private var notificationsView: NotificationsWrapper? = nil
     private var previewView: PreviewWrapper? = nil
+    private var popupVisible: Bool = false
+    private var settingsWindowVisible: Bool = false
     
     private let log: NextLog
     private var readers: [Reader_p] = []
@@ -192,6 +199,7 @@ public struct module_c {
             reader.start()
         }
         self.menuBar.enable()
+        self.updateReaderActivityModes()
     }
     
     // disable module
@@ -226,6 +234,7 @@ public struct module_c {
             reader.start()
         }
         self.menuBar.enable()
+        self.updateReaderActivityModes()
         self.window?.setState(self.enabled)
         debug("Module enabled", log: self.log)
     }
@@ -242,6 +251,8 @@ public struct module_c {
         self.readers.forEach{ $0.stop() }
         self.menuBar.disable()
         self.window?.setState(self.enabled)
+        self.popupVisible = false
+        self.settingsWindowVisible = false
         self.popup?.setIsVisible(false)
         debug("Module disabled", log: self.log)
     }
@@ -249,6 +260,8 @@ public struct module_c {
     public func setReaders(_ list: [Reader_p?]) {
         self.readers = list.filter({ $0 != nil }).map({ $0! as Reader_p })
     }
+    
+    open func updateReaderActivityModes() {}
     
     // determine if module is available (can be overrided in module)
     open func isAvailable() -> Bool { return true }
@@ -270,6 +283,7 @@ public struct module_c {
     
     // call when popup appear/disappear
     private func popupVisibilityCallback(_ state: Bool) {
+        self.popupVisible = state
         self.readers.filter{ $0.popup || $0.sleep }.forEach { (reader: Reader_p) in
             if state {
                 reader.unlock()
@@ -279,6 +293,7 @@ public struct module_c {
                 reader.lock()
             }
         }
+        self.updateReaderActivityModes()
     }
     
     @objc private func listenForWindowOpen(_ notification: Notification) {
@@ -287,6 +302,7 @@ public struct module_c {
         if state, let name = notification.userInfo?["module"] as? String, self.config.name != name {
             state = false
         }
+        self.settingsWindowVisible = state
         
         self.readers.filter{ $0.preview || $0.sleep }.forEach { (reader: Reader_p) in
             if state {
@@ -297,6 +313,7 @@ public struct module_c {
                 reader.lock()
             }
         }
+        self.updateReaderActivityModes()
     }
     
     @objc private func listenForPopupToggle(_ notification: Notification) {
@@ -379,5 +396,6 @@ public struct module_c {
         if !isEmpty && !self.enabled {
             NotificationCenter.default.post(name: .toggleModule, object: nil, userInfo: ["module": self.config.name, "state": true])
         }
+        self.updateReaderActivityModes()
     }
 }
