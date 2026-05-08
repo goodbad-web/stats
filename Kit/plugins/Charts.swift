@@ -154,6 +154,18 @@ public class ChartView: NSView {
     internal func updateSwiftUI() {}
 }
 
+private func colorValuesEqual(_ lhs: [ColorValue], _ rhs: [ColorValue], tolerance: Double = 0.0001) -> Bool {
+    guard lhs.count == rhs.count else { return false }
+    return zip(lhs, rhs).allSatisfy {
+        abs($0.value - $1.value) <= tolerance && $0.color == $1.color
+    }
+}
+
+private func colorValueRowsEqual(_ lhs: [[ColorValue]], _ rhs: [[ColorValue]], tolerance: Double = 0.0001) -> Bool {
+    guard lhs.count == rhs.count else { return false }
+    return zip(lhs, rhs).allSatisfy { colorValuesEqual($0, $1, tolerance: tolerance) }
+}
+
 public class LineChartView: ChartView {
     private let dateFormatter = DateFormatter()
     
@@ -183,7 +195,16 @@ public class LineChartView: ChartView {
         self.read { self.isTooltipEnabled }
     }
     
-    public init(frame: NSRect = .zero, num: Int, suffix: String = "%", color: NSColor = .controlAccentColor, scale: Scale = .none, fixedScale: Double = 1, zeroValue: Double = 0.01) {
+    public init(
+        frame: NSRect = .zero,
+        num: Int,
+        suffix: String = "%",
+        color: NSColor = .controlAccentColor,
+        scale: Scale = .none,
+        fixedScale: Double = 1,
+        zeroValue: Double = 0.01,
+        useSwiftUI: Bool = true
+    ) {
         let now = Date()
         self.points = (0..<num).map { i in
             DoubleValue(0, ts: now.addingTimeInterval(Double(i - num)))
@@ -199,12 +220,14 @@ public class LineChartView: ChartView {
         self.dateFormatter.dateFormat = "dd/MM HH:mm:ss"
         self.legendDateFormatter.dateFormat = "HH:mm:ss"
         
-        let content = LineChartContent(points: self.points, color: self.color, scale: self.scale, fixedScale: self.fixedScale, zeroValue: self.zeroValue, minMax: self.minMax, suffix: self.suffix)
-        let hostingView = NSHostingView<LineChartContent>(rootView: content)
-        hostingView.frame = self.bounds
-        hostingView.autoresizingMask = [.width, .height]
-        self.addSubview(hostingView)
-        self.hostingView = hostingView
+        if useSwiftUI {
+            let content = LineChartContent(points: self.points, color: self.color, scale: self.scale, fixedScale: self.fixedScale, zeroValue: self.zeroValue, minMax: self.minMax, suffix: self.suffix)
+            let hostingView = NSHostingView<LineChartContent>(rootView: content)
+            hostingView.frame = self.bounds
+            hostingView.autoresizingMask = [.width, .height]
+            self.addSubview(hostingView)
+            self.hostingView = hostingView
+        }
         
         self.addTrackingArea(NSTrackingArea(
             rect: CGRect(x: 0, y: 0, width: self.frame.width, height: self.frame.height),
@@ -223,9 +246,64 @@ public class LineChartView: ChartView {
     }
     
     public override func draw(_ dirtyRect: NSRect) {
-        // No longer using manual draw for the chart itself, SwiftUI hosting view handles it.
-        // We only draw tooltips if needed, but Swift Charts has better native tooltips we can explore later.
-        // For now, keeping the tooltip logic might be complex with NSHostingView layering.
+        guard self.hostingView == nil else { return }
+        let snapshot = self.read {
+            (
+                points: self.points.compactMap { $0 },
+                color: self.color,
+                fixedScale: self.fixedScale,
+                minMax: self.minMax,
+                suffix: self.suffix
+            )
+        }
+        guard snapshot.points.count > 1, self.bounds.width > 0, self.bounds.height > 0 else { return }
+
+        let values = snapshot.points.map { $0.value }
+        let domainMax = max(snapshot.fixedScale, values.max() ?? 0)
+        guard domainMax > 0 else { return }
+
+        let rect = self.bounds.insetBy(dx: 0.5, dy: 0.5)
+        let step = rect.width / CGFloat(max(snapshot.points.count - 1, 1))
+        let path = NSBezierPath()
+        let fillPath = NSBezierPath()
+
+        for (idx, point) in snapshot.points.enumerated() {
+            let x = rect.minX + CGFloat(idx) * step
+            let normalized = min(max(point.value / domainMax, 0), 1)
+            let y = rect.minY + CGFloat(normalized) * rect.height
+            let p = NSPoint(x: x, y: y)
+            if idx == 0 {
+                path.move(to: p)
+                fillPath.move(to: NSPoint(x: x, y: rect.minY))
+                fillPath.line(to: p)
+            } else {
+                path.line(to: p)
+                fillPath.line(to: p)
+            }
+        }
+
+        if let last = snapshot.points.indices.last {
+            let x = rect.minX + CGFloat(last) * step
+            fillPath.line(to: NSPoint(x: x, y: rect.minY))
+            fillPath.close()
+            snapshot.color.withAlphaComponent(0.28).setFill()
+            fillPath.fill()
+        }
+
+        snapshot.color.setStroke()
+        path.lineWidth = 1 / (NSScreen.main?.backingScaleFactor ?? 1)
+        path.stroke()
+
+        if snapshot.minMax, let maxPoint = values.max(), maxPoint > 0 {
+            let label = "\(Int(maxPoint * 100))\(snapshot.suffix)" as NSString
+            label.draw(
+                at: NSPoint(x: rect.minX + 2, y: rect.maxY - 11),
+                withAttributes: [
+                    .font: NSFont.systemFont(ofSize: 9, weight: .light),
+                    .foregroundColor: NSColor.secondaryLabelColor
+                ]
+            )
+        }
     }
     
     override func updateSwiftUI() {
@@ -241,7 +319,7 @@ public class LineChartView: ChartView {
         self.hostingView?.rootView = content
     }
 
-    override var usesSwiftUIRendering: Bool { true }
+    override var usesSwiftUIRendering: Bool { self.hostingView != nil }
     
     public override func updateTrackingAreas() {
         self.trackingAreas.forEach({ self.removeTrackingArea($0) })
@@ -291,6 +369,7 @@ public class LineChartView: ChartView {
     }
     
     public func setScale(_ newScale: Scale, fixedScale: Double = 1) {
+        guard self.read({ self.scale != newScale || self.fixedScale != fixedScale }) else { return }
         self.write {
             self.scale = newScale
             self.fixedScale = fixedScale
@@ -304,27 +383,42 @@ public class LineChartView: ChartView {
     }
     
     public func setColor(_ newColor: NSColor) {
-        self.write { self.color = newColor }
+        guard self.read({ self.color != newColor }) else { return }
+        self.write {
+            self.color = newColor
+        }
         self.displayIfVisible()
     }
     
     public func setSuffix(_ newSuffix: String) {
-        self.write { self.suffix = newSuffix }
+        guard self.read({ self.suffix != newSuffix }) else { return }
+        self.write {
+            self.suffix = newSuffix
+        }
         self.displayIfVisible()
     }
     
     public func setTransparent(_ newValue: Bool) {
-        self.write { self.transparent = newValue }
+        guard self.read({ self.transparent != newValue }) else { return }
+        self.write {
+            self.transparent = newValue
+        }
         self.displayIfVisible()
     }
     
     public func setFlipY(_ newValue: Bool) {
-        self.write { self.flipY = newValue }
+        guard self.read({ self.flipY != newValue }) else { return }
+        self.write {
+            self.flipY = newValue
+        }
         self.displayIfVisible()
     }
     
     public func setMinMax(_ newValue: Bool) {
-        self.write { self.minMax = newValue }
+        guard self.read({ self.minMax != newValue }) else { return }
+        self.write {
+            self.minMax = newValue
+        }
         self.displayIfVisible()
     }
     
@@ -506,7 +600,7 @@ public class PieChartView: ChartView {
     
     private var hostingView: NSHostingView<PieChartContent>?
     
-    public init(frame: NSRect = .zero, segments: [ColorValue] = [], filled: Bool = false, drawValue: Bool = false, drawNeedle: Bool = false, openCircle: Bool = false) {
+    public init(frame: NSRect = .zero, segments: [ColorValue] = [], filled: Bool = false, drawValue: Bool = false, drawNeedle: Bool = false, openCircle: Bool = false, useSwiftUI: Bool = true) {
         self.filled = filled
         self.drawValue = drawValue
         self.drawNeedle = drawNeedle
@@ -515,12 +609,14 @@ public class PieChartView: ChartView {
         
         super.init(frame: frame, queueLabel: "eu.exelban.Stats.Charts.Pie")
         
-        let content = PieChartContent(segments: self.segments, openCircle: self.openCircle)
-        let hostingView = NSHostingView<PieChartContent>(rootView: content)
-        hostingView.frame = self.bounds
-        hostingView.autoresizingMask = [.width, .height]
-        self.addSubview(hostingView)
-        self.hostingView = hostingView
+        if useSwiftUI {
+            let content = PieChartContent(segments: self.segments, openCircle: self.openCircle)
+            let hostingView = NSHostingView<PieChartContent>(rootView: content)
+            hostingView.frame = self.bounds
+            hostingView.autoresizingMask = [.width, .height]
+            self.addSubview(hostingView)
+            self.hostingView = hostingView
+        }
         
         self.setAccessibilityElement(true)
     }
@@ -529,7 +625,46 @@ public class PieChartView: ChartView {
         fatalError("init(coder:) has not been implemented")
     }
     
-    public override func draw(_ rect: CGRect) {}
+    public override func draw(_ rect: CGRect) {
+        guard self.hostingView == nil else { return }
+        var snapshot = self.read { self.segments }
+        let openCircle = self.read { self.openCircle }
+        guard self.bounds.width > 0, self.bounds.height > 0 else { return }
+
+        let total = snapshot.reduce(0) { $0 + max($1.value, 0) }
+        if total < 1 {
+            snapshot.append(ColorValue(1 - total, color: NSColor.lightGray.withAlphaComponent(0.35)))
+        }
+
+        let diameter = min(self.bounds.width, self.bounds.height)
+        let pieRect = NSRect(
+            x: self.bounds.midX - diameter / 2,
+            y: self.bounds.midY - diameter / 2,
+            width: diameter,
+            height: diameter
+        )
+        let center = NSPoint(x: pieRect.midX, y: pieRect.midY)
+        var startAngle: CGFloat = 90
+
+        for segment in snapshot {
+            let amount = max(segment.value, 0)
+            guard amount > 0 else { continue }
+            let endAngle = startAngle - CGFloat(amount) * 360
+            let path = NSBezierPath()
+            path.move(to: center)
+            path.appendArc(withCenter: center, radius: diameter / 2, startAngle: startAngle, endAngle: endAngle, clockwise: true)
+            path.close()
+            (segment.color ?? NSColor.controlAccentColor).setFill()
+            path.fill()
+            startAngle = endAngle
+        }
+
+        if openCircle {
+            let inset = diameter * 0.28
+            NSColor.clear.setFill()
+            NSBezierPath(ovalIn: pieRect.insetBy(dx: inset, dy: inset)).fill()
+        }
+    }
     
     override func updateSwiftUI() {
         let content = PieChartContent(
@@ -539,7 +674,7 @@ public class PieChartView: ChartView {
         self.hostingView?.rootView = content
     }
 
-    override var usesSwiftUIRendering: Bool { true }
+    override var usesSwiftUIRendering: Bool { self.hostingView != nil }
     
     public override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
@@ -563,6 +698,7 @@ public class PieChartView: ChartView {
     }
     
     public func setSegments(_ segments: [ColorValue]) {
+        guard self.read({ !colorValuesEqual(self.segments, segments) }) else { return }
         self.write { self.segments = segments }
         self.displayIfVisible()
     }
@@ -838,25 +974,60 @@ public class BarChartView: ChartView {
     
     private var hostingView: NSHostingView<BarChartContent>?
     
-    public init(frame: NSRect = NSRect.zero, size: CGFloat? = nil, horizontal: Bool = false) {
+    public init(frame: NSRect = NSRect.zero, size: CGFloat? = nil, horizontal: Bool = false, useSwiftUI: Bool = true) {
         self.size = size
         self.horizontal = horizontal
         
         super.init(frame: frame, queueLabel: "eu.exelban.Stats.Charts.Bar")
         
-        let content = BarChartContent(values: self.values, horizontal: self.horizontal)
-        let hostingView = NSHostingView<BarChartContent>(rootView: content)
-        hostingView.frame = self.bounds
-        hostingView.autoresizingMask = [.width, .height]
-        self.addSubview(hostingView)
-        self.hostingView = hostingView
+        if useSwiftUI {
+            let content = BarChartContent(values: self.values, horizontal: self.horizontal)
+            let hostingView = NSHostingView<BarChartContent>(rootView: content)
+            hostingView.frame = self.bounds
+            hostingView.autoresizingMask = [.width, .height]
+            self.addSubview(hostingView)
+            self.hostingView = hostingView
+        }
     }
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
-    public override func draw(_ dirtyRect: NSRect) {}
+    public override func draw(_ dirtyRect: NSRect) {
+        guard self.hostingView == nil else { return }
+        let snapshot = self.read { (values: self.values, horizontal: self.horizontal) }
+        guard !snapshot.values.isEmpty, self.bounds.width > 0, self.bounds.height > 0 else { return }
+
+        let spacing: CGFloat = snapshot.values.count > 1 ? 1 : 0
+        if snapshot.horizontal {
+            let rowHeight = (self.bounds.height - spacing * CGFloat(snapshot.values.count - 1)) / CGFloat(snapshot.values.count)
+            for (idx, row) in snapshot.values.enumerated() {
+                var x = self.bounds.minX
+                let y = self.bounds.minY + CGFloat(idx) * (rowHeight + spacing)
+                for value in row {
+                    let width = self.bounds.width * CGFloat(min(max(value.value, 0), 1))
+                    let rect = NSRect(x: x, y: y, width: width, height: rowHeight)
+                    (value.color ?? NSColor.controlAccentColor).setFill()
+                    NSBezierPath(roundedRect: rect, xRadius: 1, yRadius: 1).fill()
+                    x += width
+                }
+            }
+        } else {
+            let barWidth = (self.bounds.width - spacing * CGFloat(snapshot.values.count - 1)) / CGFloat(snapshot.values.count)
+            for (idx, row) in snapshot.values.enumerated() {
+                var y = self.bounds.minY
+                let x = self.bounds.minX + CGFloat(idx) * (barWidth + spacing)
+                for value in row {
+                    let height = self.bounds.height * CGFloat(min(max(value.value, 0), 1))
+                    let rect = NSRect(x: x, y: y, width: barWidth, height: height)
+                    (value.color ?? NSColor.controlAccentColor).setFill()
+                    NSBezierPath(roundedRect: rect, xRadius: 1, yRadius: 1).fill()
+                    y += height
+                }
+            }
+        }
+    }
     
     override func updateSwiftUI() {
         let content = BarChartContent(
@@ -866,7 +1037,7 @@ public class BarChartView: ChartView {
         self.hostingView?.rootView = content
     }
 
-    override var usesSwiftUIRendering: Bool { true }
+    override var usesSwiftUIRendering: Bool { self.hostingView != nil }
     
     public override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
@@ -874,16 +1045,19 @@ public class BarChartView: ChartView {
     }
     
     public func setValue(_ values: ColorValue) {
+        guard self.read({ !colorValueRowsEqual(self.values, [[values]]) }) else { return }
         self.write { self.values = [[values]] }
         self.displayIfVisible()
     }
     
     public func setValues(_ values: [ColorValue]) {
+        guard self.read({ !colorValueRowsEqual(self.values, [values]) }) else { return }
         self.write { self.values = [values] }
         self.displayIfVisible()
     }
     
     public func setValues(_ values: [[ColorValue]]) {
+        guard self.read({ !colorValueRowsEqual(self.values, values) }) else { return }
         self.write { self.values = values }
         self.displayIfVisible()
     }

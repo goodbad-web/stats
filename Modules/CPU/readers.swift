@@ -48,8 +48,17 @@ private struct CPUInfoWrapper: @unchecked Sendable {
     let info: processor_info_array_t?
 }
 
+internal struct CPULoadReadScope: Equatable, Sendable {
+    var needsPerCore: Bool
+    var needsClusterUsage: Bool
+
+    static let totalOnly = CPULoadReadScope(needsPerCore: false, needsClusterUsage: false)
+    static let full = CPULoadReadScope(needsPerCore: true, needsClusterUsage: true)
+}
+
 internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
     private let loadLock = OSAllocatedUnfairLock(initialState: LoadState())
+    private let scopeLock = OSAllocatedUnfairLock(initialState: CPULoadReadScope.totalOnly)
     private nonisolated(unsafe) var numCPUs: uint = 0
     private nonisolated(unsafe) var hasHyperthreadingCores = false
     private nonisolated(unsafe) var cores: [core_s]? = nil
@@ -65,8 +74,15 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
         }
         self.cores = SystemKit.shared.device.info.cpu?.cores
     }
+
+    internal func setReadScope(_ scope: CPULoadReadScope) {
+        self.scopeLock.withLock { current in
+            current = scope
+        }
+    }
     
     nonisolated public override func read() {
+        let scope = self.scopeLock.withLock { $0 }
         let localNumCPUs = self.numCPUs
         let hasHT = self.hasHyperthreadingCores
         let localCores = self.cores
@@ -77,7 +93,9 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
             var numCPUsU: natural_t = 0
             var cpuInfo: processor_info_array_t?
             var numCpuInfo: mach_msg_type_number_t = 0
-            let result: kern_return_t = host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO, &numCPUsU, &cpuInfo, &numCpuInfo)
+            let result: kern_return_t = scope.needsPerCore || scope.needsClusterUsage ?
+                host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO, &numCPUsU, &cpuInfo, &numCpuInfo) :
+                KERN_FAILURE
             
             let capturedCpuInfo = CPUInfoWrapper(info: cpuInfo)
             let capturedNumCpuInfo = numCpuInfo
@@ -86,6 +104,15 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
             let showHyperthratedCores = Store.shared.bool(key: "CPU_hyperhreading", defaultValue: false)
             
             let updatedResponse = self.loadLock.withLock { state in
+                if !scope.needsPerCore {
+                    state.response.usagePerCore = []
+                }
+                if !scope.needsClusterUsage {
+                    state.response.usageECores = nil
+                    state.response.usagePCores = nil
+                    state.response.usageSCores = nil
+                }
+
                 if result == KERN_SUCCESS, let cpuInfo = capturedCpuInfo.info {
                     var nextCpuInfo: processor_info_array_t? = cpuInfo
                     defer {
@@ -174,7 +201,7 @@ internal class LoadReader: Reader<CPU_Load>, @unchecked Sendable {
                         state.response.totalUsage = totalUsage
                     }
                     
-                    if let cores = localCores {
+                    if scope.needsClusterUsage, let cores = localCores {
                         let eCoresList: [Double] = cores.filter({ $0.type == .efficiency }).enumerated().compactMap { (i, c) -> Double? in
                             if state.response.usagePerCore.indices.contains(Int(c.id)) {
                                 return state.response.usagePerCore[Int(c.id)]

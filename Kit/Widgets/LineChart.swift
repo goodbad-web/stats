@@ -26,7 +26,7 @@ public class LineChart: WidgetWrapper, WidgetConfigurable {
         y: 0,
         width: 32,
         height: Constants.Widget.height - (2*Constants.Widget.margin.y)
-    ), num: 60)
+    ), num: 60, useSwiftUI: false)
     private var colors: [SColor] = SColor.allCases.filter({ $0 != SColor.cluster })
     private var _value: Double = 0
     private var _pressureLevel: RAMPressure = .normal

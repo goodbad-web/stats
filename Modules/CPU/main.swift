@@ -228,20 +228,41 @@ public class CPU: Module {
         let detailVisible = self.isPopupVisible || self.isSettingsWindowVisible
         let mainMode = SamplingPolicy.mode(hasActiveValueWidget: self.hasActiveValueWidget, detailVisible: detailVisible)
         
+        self.loadReader?.setReadScope(self.loadReadScope(detailVisible: detailVisible))
         self.loadReader?.setActivityMode(mainMode)
         self.frequencyReader?.setActivityMode(detailVisible ? .active : mainMode)
         self.temperatureReader?.setActivityMode(SamplingPolicy.detailMode(detailVisible: detailVisible))
         self.averageLoadReader?.setActivityMode(SamplingPolicy.detailMode(detailVisible: detailVisible))
         self.processReader?.setActivityMode(SamplingPolicy.popupMode(popupVisible: self.isPopupVisible))
     }
+
+    private func loadReadScope(detailVisible: Bool) -> CPULoadReadScope {
+        guard !detailVisible else { return .full }
+
+        let hasBarChart = self.menuBar.widgets.contains { widget in
+            widget.isActive && widget.item is BarChart
+        }
+        guard hasBarChart else { return .totalOnly }
+
+        return CPULoadReadScope(
+            needsPerCore: self.usagePerCoreState,
+            needsClusterUsage: self.groupByClustersState
+        )
+    }
     
     private func loadCallback(_ raw: CPU_Load?) {
         guard let value = raw, self.enabled else { return }
         
-        self.popupView.loadCallback(value)
-        self.portalView.callback(value)
+        if self.isPopupVisible {
+            self.popupView.loadCallback(value)
+        }
+        if self.portalView.window?.isVisible ?? false {
+            self.portalView.callback(value)
+        }
+        if self.previewView.window?.isVisible ?? false {
+            self.previewView.loadCallback(value)
+        }
         self.notificationsView.loadCallback(value)
-        self.previewView.loadCallback(value)
         
         self.menuBar.widgets.filter{ $0.isActive }.forEach { [self] (w: SWidget) in
             switch w.item {

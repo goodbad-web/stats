@@ -30,7 +30,7 @@ public class BarChart: WidgetWrapper {
         y: 0,
         width: 10,
         height: Constants.Widget.height - (2*Constants.Widget.margin.y)
-    ))
+    ), useSwiftUI: false)
     public var NSLabelCharts: [NSAttributedString] = []
     
     public init(title: String, config: NSDictionary?, preview: Bool = false) {
