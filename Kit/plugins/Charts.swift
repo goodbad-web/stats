@@ -788,6 +788,7 @@ public class TachometerGraphView: ChartView {
 public class ColumnChartView: ChartView {
     private var values: [ColorValue] = []
     private var cursor: CGPoint? = nil
+    private var lastIndex: Int = -1
     
     public init(frame: NSRect = NSRect.zero, num: Int) {
         super.init(frame: frame, queueLabel: "eu.exelban.Stats.Charts.Column")
@@ -899,9 +900,18 @@ public class ColumnChartView: ChartView {
     }
     public override func mouseMoved(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        guard self.cursor != point else { return }
-        self.cursor = point
-        self.needsDisplay = true
+        let valuesCount = self.read { self.values.count }
+        guard valuesCount > 0 else { return }
+        
+        let spacing: CGFloat = 2
+        let partitionWidth = (self.frame.width - (CGFloat(valuesCount) * spacing)) / CGFloat(valuesCount)
+        let index = Int(point.x / (partitionWidth + spacing))
+        
+        if self.lastIndex != index {
+            self.lastIndex = index
+            self.cursor = point
+            self.needsDisplay = true
+        }
     }
     public override func mouseDragged(with event: NSEvent) {
         self.cursor = convert(event.locationInWindow, from: nil)
@@ -909,6 +919,7 @@ public class ColumnChartView: ChartView {
     }
     public override func mouseExited(with event: NSEvent) {
         self.cursor = nil
+        self.lastIndex = -1
         self.needsDisplay = true
     }
     

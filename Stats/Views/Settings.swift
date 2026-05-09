@@ -399,12 +399,6 @@ private class SidebarView: NSStackView {
         button.focusRingType = .none
         button.widthAnchor.constraint(equalToConstant: 33).isActive = true
         
-        button.addTrackingArea(NSTrackingArea(
-            rect: button.bounds,
-            options: [.activeAlways, .mouseEnteredAndExited, .inVisibleRect],
-            owner: self,
-            userInfo: ["button": title]
-        ))
         
         return button
     }

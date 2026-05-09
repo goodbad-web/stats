@@ -11,6 +11,7 @@
 
 import Cocoa
 @preconcurrency import Kit
+import IOKit
 import os
 
 public struct device {
@@ -36,7 +37,14 @@ private func maxANEPower(for platform: Platform?) -> Double {
     }
 }
 
+private struct GPUReadOptions: Sendable, Equatable {
+    var popupVisible: Bool = false
+    var needsPowerMetrics: Bool = false
+}
+
 private actor GPUReaderWorker {
+    private static let framesReadInterval: TimeInterval = 10
+
     private var powerChannels: CFMutableDictionary?
     private var powerSubscription: IOReportSubscriptionRef?
     private var previousPowerEnergy: [String: Double] = [:]
@@ -46,6 +54,8 @@ private actor GPUReaderWorker {
     private var framesSubscription: IOReportSubscriptionRef?
     private var previousFramesCount: Int64 = 0
     private var previousFramesTime: CFAbsoluteTime = 0
+    private var previousFPS: Double?
+    private var previousFPSRead: Date = .distantPast
     
     private let aneMaxPower: Double
     private var displays: [gpu_s] = []
@@ -112,8 +122,8 @@ private actor GPUReaderWorker {
         return (merged, subscription)
     }
     
-    func read(currentGPUs: GPUs) async -> GPUs {
-        guard let accelerators = fetchIOService(kIOAcceleratorClassName) else {
+    func read(currentGPUs: GPUs, options: GPUReadOptions) async -> GPUs {
+        guard let accelerators = Self.fetchAccelerators(includeClients: options.popupVisible) else {
             return currentGPUs
         }
         
@@ -121,7 +131,7 @@ private actor GPUReaderWorker {
         let vramTotal = Int64(ProcessInfo.processInfo.physicalMemory)
         
         for (index, accelerator) in accelerators.enumerated() {
-            guard let IOClass = accelerator.object(forKey: "IOClass") as? String else {
+            guard let IOClass = accelerator["IOClass"] as? String else {
                 continue
             }
             
@@ -147,7 +157,7 @@ private actor GPUReaderWorker {
             let vramUsed: Int64? = stats["In use system memory"] as? Int64 ?? stats["vramUsedBytes"] as? Int64 ?? nil
             
             var topProcesses: [TopProcess] = []
-            if let clients = accelerator["Clients"] as? NSArray {
+            if options.popupVisible, let clients = accelerator["Clients"] as? NSArray {
                 for client in clients {
                     guard let clientDict = client as? NSDictionary else { continue }
                     
@@ -206,7 +216,9 @@ private actor GPUReaderWorker {
             if let value = vramUsed, let total = updatedGPUs.list[idx].vramTotal, total != 0 {
                 updatedGPUs.list[idx].vramUsed = Double(value) / Double(total)
             }
-            updatedGPUs.list[idx].topProcesses = topProcesses
+            if options.popupVisible {
+                updatedGPUs.list[idx].topProcesses = topProcesses
+            }
             
             if let agcInfo = accelerator["AGCInfo"] as? [String: Int], let state = agcInfo["poweredOffByAGC"] {
                 updatedGPUs.list[idx].state = state == 0
@@ -244,23 +256,69 @@ private actor GPUReaderWorker {
             }
         }
         
-        let power = self.readPower()
+        let power = options.needsPowerMetrics ? self.readPower() : [:]
         let anePower = power["ANE"] ?? 0
         let gpuPower = power["GPU"] ?? 0
         let mediaPower = power["Media"] ?? 0
         let aneUtil = anePower / self.aneMaxPower
         let mediaUtil = mediaPower / 1.0 // Estimate for now, or use maxMediaPower
-        let fpsValue = self.readFrames()
+        let fpsValue = options.popupVisible ? self.readFramesThrottled() : nil
         
         for i in updatedGPUs.list.indices where updatedGPUs.list[i].IOClass.lowercased().contains("agx") {
             updatedGPUs.list[i].aneUtilization = min(1, max(0, aneUtil))
             updatedGPUs.list[i].mediaUtilization = min(1, max(0, mediaUtil))
             updatedGPUs.list[i].gpuPower = gpuPower
-            updatedGPUs.list[i].fps = fpsValue
+            if options.popupVisible {
+                updatedGPUs.list[i].fps = fpsValue
+            }
         }
         
         updatedGPUs.list.sort{ !$0.state && $1.state }
         return updatedGPUs
+    }
+
+    private static func fetchAccelerators(includeClients: Bool) -> [[String: Any]]? {
+        var iterator: io_iterator_t = io_iterator_t()
+        let result = IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching(kIOAcceleratorClassName), &iterator)
+        guard result == kIOReturnSuccess else { return nil }
+        defer { IOObjectRelease(iterator) }
+
+        var list: [[String: Any]] = []
+        while true {
+            let service = IOIteratorNext(iterator)
+            guard service != 0 else { break }
+            defer { IOObjectRelease(service) }
+
+            var props: [String: Any] = [:]
+            if let ioClass = IORegistryEntryCreateCFProperty(service, "IOClass" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() {
+                props["IOClass"] = ioClass
+            }
+            if let stats = IORegistryEntryCreateCFProperty(service, "PerformanceStatistics" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() {
+                props["PerformanceStatistics"] = stats
+            }
+            if let agcInfo = IORegistryEntryCreateCFProperty(service, "AGCInfo" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() {
+                props["AGCInfo"] = agcInfo
+            }
+            if includeClients,
+               let clients = IORegistryEntryCreateCFProperty(service, "Clients" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() {
+                props["Clients"] = clients
+            }
+            if !props.isEmpty {
+                list.append(props)
+            }
+        }
+
+        return list.isEmpty ? nil : list
+    }
+
+    private func readFramesThrottled() -> Double? {
+        let now = Date()
+        guard now.timeIntervalSince(self.previousFPSRead) >= Self.framesReadInterval else {
+            return self.previousFPS
+        }
+        self.previousFPSRead = now
+        self.previousFPS = self.readFrames()
+        return self.previousFPS
     }
     
     private func readFrames() -> Double? {
@@ -367,6 +425,7 @@ private actor GPUReaderWorker {
 internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
     private let worker = GPUReaderWorker()
     private let usageState = OSAllocatedUnfairLock(initialState: GPUs())
+    private let optionsState = OSAllocatedUnfairLock(initialState: GPUReadOptions())
     
     nonisolated private var gpus: GPUs {
         get { self.usageState.withLock { $0 } }
@@ -376,6 +435,14 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
     public override func setup() {}
     
     public override func terminate() {}
+
+    internal func setReadOptions(popupVisible: Bool, needsPowerMetrics: Bool) {
+        self.optionsState.withLock {
+            let newValue = GPUReadOptions(popupVisible: popupVisible, needsPowerMetrics: needsPowerMetrics)
+            guard $0 != newValue else { return }
+            $0 = newValue
+        }
+    }
     
     private let readLock = OSAllocatedUnfairLock(initialState: false)
     
@@ -385,11 +452,12 @@ internal class InfoReader: Reader<GPUs>, @unchecked Sendable {
         self.readLock.withLock { $0 = true }
         
         let currentGPUs = self.gpus
+        let options = self.optionsState.withLock { $0 }
         let worker = self.worker
         
         Task(priority: .background) {
             defer { self.readLock.withLock { $0 = false } }
-            let updatedGPUs = await worker.read(currentGPUs: currentGPUs)
+            let updatedGPUs = await worker.read(currentGPUs: currentGPUs, options: options)
             
             if let old = self.value, old == updatedGPUs {
                 return

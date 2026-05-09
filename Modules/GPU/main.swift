@@ -204,8 +204,16 @@ public class GPU: Module {
     }
     
     public override func updateReaderActivityModes() {
+        let activeWidgets = self.menuBar.widgets.filter { $0.isActive }
         let detailVisible = self.isPopupVisible || self.isSettingsWindowVisible
-        let mode = SamplingPolicy.mode(hasActiveValueWidget: self.hasActiveValueWidget, detailVisible: detailVisible)
+        let needsPowerMetrics = self.isPopupVisible || activeWidgets.contains {
+            $0.item is StackWidget && self.selectedStackSensor == "Utilization/ANE"
+        }
+        let mode = SamplingPolicy.mode(
+            hasActiveValueWidget: activeWidgets.contains { !($0.item is Label) },
+            detailVisible: detailVisible
+        )
+        self.infoReader?.setReadOptions(popupVisible: self.isPopupVisible, needsPowerMetrics: needsPowerMetrics)
         self.infoReader?.setActivityMode(mode)
     }
     
