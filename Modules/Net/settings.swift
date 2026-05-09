@@ -17,6 +17,7 @@ import SwiftUI
 struct NetSettingsView: View {
     @AppStorage(AppSettingsKeys.moduleInt("Net", "processes", defaultValue: 8).rawValue) private var numberOfProcesses: Int = 8
     @AppStorage(AppSettingsKeys.moduleString("Net", "reader", defaultValue: "interface").rawValue) private var readerType: String = "interface"
+    @AppStorage(AppSettingsKeys.moduleInt("Network", "updateInterval", defaultValue: 5).rawValue) private var updateInterval: Int = 5
     @AppStorage(AppSettingsKeys.moduleString("Net", "usageReset", defaultValue: AppUpdateInterval.never.rawValue).rawValue) private var usageReset: String = AppUpdateInterval.never.rawValue
     @AppStorage(AppSettingsKeys.moduleBool("Net", "VPNMode", defaultValue: false).rawValue) private var vpnMode: Bool = false
     @AppStorage(AppSettingsKeys.moduleBool("Net", "widgetActivationThresholdState", defaultValue: false).rawValue) private var widgetActivationThresholdState: Bool = false
@@ -41,6 +42,7 @@ struct NetSettingsView: View {
     var callback: () -> Void = {}
     var usageResetCallback: () -> Void = {}
     var connectivityHostCallback: (Bool) -> Void = { _ in }
+    var setUsageInterval: (Int) -> Void = { _ in }
     var setInterval: (Int) -> Void = { _ in }
     var publicIPRefreshIntervalCallback: () -> Void = {}
     
@@ -94,6 +96,12 @@ struct NetSettingsView: View {
                 Picker(localizedString("Base"), selection: $base) {
                     ForEach(SpeedBase, id: \.key) {
                         Text(localizedString($0.value)).tag($0.key)
+                    }
+                }
+
+                Picker(localizedString("Update interval"), selection: $updateInterval) {
+                    ForEach(ReaderUpdateIntervals.filter { (Int($0.key) ?? 0) >= 5 }, id: \.key) {
+                        Text(localizedString($0.value)).tag(Int($0.key) ?? 5)
                     }
                 }
                 
@@ -154,6 +162,9 @@ struct NetSettingsView: View {
         }
         .formStyle(.grouped)
         .onAppear {
+            if updateInterval < 5 {
+                updateInterval = 5
+            }
             if updateConnectivityInterval < 5 {
                 updateConnectivityInterval = 5
             }
@@ -163,6 +174,7 @@ struct NetSettingsView: View {
         .onChange(of: readerType) { _, _ in callback() }
         .onChange(of: selectedInterface) { _, _ in callback() }
         .onChange(of: base) { _, _ in callback() }
+        .onChange(of: updateInterval) { _, newValue in setUsageInterval(newValue) }
         .onChange(of: usageReset) { _, _ in usageResetCallback() }
         .onChange(of: connectivityICMPHost) { _, newValue in connectivityHostCallback(newValue.isEmpty) }
         .onChange(of: connectivityHTTPHost) { _, newValue in connectivityHostCallback(newValue.isEmpty) }
@@ -196,6 +208,7 @@ class Settings: NSHostingView<NetSettingsView>, Settings_v {
     var callbackWhenUpdateNumberOfProcesses: (() -> Void) = {}
     var usageResetCallback: (() -> Void) = {}
     var connectivityHostCallback: ((_ newState: Bool) -> Void) = { _ in }
+    var setUsageInterval: ((_ value: Int) -> Void) = {_ in }
     var setInterval: ((_ value: Int) -> Void) = {_ in }
     var publicIPRefreshIntervalCallback: (() -> Void) = {}
     
@@ -204,6 +217,7 @@ class Settings: NSHostingView<NetSettingsView>, Settings_v {
         self.rootView.callback = { [weak self] in self?.callback() }
         self.rootView.usageResetCallback = { [weak self] in self?.usageResetCallback() }
         self.rootView.connectivityHostCallback = { [weak self] in self?.connectivityHostCallback($0) }
+        self.rootView.setUsageInterval = { [weak self] in self?.setUsageInterval($0) }
         self.rootView.setInterval = { [weak self] in self?.setInterval($0) }
         self.rootView.publicIPRefreshIntervalCallback = { [weak self] in self?.publicIPRefreshIntervalCallback() }
     }

@@ -317,7 +317,7 @@ public class Disk: Module {
             self?.capacityReader?.read()
         }
         self.settingsView.setInterval = { [weak self] value in
-            self?.capacityReader?.setInterval(value)
+            self?.capacityReader?.setInterval(max(30, value))
             self?.activityReader?.setInterval(value)
         }
         let processReader = self.processReader
@@ -334,6 +334,7 @@ public class Disk: Module {
     public override func updateReaderActivityModes() {
         let detailVisible = self.isPopupVisible || self.isSettingsWindowVisible
         let mainMode = SamplingPolicy.mode(hasActiveValueWidget: self.hasActiveValueWidget, detailVisible: detailVisible)
+        self.capacityReader?.setInterval(max(30, Store.shared.int(key: "Disk_updateInterval", defaultValue: 30)))
         self.capacityReader?.setActivityMode(mainMode)
         self.activityReader?.setActivityMode(mainMode)
         self.processReader?.setActivityMode(SamplingPolicy.popupMode(popupVisible: self.isPopupVisible))
@@ -343,15 +344,21 @@ public class Disk: Module {
         guard self.enabled else { return }
         
         Task { @MainActor in
-            self.popupView.capacityCallback(value)
-            self.previewView.capacityCallback(value)
+            if self.isPopupVisible {
+                self.popupView.capacityCallback(value)
+            }
+            if self.previewView.window?.isVisible ?? false {
+                self.previewView.capacityCallback(value)
+            }
             self.settingsView.setList(value)
             
             guard let d = value.first(where: { $0.mediaName == self.selectedDisk }) ?? value.first(where: { $0.root }) else {
                 return
             }
             
-            self.portalView.utilizationCallback(d)
+            if self.portalView.window?.isVisible ?? false {
+                self.portalView.utilizationCallback(d)
+            }
             self.notificationsView.utilizationCallback(d.percentage)
             
             self.menuBar.widgets.filter{ $0.isActive }.forEach { (w: SWidget) in
@@ -441,14 +448,20 @@ public class Disk: Module {
         guard self.enabled else { return }
         
         Task { @MainActor in
-            self.popupView.activityCallback(value)
-            self.previewView.activityCallback(value)
+            if self.isPopupVisible {
+                self.popupView.activityCallback(value)
+            }
+            if self.previewView.window?.isVisible ?? false {
+                self.previewView.activityCallback(value)
+            }
             
             guard let d = value.first(where: { $0.mediaName == self.selectedDisk }) ?? value.first(where: { $0.root }) else {
                 return
             }
             
-            self.portalView.activityCallback(d)
+            if self.portalView.window?.isVisible ?? false {
+                self.portalView.activityCallback(d)
+            }
             
             self.menuBar.widgets.filter{ $0.isActive }.forEach { (w: SWidget) in
                 switch w.item {

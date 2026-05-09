@@ -220,8 +220,10 @@ public class GPU: Module {
     private func infoCallback(_ raw: GPUs?) {
         guard raw != nil && !raw!.list.isEmpty, let value = raw, self.enabled else { return }
         
-        Task { @MainActor in
-            self.popupView.infoCallback(value)
+        if self.isPopupVisible {
+            Task { @MainActor in
+                self.popupView.infoCallback(value)
+            }
         }
         self.settingsView.setList(value)
         
@@ -234,9 +236,13 @@ public class GPU: Module {
             return
         }
         
-        self.portalView.callback(selectedGPU)
+        if self.portalView.window?.isVisible ?? false {
+            self.portalView.callback(selectedGPU)
+        }
         self.notificationsView.usageCallback(utilization)
-        self.previewView.loadCallback(selectedGPU)
+        if self.previewView.window?.isVisible ?? false {
+            self.previewView.loadCallback(selectedGPU)
+        }
         
         self.menuBar.widgets.filter{ $0.isActive }.forEach { (w: SWidget) in
             switch w.item {

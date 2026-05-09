@@ -405,14 +405,33 @@ private actor DiskReaderWorker {
 }
 
 internal class CapacityReader: Reader<Disks>, @unchecked Sendable {
+    private static let minimumReadInterval: TimeInterval = 30
+
     nonisolated private let listLock = OSAllocatedUnfairLock(initialState: Disks())
     nonisolated internal var list: Disks {
         get { self.listLock.withLock { $0 } }
         set { self.listLock.withLock { $0 = newValue } }
     }
+    nonisolated private let lastReadLock = OSAllocatedUnfairLock(initialState: Date.distantPast)
     private let worker = DiskReaderWorker()
+
+    @MainActor override func setup() {
+        self.defaultInterval = Int(Self.minimumReadInterval)
+    }
     
     public override func readAsync() async -> Disks? {
+        let now = Date()
+        let minimumReadInterval = Self.minimumReadInterval
+        let isListEmpty = self.list.isEmpty
+        let shouldRead = self.lastReadLock.withLock { lastRead in
+            guard now.timeIntervalSince(lastRead) >= minimumReadInterval || isListEmpty else {
+                return false
+            }
+            lastRead = now
+            return true
+        }
+        guard shouldRead else { return nil }
+
         let config = DiskCapacityConfig(
             removableState: Store.shared.bool(key: "Disk_removable", defaultValue: false),
             smartState: Store.shared.bool(key: "\(ModuleType.disk.stringValue)_SMART", defaultValue: true)

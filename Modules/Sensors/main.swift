@@ -239,11 +239,15 @@ public class Sensors: Module {
             switch widget.item {
             case is Mini:
                 scope.include(key: self.selectedSensor)
-                Self.miniSensorFallbacks.forEach { scope.include(key: $0) }
+                if !self.hasSensor(self.selectedSensor) {
+                    Self.miniSensorFallbacks.forEach { scope.include(key: $0) }
+                }
             case is StackWidget:
                 scope.include(key: self.selectedStackLine1)
                 scope.include(key: self.selectedStackLine2)
-                Self.stackSensorFallbacks.forEach { scope.include(key: $0) }
+                if !self.hasSensor(self.selectedStackLine1) || !self.hasSensor(self.selectedStackLine2) {
+                    Self.stackSensorFallbacks.forEach { scope.include(key: $0) }
+                }
             case is BarChart:
                 self.selectedBarChartSensors.forEach { value in
                     if let type = SensorType(rawValue: value) {
@@ -272,6 +276,11 @@ public class Sensors: Module {
         self.notificationSensorKeys.forEach { scope.include(key: $0) }
 
         return scope
+    }
+
+    private func hasSensor(_ key: String) -> Bool {
+        guard !key.isEmpty else { return false }
+        return self.sensorsReader?.list.sensors.contains(where: { $0.key == key }) ?? false
     }
 
     private func miniSensor(from sensors: [Sensor_p]) -> Sensor_p? {

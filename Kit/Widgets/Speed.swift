@@ -11,6 +11,23 @@
 
 import Cocoa
 
+private struct SpeedDisplayState: Equatable {
+    let inputText: String
+    let outputText: String
+    let inputActive: Bool
+    let outputActive: Bool
+    let valueState: Bool
+    let unitsState: Bool
+    let icon: String
+    let monochromeState: Bool
+    let valueColorState: String
+    let iconColorState: String
+    let inputColorState: String
+    let outputColorState: String
+    let modeState: String
+    let displayValueState: String
+}
+
 public class SpeedWidget: WidgetWrapper, WidgetConfigurable {
     private var icon: String = "dots"
     private var valueState: Bool = true
@@ -31,6 +48,7 @@ public class SpeedWidget: WidgetWrapper, WidgetConfigurable {
     
     private var inputValue: Int64 = 0
     private var outputValue: Int64 = 0
+    private var renderedState: SpeedDisplayState?
     
     private var width: CGFloat = 58
     
@@ -473,22 +491,39 @@ public class SpeedWidget: WidgetWrapper, WidgetConfigurable {
     }
 
     public func setValue(input: Int64, output: Int64) {
-        var updated: Bool = false
+        let nextInput = abs(input)
+        let nextOutput = abs(output)
+        let nextState = self.displayState(input: nextInput, output: nextOutput)
 
-        if self.inputValue != input {
-            self.inputValue = abs(input)
-            updated = true
-        }
-        if self.outputValue != output {
-            self.outputValue = abs(output)
-            updated = true
-        }
+        guard self.renderedState != nextState else { return }
 
-        if updated {
-            DispatchQueue.main.async(execute: {
-                self.display()
-            })
-        }
+        self.inputValue = nextInput
+        self.outputValue = nextOutput
+        self.renderedState = nextState
+
+        DispatchQueue.main.async(execute: {
+            self.display()
+        })
+    }
+
+    private func displayState(input: Int64, output: Int64) -> SpeedDisplayState {
+        let base = self.base
+        return SpeedDisplayState(
+            inputText: Units(bytes: input).getReadableSpeed(base: base, omitUnits: !self.unitsState),
+            outputText: Units(bytes: output).getReadableSpeed(base: base, omitUnits: !self.unitsState),
+            inputActive: input >= 1024,
+            outputActive: output >= 1024,
+            valueState: self.valueState,
+            unitsState: self.unitsState,
+            icon: self.icon,
+            monochromeState: self.monochromeState,
+            valueColorState: self.valueColorState,
+            iconColorState: self.iconColorState,
+            inputColorState: self.inputColorState.key,
+            outputColorState: self.outputColorState.key,
+            modeState: self.modeState,
+            displayValueState: self.displayValueState
+        )
     }
 
     fileprivate func configurationState() -> (

@@ -184,11 +184,17 @@ public class RAM: Module {
     
     private func loadCallback(_ raw: RAM_Usage?) {
         guard let value = raw, self.enabled else { return }
-        
-        self.popupView.loadCallback(value)
-        self.portalView.callback(value)
+
+        if self.isPopupVisible {
+            self.popupView.loadCallback(value)
+        }
+        if self.portalView.window?.isVisible ?? false {
+            self.portalView.callback(value)
+        }
         self.notificationsView.loadCallback(value)
-        self.previewView.loadCallback(value)
+        if self.previewView.window?.isVisible ?? false {
+            self.previewView.loadCallback(value)
+        }
         
         let total: Double = value.total == 0 ? 1 : value.total
         self.menuBar.widgets.filter{ $0.isActive }.forEach { (w: SWidget) in

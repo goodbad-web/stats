@@ -493,25 +493,12 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
 
     private let wifiClient = CWWiFiClient.shared()
 
-    public override func start() {
-        self.startReachability()
-        self.startListeningForWifiEvents()
-        super.start()
-    }
-
-    public override func pause() {
-        super.pause()
-        self.stopReachability()
-        self.stopListeningForWifiEvents()
-    }
-
-    public override func stop() {
-        super.stop()
-        self.stopReachability()
-        self.stopListeningForWifiEvents()
-    }
-
     @MainActor public override func setup() {
+        self.defaultInterval = 5
+        if Store.shared.int(key: "Network_updateInterval", defaultValue: 5) < 5 {
+            Store.shared.set(key: "Network_updateInterval", value: 5)
+        }
+
         self.reachability.reachable = {
             Task { @MainActor in
                 if self.active {
@@ -551,6 +538,24 @@ internal class UsageReader: Reader<Network_Usage>, CWEventDelegate, @unchecked S
         }
 
         self.wifiClient.delegate = self
+    }
+
+    public override func start() {
+        self.startReachability()
+        self.startListeningForWifiEvents()
+        super.start()
+    }
+
+    public override func pause() {
+        super.pause()
+        self.stopReachability()
+        self.stopListeningForWifiEvents()
+    }
+
+    public override func stop() {
+        super.stop()
+        self.stopReachability()
+        self.stopListeningForWifiEvents()
     }
 
     @MainActor public override func terminate() {
