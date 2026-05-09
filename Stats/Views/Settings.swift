@@ -30,6 +30,7 @@ class SettingsWindow: NSWindow, NSWindowDelegate, NSToolbarDelegate {
     private var toggleButton: NSControl? = nil
     private var activeModuleName: String? = nil
     private var settingsPreviewButton: NSView? = nil
+    private var publishesVisibilityChanges = false
     
     private var pauseState: Bool { Store.shared.bool(key: "pause", defaultValue: false) }
     
@@ -72,6 +73,8 @@ class SettingsWindow: NSWindow, NSWindowDelegate, NSToolbarDelegate {
         newToolbar.delegate = self
         
         self.toolbar = newToolbar
+        self.delegate = self
+        self.isReleasedWhenClosed = false
         self.contentViewController = sidebarViewController
         self.titlebarAppearsTransparent = true
         if #unavailable(macOS 26.0) {
@@ -94,6 +97,7 @@ class SettingsWindow: NSWindow, NSWindowDelegate, NSToolbarDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(externalModuleToggle), name: .toggleModule, object: nil)
         
         self.sidebarView.openMenu("Dashboard")
+        self.publishesVisibilityChanges = true
     }
     
     deinit {
@@ -113,6 +117,17 @@ class SettingsWindow: NSWindow, NSWindowDelegate, NSToolbarDelegate {
             }
         }
         return super.performKeyEquivalent(with: event)
+    }
+    
+    override func setIsVisible(_ flag: Bool) {
+        let wasVisible = self.isVisible
+        super.setIsVisible(flag)
+        guard self.publishesVisibilityChanges, wasVisible != flag else { return }
+        self.publishWindowVisibility(flag)
+    }
+    
+    func windowWillClose(_ notification: Notification) {
+        self.publishWindowVisibility(false)
     }
     
     override func mouseUp(with: NSEvent) {
@@ -187,11 +202,13 @@ class SettingsWindow: NSWindow, NSWindowDelegate, NSToolbarDelegate {
                 self.settingsPreviewButton?.isHidden = !detectedModule.config.hasPreview
                 AppEventCenter.shared.post(.openWindow(module: detectedModule.config.name, state: true))
             } else if title == "Dashboard" {
+                self.activeModuleName = nil
                 view = self.dashboard
                 self.toggleButton?.isHidden = true
                 self.settingsPreviewButton?.isHidden = true
                 AppEventCenter.shared.post(.openWindow(module: nil, state: false))
             } else if title == "Settings" {
+                self.activeModuleName = nil
                 self.settings.viewWillAppear()
                 view = self.settings
                 self.toggleButton?.isHidden = true
@@ -231,6 +248,14 @@ class SettingsWindow: NSWindow, NSWindowDelegate, NSToolbarDelegate {
             x: (NSScreen.main!.frame.width - SettingsWindow.size.width)/2,
             y: ((NSScreen.main!.frame.height - SettingsWindow.size.height)/1.75)
         ))
+    }
+    
+    private func publishWindowVisibility(_ visible: Bool) {
+        guard visible, let moduleName = self.activeModuleName else {
+            AppEventCenter.shared.post(.openWindow(module: nil, state: false))
+            return
+        }
+        AppEventCenter.shared.post(.openWindow(module: moduleName, state: true))
     }
 }
 
