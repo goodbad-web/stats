@@ -229,7 +229,7 @@ public class Sensors: Module {
     }
 
     private func sensorsReadScope(for activeWidgets: [SWidget]) -> SensorsReadScope {
-        if self.isPopupVisible || self.isSettingsWindowVisible {
+        if self.isPopupVisible {
             return .full
         }
 
