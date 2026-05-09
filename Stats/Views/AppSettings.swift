@@ -13,6 +13,8 @@ import Cocoa
 import Kit
 
 class ApplicationSettings: NSStackView {
+    private let eventObservers = AppEventObservationBag()
+    
     private var updateIntervalValue: String {
         UserDefaultsSettingsStore.shared.string(AppSettingsKeys.updateInterval)
     }
@@ -203,17 +205,19 @@ class ApplicationSettings: NSStackView {
         }
         scrollView.stackView.addArrangedSubview(PreferencesSection(title: localizedString("Stress tests"), tests))
         
-        NotificationCenter.default.addObserver(self, selector: #selector(self.toggleUninstallHelperButton), name: .fanHelperState, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(self.handleRemoteState), name: .remoteState, object: nil)
+        self.eventObservers.store(AppEventCenter.shared.observe(.fanHelperState) { [weak self] notification in
+            self?.toggleUninstallHelperButton(notification)
+        })
+        self.eventObservers.store(AppEventCenter.shared.observe(.remoteState) { [weak self] notification in
+            self?.handleRemoteState(notification)
+        })
     }
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
-    deinit {
-        NotificationCenter.default.removeObserver(self, name: .fanHelperState, object: nil)
-    }
+    deinit {}
     
     internal func viewWillAppear() {
         self.startAtLoginBtn?.state = LaunchAtLogin.isEnabled ? .on : .off

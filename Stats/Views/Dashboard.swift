@@ -13,6 +13,8 @@ import Cocoa
 import Kit
 
 class Dashboard: NSStackView {
+    private let eventObservers = AppEventObservationBag()
+
     private var processorValue: String {
         guard let cpu = SystemKit.shared.device.info.cpu, cpu.name != nil || cpu.physicalCores != nil || cpu.logicalCores != nil else {
             return localizedString("Unknown")
@@ -249,18 +251,19 @@ class Dashboard: NSStackView {
         
         self.addArrangedSubview(scrollView)
         
-        NotificationCenter.default.addObserver(self, selector: #selector(windowOpens), name: .openModuleSettings, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(windowOpens), name: .toggleSettings, object: nil)
+        self.eventObservers.store(AppEventCenter.shared.observe(.openModuleSettings) { [weak self] notification in
+            self?.windowOpens(notification)
+        })
+        self.eventObservers.store(AppEventCenter.shared.observe(.toggleSettings) { [weak self] notification in
+            self?.windowOpens(notification)
+        })
     }
     
     required public init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
-    deinit {
-        NotificationCenter.default.removeObserver(self, name: .openModuleSettings, object: nil)
-        NotificationCenter.default.removeObserver(self, name: .toggleSettings, object: nil)
-    }
+    deinit {}
     
     private func deviceView() -> NSView {
         let container: NSGridView = NSGridView()

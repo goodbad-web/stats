@@ -31,6 +31,7 @@ class SettingsWindow: NSWindow, NSWindowDelegate, NSToolbarDelegate {
     private var activeModuleName: String? = nil
     private var settingsPreviewButton: NSView? = nil
     private var publishesVisibilityChanges = false
+    private let eventObservers = AppEventObservationBag()
     
     private var pauseState: Bool { Store.shared.bool(key: "pause", defaultValue: false) }
     
@@ -92,19 +93,21 @@ class SettingsWindow: NSWindow, NSWindowDelegate, NSToolbarDelegate {
         windowController.window = self
         windowController.loadWindow()
         
-        NotificationCenter.default.addObserver(self, selector: #selector(menuCallback), name: .openModuleSettings, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(toggleSettingsHandler), name: .toggleSettings, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(externalModuleToggle), name: .toggleModule, object: nil)
+        self.eventObservers.store(AppEventCenter.shared.observe(.openModuleSettings) { [weak self] notification in
+            self?.menuCallback(notification)
+        })
+        self.eventObservers.store(AppEventCenter.shared.observe(.toggleSettings) { [weak self] notification in
+            self?.toggleSettingsHandler(notification)
+        })
+        self.eventObservers.store(AppEventCenter.shared.observe(.toggleModule) { [weak self] notification in
+            self?.externalModuleToggle(notification)
+        })
         
         self.sidebarView.openMenu("Dashboard")
         self.publishesVisibilityChanges = true
     }
     
-    deinit {
-        NotificationCenter.default.removeObserver(self, name: .toggleSettings, object: nil)
-        NotificationCenter.default.removeObserver(self, name: .openModuleSettings, object: nil)
-        NotificationCenter.default.removeObserver(self, name: .toggleModule, object: nil)
-    }
+    deinit {}
     
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.type == NSEvent.EventType.keyDown && event.modifierFlags.contains(.command) {

@@ -544,6 +544,7 @@ public class MenuBar {
         get { self.queue.sync { self._active } }
         set { self.queue.sync { self._active = newValue } }
     }
+    private let eventObservers = AppEventObservationBag()
     
     init(moduleName: String) {
         self.moduleName = moduleName
@@ -559,13 +560,12 @@ public class MenuBar {
             self.setupMenuBarItem(self.oneView)
         }
         
-        NotificationCenter.default.addObserver(self, selector: #selector(listenForOneView), name: .toggleOneView, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(listenForWidgetRearrange), name: .widgetRearrange, object: nil)
-    }
-    
-    deinit {
-        NotificationCenter.default.removeObserver(self, name: .toggleOneView, object: nil)
-        NotificationCenter.default.removeObserver(self, name: .widgetRearrange, object: nil)
+        self.eventObservers.store(AppEventCenter.shared.observe(.toggleOneView) { [weak self] notification in
+            self?.listenForOneView(notification)
+        })
+        self.eventObservers.store(AppEventCenter.shared.observe(.widgetRearrange) { [weak self] notification in
+            self?.listenForWidgetRearrange(notification)
+        })
     }
     
     public func append(_ widget: SWidget) {
