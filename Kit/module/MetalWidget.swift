@@ -78,6 +78,15 @@ internal class MetalWidgetView: NSView {
     }
     
     func render() {
+        guard let window = self.window,
+              window.isVisible,
+              !self.isHiddenOrHasHiddenAncestor,
+              self.bounds.width > 0,
+              self.bounds.height > 0,
+              metalLayer.drawableSize.width > 0,
+              metalLayer.drawableSize.height > 0 else {
+            return
+        }
         guard MetalDeviceManager.shared.pipelineState != nil,
               MetalDeviceManager.shared.device != nil,
               let commandQueue = MetalDeviceManager.shared.commandQueue,

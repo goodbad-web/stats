@@ -137,12 +137,20 @@ public class ChartView: NSView {
     fileprivate func displayIfVisible() {
         guard let window = self.window, window.isVisible, !self.isHiddenOrHasHiddenAncestor else { return }
         if Thread.isMainThread {
+            if self.usesMetalRendering {
+                self.updateMetal()
+                return
+            }
             self.updateSwiftUI()
             guard !self.usesSwiftUIRendering else { return }
             self.needsDisplay = true
         } else {
             DispatchQueue.main.async { [weak self] in
                 guard let self, let window = self.window, window.isVisible, !self.isHiddenOrHasHiddenAncestor else { return }
+                if self.usesMetalRendering {
+                    self.updateMetal()
+                    return
+                }
                 self.updateSwiftUI()
                 guard !self.usesSwiftUIRendering else { return }
                 self.needsDisplay = true
@@ -362,11 +370,7 @@ public class LineChartView: ChartView {
             self.points.remove(at: 0)
             self.points.append(value)
         }
-        if self.usesMetalRendering {
-            self.updateMetal()
-        } else {
-            self.displayIfVisible()
-        }
+        self.displayIfVisible()
     }
     
     public func addValue(_ value: Double) {
