@@ -48,7 +48,7 @@ public struct smart_t: Codable, Equatable {
 }
 
 public struct drive: Codable, Equatable {
-    var parent: io_object_t = 0
+    var parent: IOPort? = nil
     
     var uuid: String = ""
     var mediaName: String = ""
@@ -67,6 +67,10 @@ public struct drive: Codable, Equatable {
     
     var activity: stats = stats()
     var smart: smart_t? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case uuid, mediaName, BSDName, root, removable, model, path, connectionType, fileSystem, size, free, activity, smart
+    }
     
     public var percentage: Double {
         let total = self.size

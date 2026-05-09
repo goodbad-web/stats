@@ -642,6 +642,18 @@ public func fetchIOService(_ name: String) -> [NSDictionary]? {
     return list.isEmpty ? nil : list
 }
 
+public class IOPort: @unchecked Sendable {
+    public private(set) var port: io_object_t
+    public init(_ port: io_object_t) {
+        self.port = port
+    }
+    deinit {
+        if self.port != 0 {
+            IOObjectRelease(self.port)
+        }
+    }
+}
+
 public func getIOProperties(_ entry: io_registry_entry_t) -> NSDictionary? {
     var properties: Unmanaged<CFMutableDictionary>? = nil
     

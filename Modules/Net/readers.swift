@@ -46,9 +46,7 @@ private func runNettop() -> String? {
     task.environment = ["NSUnbufferedIO": "YES", "LC_ALL": "en_US.UTF-8"]
 
     let outputPipe = Pipe()
-    let errorPipe = Pipe()
-    task.standardOutput = outputPipe
-    task.standardError = errorPipe
+    task.standardError = FileHandle.nullDevice
 
     do {
         try task.run()
@@ -56,9 +54,9 @@ private func runNettop() -> String? {
         return nil
     }
 
+    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
     task.waitUntilExit()
     guard task.terminationStatus == 0 else { return nil }
-    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
     return String(data: outputData, encoding: .utf8)
 }
 
@@ -314,18 +312,8 @@ private actor NetworkUsageWorker {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Stats", forHTTPHeaderField: "User-Agent")
 
-        let configuration: URLSessionConfiguration = {
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.waitsForConnectivity = false
-            configuration.timeoutIntervalForRequest = 5
-            configuration.timeoutIntervalForResource = 5
-            configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-            configuration.urlCache = nil
-            return configuration
-        }()
-
         do {
-            let session = URLSession(configuration: configuration)
+            let session = URLSession.shared
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
             return try? JSONDecoder().decode(PublicIPAddressResponse.self, from: data)

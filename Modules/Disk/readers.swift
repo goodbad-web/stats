@@ -354,7 +354,7 @@ private actor DiskReaderWorker {
         if service == 0 { return }
         IOObjectRelease(service)
         
-        guard let props = getIOProperties(d.parent) else { return }
+        guard let parent = d.parent?.port, let props = getIOProperties(parent) else { return }
         
         if let statistics = props.object(forKey: "Statistics") as? NSDictionary {
             let readBytes = statistics.object(forKey: "Bytes (Read)") as? Int64 ?? 0
@@ -573,10 +573,10 @@ private func driveDetails(_ disk: DADisk, removableState: Bool) -> drive? {
         d.uuid = d.BSDName
     }
     
-    let partitionLevel = d.BSDName.filter { "0"..."9" ~= $0 }.count
+    let isPartition = d.BSDName.contains("s")
     let media = DADiskCopyIOMedia(disk)
-    if let parent = getDeviceIOParent(media, level: Int(partitionLevel)) {
-        d.parent = parent
+    if let parent = getDeviceIOParent(media, level: isPartition ? 1 : 0) {
+        d.parent = IOPort(parent)
     }
     IOObjectRelease(media)
     

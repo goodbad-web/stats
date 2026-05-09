@@ -83,6 +83,9 @@ private actor CPUReaderWorker {
         if let prevCpuInfo = self.prevCpuInfo {
             prevCpuInfo.deallocate()
         }
+        if let subscription = self.subscription {
+            Unmanaged<AnyObject>.fromOpaque(UnsafeRawPointer(subscription)).release()
+        }
     }
     
     func readLoad(scope: CPULoadReadScope) async -> CPU_Load? {

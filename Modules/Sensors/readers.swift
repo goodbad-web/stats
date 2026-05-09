@@ -134,6 +134,12 @@ private actor SensorsReaderWorker {
         self.subscription = s
     }
     
+    deinit {
+        if let subscription = self.subscription {
+            Unmanaged<AnyObject>.fromOpaque(UnsafeRawPointer(subscription)).release()
+        }
+    }
+    
     static private func initializeIOReport() -> (CFMutableDictionary?, IOReportSubscriptionRef?) {
         let c = getChannels()
         var dict: Unmanaged<CFMutableDictionary>?
@@ -379,6 +385,9 @@ private actor SensorsReaderWorker {
     }
     
     func resetWorker() {
+        if let subscription = self.subscription {
+            Unmanaged<AnyObject>.fromOpaque(UnsafeRawPointer(subscription)).release()
+        }
         self.subscription = nil
         self.channels = nil
     }

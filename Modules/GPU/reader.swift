@@ -75,6 +75,15 @@ private actor GPUReaderWorker {
         self.framesSubscription = fs
     }
     
+    deinit {
+        if let ps = self.powerSubscription {
+            Unmanaged<AnyObject>.fromOpaque(UnsafeRawPointer(ps)).release()
+        }
+        if let fs = self.framesSubscription {
+            Unmanaged<AnyObject>.fromOpaque(UnsafeRawPointer(fs)).release()
+        }
+    }
+    
     static private func initializePower() -> (CFMutableDictionary?, IOReportSubscriptionRef?) {
         guard let channel = IOReportCopyChannelsInGroup("Energy Model" as CFString, nil, 0, 0, 0)?.takeRetainedValue() else { return (nil, nil) }
         
