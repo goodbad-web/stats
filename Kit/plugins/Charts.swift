@@ -135,7 +135,10 @@ public class ChartView: NSView {
     }
     
     fileprivate func displayIfVisible() {
-        guard let window = self.window, window.isVisible, !self.isHiddenOrHasHiddenAncestor else { return }
+        guard let window = self.window, window.isVisible, 
+              window.occlusionState.contains(.visible),
+              !self.isHiddenOrHasHiddenAncestor else { return }
+        
         if Thread.isMainThread {
             if self.usesMetalRendering {
                 self.updateMetal()
@@ -146,7 +149,9 @@ public class ChartView: NSView {
             self.needsDisplay = true
         } else {
             DispatchQueue.main.async { [weak self] in
-                guard let self, let window = self.window, window.isVisible, !self.isHiddenOrHasHiddenAncestor else { return }
+                guard let self, let window = self.window, window.isVisible, 
+                      window.occlusionState.contains(.visible),
+                      !self.isHiddenOrHasHiddenAncestor else { return }
                 if self.usesMetalRendering {
                     self.updateMetal()
                     return
@@ -260,7 +265,7 @@ public class LineChartView: ChartView {
     }
     
     public override func draw(_ dirtyRect: NSRect) {
-        guard self.hostingView == nil else { return }
+        guard self.hostingView == nil && self.metalView == nil else { return }
         let snapshot = self.read {
             (
                 points: self.points.compactMap { $0 },
@@ -305,7 +310,7 @@ public class LineChartView: ChartView {
         }
 
         snapshot.color.setStroke()
-        path.lineWidth = 1 / (NSScreen.main?.backingScaleFactor ?? 1)
+        path.lineWidth = 1 / (NSScreen.main?.backingScaleFactor ?? 2)
         path.stroke()
 
         if snapshot.minMax, let maxPoint = values.max(), maxPoint > 0 {
@@ -518,7 +523,7 @@ public class NetworkChartView: ChartView {
     
     override func updateSwiftUI() {
         let now = Date()
-        guard now.timeIntervalSince(self.lastSwiftUIUpdate) >= 2 else { return }
+        guard now.timeIntervalSince(self.lastSwiftUIUpdate) >= 0.5 else { return }
         self.lastSwiftUIUpdate = now
 
         let content = NetworkChartContent(
