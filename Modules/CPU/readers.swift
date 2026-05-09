@@ -81,8 +81,7 @@ private actor CPUReaderWorker {
     
     deinit {
         if let prevCpuInfo = self.prevCpuInfo {
-            let prevCpuInfoSize: size_t = MemoryLayout<integer_t>.stride * Int(self.numPrevCpuInfo)
-            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prevCpuInfo), vm_size_t(prevCpuInfoSize))
+            prevCpuInfo.deallocate()
         }
     }
     
@@ -415,10 +414,27 @@ public class ProcessReader: Reader<[TopProcess]>, @unchecked Sendable {
         self.setInterval(Store.shared.int(key: "\(self.title)_updateTopInterval", defaultValue: 5))
     }
     
-    public override func readAsync() async -> [TopProcess]? {
+    nonisolated public override func read() {
+        let isReading = self.readLock.withLock { $0 }
+        guard !isReading else { return }
+        self.readLock.withLock { $0 = true }
+
         let limit = self.numberOfProcesses
-        if limit == 0 { return nil }
-        return await self.worker.getTopProcesses(limit: limit)
+        let worker = self.worker
+
+        Task {
+            defer { self.readLock.withLock { $0 = false } }
+
+            if limit == 0 { return }
+
+            let processes = await worker.getTopProcesses(limit: limit)
+
+            if let old = self.value, old == processes {
+                return
+            }
+
+            self.callback(processes)
+        }
     }
 }
 

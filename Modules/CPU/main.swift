@@ -152,6 +152,20 @@ public class CPU: Module {
     private var systemWidgetsUpdatesState: Bool {
         self.userDefaults?.bool(forKey: "systemWidgetsUpdates_state") ?? false
     }
+
+    private func widgetSnapshot(_ value: CPU_Load) -> CPU_Load {
+        func roundedPercent(_ value: Double) -> Double {
+            guard value.isFinite else { return 0 }
+            return Double(Int(min(max(value, 0), 1) * 100)) / 100
+        }
+
+        return CPU_Load(
+            totalUsage: roundedPercent(value.totalUsage),
+            systemLoad: roundedPercent(value.systemLoad),
+            userLoad: roundedPercent(value.userLoad),
+            idleLoad: roundedPercent(value.idleLoad)
+        )
+    }
     
     public init() {
         self.settingsView = Settings(.CPU)
@@ -230,7 +244,7 @@ public class CPU: Module {
         
         self.loadReader?.setReadScope(self.loadReadScope(detailVisible: detailVisible))
         self.loadReader?.setActivityMode(mainMode)
-        self.frequencyReader?.setActivityMode(detailVisible ? .active : mainMode)
+        self.frequencyReader?.setActivityMode(SamplingPolicy.detailMode(detailVisible: detailVisible))
         self.temperatureReader?.setActivityMode(SamplingPolicy.detailMode(detailVisible: detailVisible))
         self.averageLoadReader?.setActivityMode(SamplingPolicy.detailMode(detailVisible: detailVisible))
         self.processReader?.setActivityMode(SamplingPolicy.popupMode(popupVisible: self.isPopupVisible))
@@ -342,7 +356,8 @@ public class CPU: Module {
         }
         
         if self.systemWidgetsUpdatesState {
-            if isWidgetActive(self.userDefaults, [CPU_entry.kind, "UnitedWidget"]), let blobData = try? JSONEncoder().encode(value) {
+            let widgetValue = self.widgetSnapshot(value)
+            if isWidgetActive(self.userDefaults, [CPU_entry.kind, "UnitedWidget"]), let blobData = try? JSONEncoder().encode(widgetValue) {
                 let key = "CPU@LoadReader"
                 if self.userDefaults?.data(forKey: key) != blobData {
                     self.userDefaults?.set(blobData, forKey: key)
