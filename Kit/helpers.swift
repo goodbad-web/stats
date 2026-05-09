@@ -105,8 +105,10 @@ public struct Units {
         let multiplier: Double = base == .byte ? 1 : 8
         
         switch bytes {
-        case 0..<1_000:
-            return ("0", "K\(stringBase)/s")
+        case 0:
+            return ("0", "\(stringBase)/s")
+        case 1..<1_000:
+            return (String(format: "%.0f", Double(bytes)*multiplier), "\(stringBase)/s")
         case 1_000..<(1_000 * 1_000):
             return (String(format: "%.0f", kilobytes*multiplier), "K\(stringBase)/s")
         case 1_000..<(1_000 * 1_000 * 100):
@@ -785,13 +787,14 @@ public func temperature(_ value: Double, defaultUnit: UnitTemperature = UnitTemp
     return temperatureFormatter.string(from: measurement)
 }
 
-public func sysctlByName(_ name: String) -> Int64 {
-    var num: Int64 = 0
+public func sysctlByName(_ name: String, defaultValue: Int64 = 0) -> Int64 {
+    var num: Int64 = defaultValue
     var size = MemoryLayout<Int64>.size
     
     if sysctlbyname(name, &num, &size, nil, 0) != 0 {
         let posix = POSIXError.Code(rawValue: errno).map { POSIXError($0).localizedDescription } ?? "Unknown POSIX error"
-        kitLogger.error("sysctlbyname failed: \(posix, privacy: .public)")
+        kitLogger.error("sysctlbyname failed for \(name): \(posix, privacy: .public)")
+        return defaultValue
     }
     
     return num

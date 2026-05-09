@@ -43,17 +43,15 @@ private actor RAMReaderWorker {
         let inactive = Double(stats.inactive_count) * Double(vm_page_size)
         let wired = Double(stats.wire_count) * Double(vm_page_size)
         let compressed = Double(stats.compressor_page_count) * Double(vm_page_size)
-        let purgeable = Double(stats.purgeable_count) * Double(vm_page_size)
-        let external = Double(stats.external_page_count) * Double(vm_page_size)
-        let swapins = Int64(stats.swapins)
-        let swapouts = Int64(stats.swapouts)
         
-        let used = active + inactive + speculative + wired + compressed - purgeable - external
+        let used = active + wired + compressed
         let free = self.totalSize - used
         
-        var intSize: size_t = MemoryLayout<uint>.size
+        var intSize: size_t = MemoryLayout<Int>.size
         var pressureLevel: Int = 0
-        sysctlbyname("kern.memorystatus_vm_pressure_level", &pressureLevel, &intSize, nil, 0)
+        if sysctlbyname("kern.memorystatus_vm_pressure_level", &pressureLevel, &intSize, nil, 0) != 0 {
+            pressureLevel = 0
+        }
         
         let pressureValue: RAMPressure = {
             switch pressureLevel {
@@ -65,7 +63,9 @@ private actor RAMReaderWorker {
         
         var stringSize: size_t = MemoryLayout<xsw_usage>.size
         var swap: xsw_usage = xsw_usage()
-        sysctlbyname("vm.swapusage", &swap, &stringSize, nil, 0)
+        if sysctlbyname("vm.swapusage", &swap, &stringSize, nil, 0) != 0 {
+            swap = xsw_usage()
+        }
         
         return RAM_Usage(
             total: self.totalSize,
@@ -77,8 +77,8 @@ private actor RAMReaderWorker {
             wired: wired,
             compressed: compressed,
             
-            app: used - wired - compressed,
-            cache: purgeable + external,
+            app: active,
+            cache: inactive + speculative,
             
             swap: Swap(
                 total: Double(swap.xsu_total),
@@ -87,8 +87,8 @@ private actor RAMReaderWorker {
             ),
             pressure: Pressure(level: pressureLevel, value: pressureValue),
             
-            swapins: swapins,
-            swapouts: swapouts
+            swapins: Int64(stats.swapins),
+            swapouts: Int64(stats.swapouts)
         )
     }
     

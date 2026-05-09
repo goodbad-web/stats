@@ -25,10 +25,13 @@ private actor BatteryReaderWorker {
     }
     
     deinit {
-        IOObjectRelease(self.service)
+        if self.service != 0 {
+            IOObjectRelease(self.service)
+        }
     }
-    
     func read(currentUsage: Battery_Usage) async -> Battery_Usage? {
+        guard self.service != 0 else { return nil }
+        
         guard let psInfo = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
               let psList = IOPSCopyPowerSourcesList(psInfo)?.takeRetainedValue() as? [CFTypeRef],
               !psList.isEmpty else {
@@ -213,7 +216,7 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
         }, context).takeRetainedValue()
         
         if let source = self.source {
-            self.loop = RunLoop.current.getCFRunLoop()
+            self.loop = CFRunLoopGetMain()
             CFRunLoopAddSource(self.loop, source, .defaultMode)
         }
         
