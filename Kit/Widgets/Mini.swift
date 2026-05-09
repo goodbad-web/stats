@@ -38,30 +38,23 @@ public class Mini: WidgetWrapper, WidgetConfigurable {
         return .left
     }
     
-    public init(title: String, config: NSDictionary?, preview: Bool = false) {
+    public init(title: String, config: WidgetConfig? = nil, preview: Bool = false) {
         var widgetTitle: String = title
-        if config != nil {
-            var configuration = config!
-            
-            if preview {
-                if let previewConfig = config!["Preview"] as? NSDictionary {
-                    configuration = previewConfig
-                    if let value = configuration["Value"] as? String {
-                        self._value = Double(value) ?? 0
-                    }
-                }
+        if let config {
+            if preview, let previewConfig = config.section("Preview"), let value = previewConfig.string("Value") {
+                self._value = Double(value) ?? 0
             }
             
-            if let titleFromConfig = configuration["Title"] as? String {
+            if let titleFromConfig = config.string("Title") {
                 widgetTitle = titleFromConfig
             }
-            if let label = configuration["Label"] as? Bool {
+            if let label = config.bool("Label") {
                 self.labelState = label
             }
-            if let unsupportedColors = configuration["Unsupported colors"] as? [String] {
+            if let unsupportedColors = config.stringArray("Unsupported colors") {
                 self.colors = self.colors.filter{ !unsupportedColors.contains($0.key) }
             }
-            if let color = configuration["Color"] as? String {
+            if let color = config.string("Color") {
                 if let defaultColor = colors.first(where: { "\($0.self)" == color }) {
                     self.colorState = defaultColor
                 }

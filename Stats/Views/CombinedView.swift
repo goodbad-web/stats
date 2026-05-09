@@ -17,6 +17,8 @@ internal class CombinedView: NSObject, NSGestureRecognizerDelegate {
     private var menuBarItem: NSStatusItem? = nil
     private var view: NSView = NSView(frame: NSRect(x: 0, y: 0, width: 0, height: Constants.Widget.height))
     private var popup: PopupWindow? = nil
+    private let eventObservers = AppEventObservationBag()
+    private var layoutSignature: [String] = []
     
     private var status: Bool {
         UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.combinedModules)
@@ -56,17 +58,18 @@ internal class CombinedView: NSObject, NSGestureRecognizerDelegate {
             self.enable()
         }
         
-        NotificationCenter.default.addObserver(self, selector: #selector(listenForOneView), name: .toggleOneView, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(listenForModuleRearrrange), name: .moduleRearrange, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(listenCombinedModulesPopup), name: .combinedModulesPopup, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(listenForModule), name: .toggleModule, object: nil)
-    }
-    
-    deinit {
-        NotificationCenter.default.removeObserver(self, name: .toggleOneView, object: nil)
-        NotificationCenter.default.removeObserver(self, name: .moduleRearrange, object: nil)
-        NotificationCenter.default.removeObserver(self, name: .combinedModulesPopup, object: nil)
-        NotificationCenter.default.removeObserver(self, name: .toggleModule, object: nil)
+        self.eventObservers.store(AppEventCenter.shared.observe(.toggleOneView) { [weak self] notification in
+            self?.listenForOneView(notification)
+        })
+        self.eventObservers.store(AppEventCenter.shared.observe(.moduleRearrange) { [weak self] _ in
+            self?.listenForModuleRearrrange()
+        })
+        self.eventObservers.store(AppEventCenter.shared.observe(.combinedModulesPopup) { [weak self] _ in
+            self?.listenCombinedModulesPopup()
+        })
+        self.eventObservers.store(AppEventCenter.shared.observe(.toggleModule) { [weak self] notification in
+            self?.listenForModule(notification)
+        })
     }
     
     public func enable() {
@@ -117,27 +120,56 @@ internal class CombinedView: NSObject, NSGestureRecognizerDelegate {
     }
     
     private func recalculate() {
-        self.view.subviews.forEach({ $0.removeFromSuperview() })
+        let activeModules = self.activeModules
+        let signature = self.layoutSignature(for: activeModules)
+        let expectedCount = signature.count
+        
+        if self.layoutSignature != signature || self.view.subviews.count != expectedCount {
+            self.view.subviews.forEach({ $0.removeFromSuperview() })
+            
+            for (index, module) in activeModules.enumerated() {
+                self.view.addSubview(module.menuBar.view)
+                if self.separator && index < activeModules.count - 1 {
+                    let separator = NSView(frame: NSRect(x: 0, y: 3, width: 1, height: Constants.Widget.height-6))
+                    separator.wantsLayer = true
+                    separator.layer?.backgroundColor = (separator.isDarkMode ? NSColor.white : NSColor.black).cgColor
+                    self.view.addSubview(separator)
+                }
+            }
+            self.layoutSignature = signature
+        }
         
         var w: CGFloat = 0
-        var i: Int = 0
-        self.activeModules.forEach { (m: Module) in
-            self.view.addSubview(m.menuBar.view)
-            self.view.subviews[i].setFrameOrigin(NSPoint(x: w, y: 0))
-            w += m.menuBar.view.frame.width + self.spacing
-            i += 1
+        var subviewIndex: Int = 0
+        for (index, module) in activeModules.enumerated() {
+            guard self.view.subviews.indices.contains(subviewIndex) else { break }
+            let moduleView = self.view.subviews[subviewIndex]
+            moduleView.setFrameOrigin(NSPoint(x: w, y: 0))
+            w += module.menuBar.view.frame.width + self.spacing
+            subviewIndex += 1
             
-            if self.separator && i < 2 * self.activeModules.count - 1 {
-                let separator = NSView(frame: NSRect(x: w, y: 3, width: 1, height: Constants.Widget.height-6))
-                separator.wantsLayer = true
-                separator.layer?.backgroundColor = (separator.isDarkMode ? NSColor.white : NSColor.black).cgColor
-                self.view.addSubview(separator)
+            if self.separator && index < activeModules.count - 1 {
+                guard self.view.subviews.indices.contains(subviewIndex) else { break }
+                let separator = self.view.subviews[subviewIndex]
+                separator.setFrameOrigin(NSPoint(x: w, y: 3))
+                separator.setFrameSize(NSSize(width: 1, height: Constants.Widget.height - 6))
                 w += 3 + self.spacing
-                i += 1
+                subviewIndex += 1
             }
         }
         self.view.setFrameSize(NSSize(width: w, height: self.view.frame.height))
         self.menuBarItem?.length = w
+    }
+
+    private func layoutSignature(for modules: [Module]) -> [String] {
+        var signature: [String] = []
+        for (index, module) in modules.enumerated() {
+            signature.append("module:\(module.name)")
+            if self.separator && index < modules.count - 1 {
+                signature.append("separator")
+            }
+        }
+        return signature
     }
     
     // call when popup appear/disappear
@@ -169,7 +201,7 @@ internal class CombinedView: NSObject, NSGestureRecognizerDelegate {
         }
     }
     
-    @objc private func listenForOneView(_ notification: Notification) {
+    private func listenForOneView(_ notification: Notification) {
         guard AppEventCenter.shared.toggleOneView(from: notification) == nil else { return }
         
         if self.status {
@@ -179,11 +211,11 @@ internal class CombinedView: NSObject, NSGestureRecognizerDelegate {
         }
     }
     
-    @objc private func listenForModuleRearrrange() {
+    private func listenForModuleRearrrange() {
         self.recalculate()
     }
     
-    @objc private func listenCombinedModulesPopup() {
+    private func listenCombinedModulesPopup() {
         if !self.combinedModulesPopup {
             self.activeModules.forEach { (m: Module) in
                 m.menuBar.widgets.forEach { w in
@@ -213,7 +245,7 @@ internal class CombinedView: NSObject, NSGestureRecognizerDelegate {
         }
     }
     
-    @objc private func listenForModule(_ notification: Notification) {
+    private func listenForModule(_ notification: Notification) {
         guard let event = AppEventCenter.shared.moduleToggle(from: notification),
               event.state == true,
               let module = self.activeModules.first(where: { $0.name == event.module }) else { return }
@@ -236,6 +268,7 @@ internal class CombinedView: NSObject, NSGestureRecognizerDelegate {
 private class Popup: NSStackView, Popup_p {
     fileprivate var keyboardShortcut: [UInt16] = []
     fileprivate var sizeCallback: ((NSSize) -> Void)? = nil
+    private let eventObservers = AppEventObservationBag()
     
     init() {
         self.keyboardShortcut = UserDefaultsSettingsStore.shared.array(
@@ -250,16 +283,13 @@ private class Popup: NSStackView, Popup_p {
         self.spacing = Constants.Popup.spacing
         
         self.reinit()
-        
-        NotificationCenter.default.addObserver(self, selector: #selector(reinit), name: .toggleModule, object: nil)
+        self.eventObservers.store(AppEventCenter.shared.observe(.toggleModule) { [weak self] _ in
+            self?.reinit()
+        })
     }
-    
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
-    }
-    
-    deinit {
-        NotificationCenter.default.removeObserver(self, name: .toggleModule, object: nil)
     }
     
     fileprivate func settings() -> NSView? { return nil }
@@ -270,7 +300,7 @@ private class Popup: NSStackView, Popup_p {
         UserDefaultsSettingsStore.shared.set(AppSettingsKeys.combinedModulesPopupKeyboardShortcut, value: binding)
     }
     
-    @objc private func reinit() {
+    private func reinit() {
         self.subviews.forEach({ $0.removeFromSuperview() })
         
         let availableModules = modules.filter({ $0.enabled && $0.portal != nil })

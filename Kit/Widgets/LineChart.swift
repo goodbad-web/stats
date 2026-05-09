@@ -60,25 +60,25 @@ public class LineChart: WidgetWrapper, WidgetConfigurable {
     
     public var NSLabelCharts: [NSAttributedString] = []
     
-    public init(title: String, config: NSDictionary?, preview: Bool = false) {
+    public init(title: String, config: WidgetConfig? = nil, preview: Bool = false) {
         var widgetTitle: String = title
-        if config != nil {
-            if let titleFromConfig = config!["Title"] as? String {
+        if let config {
+            if let titleFromConfig = config.string("Title") {
                 widgetTitle = titleFromConfig
             }
-            if let label = config!["Label"] as? Bool {
+            if let label = config.bool("Label") {
                 self.labelState = label
             }
-            if let box = config!["Box"] as? Bool {
+            if let box = config.bool("Box") {
                 self.boxState = box
             }
-            if let value = config!["Value"] as? Bool {
+            if let value = config.bool("Value") {
                 self.valueState = value
             }
-            if let unsupportedColors = config!["Unsupported colors"] as? [String] {
+            if let unsupportedColors = config.stringArray("Unsupported colors") {
                 self.colors = self.colors.filter{ !unsupportedColors.contains($0.key) }
             }
-            if let color = config!["Color"] as? String {
+            if let color = config.string("Color") {
                 if let defaultColor = colors.first(where: { "\($0.self)" == color }) {
                     self.colorState = defaultColor
                 }

@@ -48,14 +48,10 @@ public class StackWidget: WidgetWrapper {
         return .left
     }
     
-    public init(title: String, config: NSDictionary?, preview: Bool = false) {
-        if let config, preview {
-            if let previewConfig = config["Preview"] as? NSDictionary {
-                if let value = previewConfig["Values"] as? String {
-                    for (i, value) in value.split(separator: ",").enumerated() {
-                        self.values.append(Stack_t(key: "\(i)", value: String(value)))
-                    }
-                }
+    public init(title: String, config: WidgetConfig? = nil, preview: Bool = false) {
+        if let config, preview, let previewConfig = config.section("Preview"), let value = previewConfig.string("Values") {
+            for (i, value) in value.split(separator: ",").enumerated() {
+                self.values.append(Stack_t(key: "\(i)", value: String(value)))
             }
         }
         

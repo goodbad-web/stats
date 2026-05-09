@@ -17,6 +17,7 @@ public class DB {
     private var lldb: LLDB? = nil
     private let queue = DispatchQueue(label: "eu.exelban.db")
     private let ttl: Int = 60*60
+    private var cleanedKeys: Set<String> = []
     
     public var _writeTS: [String: Date] = [:]
     public var writeTS: [String: Date] {
@@ -68,7 +69,9 @@ public class DB {
     }
     
     public func setup<T: Codable>(_ type: T.Type, _ key: String) {
-        self.clean(key)
+        if self.markCleanupNeeded(for: key) {
+            self.clean(key)
+        }
         if let raw = self.lldb?.findOne(key), let value = try? JSONDecoder().decode(type, from: Data(raw.utf8)) {
             self.values[key] = value
         }
@@ -104,5 +107,15 @@ public class DB {
         }
         
         self.lldb?.deleteMany(toDeleteKeys)
+    }
+    
+    private func markCleanupNeeded(for key: String) -> Bool {
+        self.queue.sync {
+            if self.cleanedKeys.contains(key) {
+                return false
+            }
+            self.cleanedKeys.insert(key)
+            return true
+        }
     }
 }

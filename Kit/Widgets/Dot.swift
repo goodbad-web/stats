@@ -14,18 +14,9 @@ import Cocoa
 public class DotWidget: WidgetWrapper {
     private var value: NSColor = .systemGreen
     
-    public init(title: String, config: NSDictionary?, preview: Bool = false) {
-        if config != nil {
-            var configuration = config!
-            
-            if preview {
-                if let previewConfig = config!["Preview"] as? NSDictionary {
-                    configuration = previewConfig
-                    if let value = configuration["Value"] as? Bool {
-                        self.value = value ? .systemGreen : .systemRed
-                    }
-                }
-            }
+    public init(title: String, config: WidgetConfig? = nil, preview: Bool = false) {
+        if let config, preview, let previewConfig = config.section("Preview"), let value = previewConfig.bool("Value") {
+            self.value = value ? .systemGreen : .systemRed
         }
         
         super.init(.state, title: title, frame: CGRect(

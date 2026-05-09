@@ -19,6 +19,35 @@ public protocol WidgetConfigurable {
     var widgetConfiguration: WidgetSettingsConfiguration { get }
 }
 
+public struct WidgetConfig {
+    fileprivate let dictionary: NSDictionary
+    
+    public init(_ dictionary: NSDictionary) {
+        self.dictionary = dictionary
+    }
+    
+    public func section(_ key: String) -> WidgetConfig? {
+        guard let nested = self.dictionary[key] as? NSDictionary else { return nil }
+        return WidgetConfig(nested)
+    }
+    
+    public func bool(_ key: String) -> Bool? {
+        self.dictionary[key] as? Bool
+    }
+    
+    public func string(_ key: String) -> String? {
+        self.dictionary[key] as? String
+    }
+    
+    public func int(_ key: String) -> Int? {
+        self.dictionary[key] as? Int
+    }
+    
+    public func stringArray(_ key: String) -> [String]? {
+        self.dictionary[key] as? [String]
+    }
+}
+
 open class BaseWidgetConfiguration: NSView, WidgetSettingsConfiguration {
     public let title: String
     public let type: widget_t
@@ -95,8 +124,8 @@ public enum widget_t: String {
     case state = "state"
     case text = "text"
     
-    public func new(module: String, config: NSDictionary, defaultWidget: widget_t) -> SWidget? {
-        guard let widgetConfig: NSDictionary = config[self.rawValue] as? NSDictionary else { return nil }
+    public func new(module: String, config: WidgetConfig, defaultWidget: widget_t) -> SWidget? {
+        guard let widgetConfig = config.section(self.rawValue) else { return nil }
         
         var image: NSImage? = nil
         var preview: widget_p? = nil

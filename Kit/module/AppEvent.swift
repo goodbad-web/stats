@@ -28,6 +28,15 @@ public final class AppEventCenter: @unchecked Sendable {
     public init(center: NotificationCenter = .default) {
         self.center = center
     }
+
+    public func observe(
+        _ name: Notification.Name,
+        object: Any? = nil,
+        queue: OperationQueue? = .main,
+        using block: @escaping (Notification) -> Void
+    ) -> NSObjectProtocol {
+        self.center.addObserver(forName: name, object: object, queue: queue, using: block)
+    }
     
     public func post(_ event: AppEvent) {
         switch event {
@@ -138,5 +147,22 @@ public final class AppEventCenter: @unchecked Sendable {
 
     public func remoteAuthState(from notification: Notification) -> Bool? {
         notification.userInfo?["auth"] as? Bool
+    }
+}
+
+public final class AppEventObservationBag {
+    private let center: NotificationCenter
+    private var tokens: [NSObjectProtocol] = []
+    
+    public init(center: NotificationCenter = .default) {
+        self.center = center
+    }
+    
+    public func store(_ token: NSObjectProtocol) {
+        self.tokens.append(token)
+    }
+    
+    deinit {
+        self.tokens.forEach { self.center.removeObserver($0) }
     }
 }

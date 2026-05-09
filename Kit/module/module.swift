@@ -27,7 +27,11 @@ public struct module_c {
     internal var settingsConfig: NSDictionary = NSDictionary()
     internal var previewConfig: NSDictionary = NSDictionary()
     
-    public var hasPreview: Bool { self.previewConfig["enabled"] as? Bool ?? false }
+    public var hasPreview: Bool { self.boolValue("enabled", in: self.previewConfig) }
+    public var hasWidgets: Bool { !self.availableWidgets.isEmpty }
+    public var previewIsAvailable: Bool { self.boolValue("available", in: self.previewConfig) }
+    public var popupSettingsAvailable: Bool { self.boolValue("popup", in: self.settingsConfig) }
+    public var notificationsSettingsAvailable: Bool { self.boolValue("notifications", in: self.settingsConfig) }
     
     init(in path: String) {
         guard let dict = NSDictionary(contentsOfFile: path) else {
@@ -51,25 +55,18 @@ public struct module_c {
         }
         
         if let widgetsDict = dict["Widgets"] as? NSDictionary {
-            var list: [String: Int] = [:]
             self.widgetsConfig = widgetsDict
-            
-            for widgetName in widgetsDict.allKeys {
-                if let widget = widget_t(rawValue: widgetName as! String) {
-                    let widgetDict = widgetsDict[widgetName as! String] as? NSDictionary
-                    if widgetDict?["Default"] as? Bool == true {
-                        self.defaultWidget = widget
-                    }
-                    var order = 0
-                    if let o = widgetDict?["Order"] as? Int {
-                        order = o
-                    }
-                    
-                    list[widgetName as! String] = order
+            var list: [(name: String, order: Int)] = []
+            for case let widgetName as String in widgetsDict.allKeys {
+                guard let widget = widget_t(rawValue: widgetName) else { continue }
+                let widgetDict = widgetsDict[widgetName] as? NSDictionary
+                if self.boolValue("Default", in: widgetDict) {
+                    self.defaultWidget = widget
                 }
+                let order = self.intValue("Order", in: widgetDict)
+                list.append((name: widgetName, order: order))
             }
-            
-            self.availableWidgets = list.sorted(by: { $0.1 < $1.1 }).map{ (widget_t(rawValue: $0.key) ?? .unknown) }
+            self.availableWidgets = list.sorted { $0.order < $1.order }.map { widget_t(rawValue: $0.name) ?? .unknown }
         }
         
         if let settingsDict = dict["Settings"] as? NSDictionary {
@@ -79,6 +76,14 @@ public struct module_c {
         if let previewDict = dict["Preview"] as? NSDictionary {
             self.previewConfig = previewDict
         }
+    }
+    
+    private func boolValue(_ key: String, in dict: NSDictionary?) -> Bool {
+        dict?[key] as? Bool ?? false
+    }
+    
+    private func intValue(_ key: String, in dict: NSDictionary?) -> Int {
+        dict?[key] as? Int ?? 0
     }
 }
 
@@ -120,6 +125,7 @@ public struct module_c {
     
     private let log: NextLog
     private var readers: [Reader_p] = []
+    private let eventObservers = AppEventObservationBag()
     
     private var pauseState: Bool {
         get { UserDefaultsSettingsStore.shared.bool(AppSettingsKeys.pause) }
@@ -170,15 +176,23 @@ public struct module_c {
             self.disable()
         }
         
-        NotificationCenter.default.addObserver(self, selector: #selector(listenForMouseDownInSettings), name: .clickInSettings, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(listenForModuleToggle), name: .toggleModule, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(listenForPopupToggle), name: .togglePopup, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(listenForToggleWidget), name: .toggleWidget, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(listenForWindowOpen), name: .openWindow, object: nil)
+        self.eventObservers.store(AppEventCenter.shared.observe(.clickInSettings) { [weak self] _ in
+            self?.listenForMouseDownInSettings()
+        })
+        self.eventObservers.store(AppEventCenter.shared.observe(.toggleModule) { [weak self] notification in
+            self?.listenForModuleToggle(notification)
+        })
+        self.eventObservers.store(AppEventCenter.shared.observe(.togglePopup) { [weak self] notification in
+            self?.listenForPopupToggle(notification)
+        })
+        self.eventObservers.store(AppEventCenter.shared.observe(.toggleWidget) { [weak self] notification in
+            self?.listenForToggleWidget(notification)
+        })
+        self.eventObservers.store(AppEventCenter.shared.observe(.openWindow) { [weak self] notification in
+            self?.listenForWindowOpen(notification)
+        })
         
-        // swiftlint:disable empty_count
-        if self.config.widgetsConfig.count != 0 {
-            // swiftlint:enable empty_count
+        if self.config.hasWidgets {
             self.initWidgets()
         } else {
             debug("Module started without widget", log: self.log)
@@ -194,10 +208,6 @@ public struct module_c {
         )
         
         self.popup = PopupWindow(title: self.config.name, module: self.moduleType, view: self.popupView, visibilityCallback: self.popupVisibilityCallback)
-    }
-    
-    deinit {
-        NotificationCenter.default.removeObserver(self)
     }
     
     // load function which call when app start
@@ -285,10 +295,11 @@ public struct module_c {
     private func initWidgets() {
         guard self.available else { return }
         
+        let widgetConfig = WidgetConfig(self.config.widgetsConfig)
         self.config.availableWidgets.forEach { (widgetType: widget_t) in
             if let widget = widgetType.new(
                 module: self.config.name,
-                config: self.config.widgetsConfig,
+                config: widgetConfig,
                 defaultWidget: self.config.defaultWidget
             ) {
                 self.menuBar.append(widget)
@@ -311,7 +322,7 @@ public struct module_c {
         self.updateReaderActivityModes()
     }
     
-    @objc private func listenForWindowOpen(_ notification: Notification) {
+    private func listenForWindowOpen(_ notification: Notification) {
         guard let event = AppEventCenter.shared.openWindow(from: notification) else { return }
         var state = event.state
         
@@ -333,7 +344,7 @@ public struct module_c {
         self.updateReaderActivityModes()
     }
     
-    @objc private func listenForPopupToggle(_ notification: Notification) {
+    private func listenForPopupToggle(_ notification: Notification) {
         guard let popup = self.popup,
               let event = AppEventCenter.shared.popupToggle(from: notification),
               let buttonOrigin = event.origin,
@@ -374,7 +385,7 @@ public struct module_c {
         }
     }
     
-    @objc private func listenForModuleToggle(_ notification: Notification) {
+    private func listenForModuleToggle(_ notification: Notification) {
         if let event = AppEventCenter.shared.moduleToggle(from: notification) {
             let name = event.module
             if name == self.config.name {
@@ -400,13 +411,13 @@ public struct module_c {
         }
     }
     
-    @objc private func listenForMouseDownInSettings() {
+    private func listenForMouseDownInSettings() {
         if let popup = self.popup, popup.isVisible && !popup.locked {
             self.popup?.setIsVisible(false)
         }
     }
     
-    @objc private func listenForToggleWidget(_ notification: Notification) {
+    private func listenForToggleWidget(_ notification: Notification) {
         guard let name = AppEventCenter.shared.toggleWidget(from: notification), name == self.config.name else {
             return
         }

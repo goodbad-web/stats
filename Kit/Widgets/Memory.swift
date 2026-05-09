@@ -21,21 +21,12 @@ public class MemoryWidget: WidgetWrapper {
     
     private let width: CGFloat = 50
     
-    public init(title: String, config: NSDictionary?, preview: Bool = false) {
-        if config != nil {
-            var configuration = config!
-            
-            if preview {
-                if let previewConfig = config!["Preview"] as? NSDictionary {
-                    configuration = previewConfig
-                    if let value = configuration["Value"] as? String {
-                        let values = value.split(separator: ",").map{ (String($0) ) }
-                        if values.count == 2 {
-                            self.value.0 = values[0]
-                            self.value.1 = values[1]
-                        }
-                    }
-                }
+    public init(title: String, config: WidgetConfig? = nil, preview: Bool = false) {
+        if let config, preview, let previewConfig = config.section("Preview"), let value = previewConfig.string("Value") {
+            let values = value.split(separator: ",").map { String($0) }
+            if values.count == 2 {
+                self.value.0 = values[0]
+                self.value.1 = values[1]
             }
         }
         

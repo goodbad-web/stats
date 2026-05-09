@@ -28,12 +28,10 @@ public class PieChart: WidgetWrapper {
     
     private let size: CGFloat = Constants.Widget.height - (Constants.Widget.margin.y*2) + (Constants.Widget.margin.x*2)
     
-    public init(title: String, config: NSDictionary?, preview: Bool = false) {
+    public init(title: String, config: WidgetConfig? = nil, preview: Bool = false) {
         var widgetTitle: String = title
-        if config != nil {
-            if let titleFromConfig = config!["Title"] as? String {
+        if let config, let titleFromConfig = config.string("Title") {
                 widgetTitle = titleFromConfig
-            }
         }
         
         super.init(.pieChart, title: widgetTitle, frame: CGRect(

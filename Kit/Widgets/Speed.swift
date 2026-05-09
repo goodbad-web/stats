@@ -97,17 +97,17 @@ public class SpeedWidget: WidgetWrapper, WidgetConfigurable {
         DataSizeBase(rawValue: Store.shared.string(key: "\(self.title)_base", defaultValue: "byte")) ?? .byte
     }
     
-    public init(title: String, config: NSDictionary?, preview: Bool = false) {
+    public init(title: String, config: WidgetConfig? = nil, preview: Bool = false) {
         let widgetTitle: String = title
-        if config != nil {
-            if let symbols = config!["Symbols"] as? NSDictionary {
-                if let i = symbols["Input"] as? String { self.symbols.input = i }
-                if let o = symbols["Output"] as? String { self.symbols.output = o }
+        if let config {
+            if let symbols = config.section("Symbols") {
+                if let i = symbols.string("Input") { self.symbols.input = i }
+                if let o = symbols.string("Output") { self.symbols.output = o }
             }
-            if let icon = config!["Icon"] as? String { self.icon = icon }
-            if let words = config!["Words"] as? NSDictionary {
-                if let i = words["Input"] as? String { self.words.input = i }
-                if let o = words["Output"] as? String { self.words.output = o }
+            if let icon = config.string("Icon") { self.icon = icon }
+            if let words = config.section("Words") {
+                if let i = words.string("Input") { self.words.input = i }
+                if let o = words.string("Output") { self.words.output = o }
             }
         }
         

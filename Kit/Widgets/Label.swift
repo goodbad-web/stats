@@ -14,8 +14,8 @@ import Cocoa
 public class Label: WidgetWrapper {
     private var label: String
     
-    internal init(title: String, config: NSDictionary) {
-        if let title = config["Title"] as? String {
+    internal init(title: String, config: WidgetConfig) {
+        if let title = config.string("Title") {
             self.label = title
         } else {
             self.label = title

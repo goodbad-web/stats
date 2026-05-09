@@ -33,34 +33,29 @@ public class BarChart: WidgetWrapper {
     ), useSwiftUI: false)
     public var NSLabelCharts: [NSAttributedString] = []
     
-    public init(title: String, config: NSDictionary?, preview: Bool = false) {
+    public init(title: String, config: WidgetConfig? = nil, preview: Bool = false) {
         var widgetTitle: String = title
-        
-        if config != nil {
-            var configuration = config!
-            if let titleFromConfig = config!["Title"] as? String {
+        if let config {
+            var configuration = config
+            if let titleFromConfig = config.string("Title") {
                 widgetTitle = titleFromConfig
             }
             
-            if preview {
-                if let previewConfig = config!["Preview"] as? NSDictionary {
-                    configuration = previewConfig
-                    if let value = configuration["Value"] as? String {
-                        self._value = value.split(separator: ",").map{ ([ColorValue(Double($0) ?? 0)]) }
-                    }
-                }
+            if preview, let previewConfig = config.section("Preview"), let value = previewConfig.string("Value") {
+                configuration = previewConfig
+                self._value = value.split(separator: ",").map { [ColorValue(Double($0) ?? 0)] }
             }
             
-            if let label = configuration["Label"] as? Bool {
+            if let label = configuration.bool("Label") {
                 self.labelState = label
             }
-            if let box = configuration["Box"] as? Bool {
+            if let box = configuration.bool("Box") {
                 self.boxState = box
             }
-            if let unsupportedColors = configuration["Unsupported colors"] as? [String] {
+            if let unsupportedColors = configuration.stringArray("Unsupported colors") {
                 self.colors = self.colors.filter{ !unsupportedColors.contains($0.key) }
             }
-            if let color = configuration["Color"] as? String {
+            if let color = configuration.string("Color") {
                 if let defaultColor = self.colors.first(where: { "\($0.self)" == color }) {
                     self.colorState = defaultColor
                 }

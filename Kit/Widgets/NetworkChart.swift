@@ -58,13 +58,13 @@ public class NetworkChart: WidgetWrapper {
     
     public var NSLabelCharts: [NSAttributedString] = []
     
-    public init(title: String, config: NSDictionary?, preview: Bool = false) {
+    public init(title: String, config: WidgetConfig? = nil, preview: Bool = false) {
         var widgetTitle: String = title
-        if let config = config {
-            if let titleFromConfig = config["Title"] as? String {
+        if let config {
+            if let titleFromConfig = config.string("Title") {
                 widgetTitle = titleFromConfig
             }
-            if let unsupportedColors = config["Unsupported colors"] as? [String] {
+            if let unsupportedColors = config.stringArray("Unsupported colors") {
                 self.colors = self.colors.filter{ !unsupportedColors.contains($0.key) }
             }
         }

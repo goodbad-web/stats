@@ -71,6 +71,7 @@ import Cocoa
     
     private var previewView: NSView? = nil
     private var settingsView: NSView? = nil
+    private let eventObservers = AppEventObservationBag()
     
     init(
         config: UnsafePointer<module_c>,
@@ -87,10 +88,9 @@ import Cocoa
         self.popupSettings = popupSettings
         self.notificationsSettings = notificationsSettings
         
-        self.isPreviewAvailable = config.pointee.previewConfig["available"] as? Bool ?? false
-        
-        self.isPopupSettingsAvailable = config.pointee.settingsConfig["popup"] as? Bool ?? false
-        self.isNotificationsSettingsAvailable = config.pointee.settingsConfig["notifications"] as? Bool ?? false
+        self.isPreviewAvailable = config.pointee.previewIsAvailable
+        self.isPopupSettingsAvailable = config.pointee.popupSettingsAvailable
+        self.isNotificationsSettingsAvailable = config.pointee.notificationsSettingsAvailable
         
         super.init(frame: NSRect.zero)
         
@@ -109,15 +109,14 @@ import Cocoa
             self.previewView = previewView
         }
         
-        NotificationCenter.default.addObserver(self, selector: #selector(listenForOneView), name: .toggleOneView, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(listenForToggleView), name: .togglePreview, object: nil)
+        self.eventObservers.store(AppEventCenter.shared.observe(.toggleOneView) { [weak self] notification in
+            self?.listenForOneView(notification)
+        })
+        self.eventObservers.store(AppEventCenter.shared.observe(.togglePreview) { [weak self] notification in
+            self?.listenForToggleView(notification)
+        })
         
         self.segmentedControl?.widthAnchor.constraint(equalTo: self.widthAnchor, constant: -(Constants.Settings.margin*2)).isActive = true
-    }
-    
-    deinit {
-        NotificationCenter.default.removeObserver(self, name: .toggleOneView, object: nil)
-        NotificationCenter.default.removeObserver(self, name: .togglePreview, object: nil)
     }
     
     required public init?(coder: NSCoder) {
@@ -311,7 +310,7 @@ import Cocoa
         AppEventCenter.shared.post(.toggleOneView(module: self.config.pointee.name))
     }
     
-    @objc private func listenForOneView(_ notification: Notification) {
+    private func listenForOneView(_ notification: Notification) {
         guard AppEventCenter.shared.toggleOneView(from: notification) == nil else { return }
         self.oneViewBtn?.isEnabled = !self.globalOneView
         if !self.globalOneView {
@@ -319,7 +318,7 @@ import Cocoa
         }
     }
     
-    @objc private func listenForToggleView(_ notification: Notification) {
+    private func listenForToggleView(_ notification: Notification) {
         guard let moduleName = AppEventCenter.shared.togglePreview(from: notification),
               self.config.pointee.name == moduleName else { return }
         self.toggleView()

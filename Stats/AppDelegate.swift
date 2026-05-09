@@ -56,6 +56,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
     
     private var globalMonitor: Any? = nil
     private var localMonitor: Any? = nil
+    private let eventObservers = AppEventObservationBag()
     
     internal var pauseState: Bool {
         Store.shared.bool(key: "pause", defaultValue: false)
@@ -95,7 +96,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
             self.icon()
             self.setupMainMenu()
             
-            NotificationCenter.default.addObserver(self, selector: #selector(listenForAppPause), name: .pause, object: nil)
+            self.eventObservers.store(AppEventCenter.shared.observe(.pause) { [weak self] _ in
+                self?.listenForAppPause()
+            })
             self.globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
                 self?.handleKeyEvent(event)
             }
@@ -121,7 +124,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
     }
     
     deinit {
-        NotificationCenter.default.removeObserver(self)
         if let monitor = self.globalMonitor {
             NSEvent.removeMonitor(monitor)
             self.globalMonitor = nil
