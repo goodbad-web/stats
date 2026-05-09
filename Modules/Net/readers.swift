@@ -259,15 +259,16 @@ private actor NetworkUsageWorker {
         if let interface = CWWiFiClient.shared().interface(withName: interfaceID) {
             details.ssid = interface.ssid()
             if details.ssid == nil || details.ssid == "" {
-                if let cfg = interface.configuration(),
-                   let set = (cfg.value(forKey: "networkProfiles") as? NSOrderedSet),
-                   let first = set.firstObject as? CWNetworkProfile,
-                   let raw = first.ssid,
-                   !raw.isEmpty {
-                    details.ssid = raw
-                        .replacingOccurrences(of: "’", with: "'")
-                        .replacingOccurrences(of: "‘", with: "'")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                autoreleasepool {
+                    if let cfg = interface.configuration(),
+                       let first = cfg.networkProfiles.firstObject as? CWNetworkProfile,
+                       let raw = first.ssid,
+                       !raw.isEmpty {
+                        details.ssid = raw
+                            .replacingOccurrences(of: "’", with: "'")
+                            .replacingOccurrences(of: "‘", with: "'")
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
                 }
             }
             details.bssid = interface.bssid()
