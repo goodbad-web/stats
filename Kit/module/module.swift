@@ -318,6 +318,7 @@ public struct module_c {
         if state, let name = event.module, self.config.name != name {
             state = false
         }
+        guard self.settingsWindowVisible != state else { return }
         self.settingsWindowVisible = state
         
         self.readers.filter{ $0.preview || $0.sleep }.forEach { (reader: Reader_p) in
@@ -390,11 +391,11 @@ public struct module_c {
                         self.enable()
                     }
                 }
-            }
-            
-            if self.pauseState == true {
-                self.pauseState = false
-                AppEventCenter.shared.post(.pause(false))
+                
+                if self.pauseState == true {
+                    self.pauseState = false
+                    AppEventCenter.shared.post(.pause(false))
+                }
             }
         }
     }
