@@ -11,7 +11,7 @@
 
 import Cocoa
 
-public struct Stack_t: KeyValue_p {
+public struct Stack_t: KeyValue_p, Equatable {
     public var key: String
     public var value: String
     public var label: String?
@@ -229,27 +229,34 @@ public class StackWidget: WidgetWrapper {
     
     public func setValues(_ values: [Stack_t]) {
         DispatchQueue.main.async(execute: {
+            let previousValues = self.values
             var tableNeedsToBeUpdated: Bool = false
-            
+
             values.forEach { (p: Stack_t) in
                 if let idx = self.values.firstIndex(where: { $0.key == p.key }) {
+                    if self.values[idx].label != p.label {
+                        tableNeedsToBeUpdated = true
+                    }
                     self.values[idx].value = p.value
+                    self.values[idx].label = p.label
                     return
                 }
                 tableNeedsToBeUpdated = true
                 self.values.append(p)
             }
-            
+
             let diff = self.values.filter({ v in values.contains(where: { $0.key == v.key }) })
             if diff.count != self.values.count {
                 tableNeedsToBeUpdated = true
             }
             self.values = diff.sorted(by: { $0.index < $1.index })
-            
+
             if tableNeedsToBeUpdated {
                 self.orderTableView.update()
             }
-            self.display()
+            if tableNeedsToBeUpdated || self.values != previousValues {
+                self.display()
+            }
         })
     }
     

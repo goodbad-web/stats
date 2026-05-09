@@ -113,11 +113,16 @@ internal struct SensorsReadScope: Equatable, Sendable {
 
 private actor SensorsReaderWorker {
     private static let hidReadInterval: TimeInterval = 5
+    private static let powerSensorReadInterval: TimeInterval = 5
+    private static let throttledSMCKeys: Set<String> = ["PSTR"]
 
     private var lastRead: Date = Date()
     private var lastHIDRead: Date = .distantPast
+    private var lastPowerSensorRead: Date = .distantPast
+    private var lastBatteryRead: Date = .distantPast
     private let firstRead: Date = Date()
     private var lastIOSensorsRead: Date? = nil
+    private var cachedBatteryData: (raw: Int, corrected: Int, voltage: Int)?
     
     private var channels: CFMutableDictionary?
     private var subscription: IOReportSubscriptionRef?
@@ -139,16 +144,22 @@ private actor SensorsReaderWorker {
     
     func read(scope: SensorsReadScope, unknownSensorsState: Bool, hidState: Bool, currentSensors: [Sensor_p]) async -> [Sensor_p] {
         var sensors = currentSensors
+        let now = Date()
+        let shouldReadPowerSensors = now.timeIntervalSince(self.lastPowerSensorRead) >= Self.powerSensorReadInterval
         let smcKeys = sensors.indices.compactMap { i -> String? in
             let s = sensors[i]
             if s.group != .hid && !s.isComputed && s.key != "battery_amperage" && s.key != "battery_power" {
                 if !unknownSensorsState && s.group == .unknown { return nil }
                 if !scope.contains(s) { return nil }
+                if Self.throttledSMCKeys.contains(s.key) && !shouldReadPowerSensors { return nil }
                 return s.key
             }
             return nil
         }
         let smcValues = await SMC.shared.getValues(smcKeys)
+        if shouldReadPowerSensors && smcKeys.contains(where: { Self.throttledSMCKeys.contains($0) }) {
+            self.lastPowerSensorRead = now
+        }
 
         for i in sensors.indices {
             guard sensors[i].group != .hid && !sensors[i].isComputed else { continue }
@@ -157,14 +168,18 @@ private actor SensorsReaderWorker {
 
             var newValue: Double = sensors[i].value
             if sensors[i].key == "battery_amperage" || sensors[i].key == "battery_power" {
-                let batteryData = self.getBatteryData()
+                let batteryData = self.getCachedBatteryData(now: now)
                 if sensors[i].key == "battery_amperage" {
                     newValue = Double(abs(batteryData.corrected)) / 1000.0
                 } else if sensors[i].key == "battery_power" {
                     newValue = (Double(abs(batteryData.corrected)) / 1000.0) * (Double(batteryData.voltage) / 1000.0)
                 }
+            } else if let value = smcValues[sensors[i].key] {
+                newValue = value
+            } else if Self.throttledSMCKeys.contains(sensors[i].key) {
+                continue
             } else {
-                newValue = smcValues[sensors[i].key] ?? 0
+                newValue = 0
             }
 
             if sensors[i].type == .temperature && (newValue < 0 || newValue > 125) {
@@ -177,7 +192,6 @@ private actor SensorsReaderWorker {
         var gpuSensors = sensors.filter({ $0.group == .GPU && $0.type == .temperature && $0.average }).map{ $0.value }
         let fanSensors = sensors.filter({ $0.type == .fan && !$0.isComputed })
 
-        let now = Date()
         if hidState {
             if now.timeIntervalSince(self.lastHIDRead) >= Self.hidReadInterval {
                 var didReadHID = false
@@ -392,6 +406,18 @@ private actor SensorsReaderWorker {
     
     func getHIDSensors() -> [Sensor] {
         return self.initHIDSensors()
+    }
+
+    private func getCachedBatteryData(now: Date) -> (raw: Int, corrected: Int, voltage: Int) {
+        if let cachedBatteryData = self.cachedBatteryData,
+           now.timeIntervalSince(self.lastBatteryRead) < Self.powerSensorReadInterval {
+            return cachedBatteryData
+        }
+
+        let data = self.getBatteryData()
+        self.cachedBatteryData = data
+        self.lastBatteryRead = now
+        return data
     }
 
     private func getBatteryData() -> (raw: Int, corrected: Int, voltage: Int) {
