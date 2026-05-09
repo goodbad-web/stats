@@ -399,7 +399,6 @@ private class SidebarView: NSStackView {
         button.focusRingType = .none
         button.widthAnchor.constraint(equalToConstant: 33).isActive = true
         
-        
         return button
     }
     
