@@ -135,14 +135,14 @@ public class ChartView: NSView {
     }
     
     fileprivate func displayIfVisible() {
-        guard self.window != nil else { return }
+        guard let window = self.window, window.isVisible, !self.isHiddenOrHasHiddenAncestor else { return }
         if Thread.isMainThread {
             self.updateSwiftUI()
             guard !self.usesSwiftUIRendering else { return }
             self.needsDisplay = true
         } else {
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.window != nil else { return }
+                guard let self, let window = self.window, window.isVisible, !self.isHiddenOrHasHiddenAncestor else { return }
                 self.updateSwiftUI()
                 guard !self.usesSwiftUIRendering else { return }
                 self.needsDisplay = true
@@ -343,7 +343,6 @@ public class LineChartView: ChartView {
             options: [
                 .activeAlways,
                 .mouseEnteredAndExited,
-                .mouseMoved,
                 .inVisibleRect
             ],
             owner: self, userInfo: nil
@@ -899,7 +898,9 @@ public class ColumnChartView: ChartView {
         self.needsDisplay = true
     }
     public override func mouseMoved(with event: NSEvent) {
-        self.cursor = convert(event.locationInWindow, from: nil)
+        let point = convert(event.locationInWindow, from: nil)
+        guard self.cursor != point else { return }
+        self.cursor = point
         self.needsDisplay = true
     }
     public override func mouseDragged(with event: NSEvent) {

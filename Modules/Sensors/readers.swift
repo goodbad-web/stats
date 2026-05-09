@@ -112,7 +112,10 @@ internal struct SensorsReadScope: Equatable, Sendable {
 }
 
 private actor SensorsReaderWorker {
+    private static let hidReadInterval: TimeInterval = 5
+
     private var lastRead: Date = Date()
+    private var lastHIDRead: Date = .distantPast
     private let firstRead: Date = Date()
     private var lastIOSensorsRead: Date? = nil
     
@@ -174,18 +177,26 @@ private actor SensorsReaderWorker {
         var gpuSensors = sensors.filter({ $0.group == .GPU && $0.type == .temperature && $0.average }).map{ $0.value }
         let fanSensors = sensors.filter({ $0.type == .fan && !$0.isComputed })
 
+        let now = Date()
         if hidState {
-            for typ in SensorsReader.HIDtypes {
-                guard scope.includesHID(type: typ) else { continue }
-                let (page, usage, type) = Self.m1Preset(type: typ)
-                AppleSiliconSensors(page, usage, type).forEach { (key, value) in
-                    guard let key = key as? String, let value = value as? Double, value < 300 && value >= 0 else {
-                        return
-                    }
+            if now.timeIntervalSince(self.lastHIDRead) >= Self.hidReadInterval {
+                var didReadHID = false
+                for typ in SensorsReader.HIDtypes {
+                    guard scope.includesHID(type: typ) else { continue }
+                    didReadHID = true
+                    let (page, usage, type) = Self.m1Preset(type: typ)
+                    AppleSiliconSensors(page, usage, type).forEach { (key, value) in
+                        guard let key = key as? String, let value = value as? Double, value < 300 && value >= 0 else {
+                            return
+                        }
 
-                    if let idx = sensors.firstIndex(where: { $0.group == .hid && $0.key == key }) {
-                        sensors[idx].value = value
+                        if let idx = sensors.firstIndex(where: { $0.group == .hid && $0.key == key }) {
+                            sensors[idx].value = value
+                        }
                     }
+                }
+                if didReadHID {
+                    self.lastHIDRead = now
                 }
             }
 
@@ -230,7 +241,6 @@ private actor SensorsReaderWorker {
         }
 
         if let PSTRSensor = sensors.first(where: { $0.key == "PSTR"}), PSTRSensor.value > 0 {
-            let now = Date()
             let sinceLastRead = now.timeIntervalSince(self.lastRead)
             let sinceFirstRead = now.timeIntervalSince(self.firstRead)
 

@@ -13,32 +13,53 @@
 #import "bridge.h"
 
 static IOHIDEventSystemClientRef sharedClient = nil;
+static NSMutableDictionary<NSString*, NSArray<NSDictionary*>*>* serviceCache = nil;
 
 NSDictionary* AppleSiliconSensors(int32_t page, int32_t usage, int32_t type) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         sharedClient = IOHIDEventSystemClientCreate(kCFAllocatorDefault);
+        serviceCache = [NSMutableDictionary dictionary];
     });
     
     if (sharedClient == nil) {
         return nil;
     }
-    
-    NSDictionary* dictionary = @{
-        @"PrimaryUsagePage": @(page),
-        @"PrimaryUsage": @(usage)
-    };
-    
-    IOHIDEventSystemClientSetMatching(sharedClient, (__bridge CFDictionaryRef)dictionary);
-    CFArrayRef services = IOHIDEventSystemClientCopyServices(sharedClient);
+
+    NSString* cacheKey = [NSString stringWithFormat:@"%d-%d", page, usage];
+    NSArray<NSDictionary*>* services = serviceCache[cacheKey];
     if (services == nil) {
-        return nil;
+        NSDictionary* dictionary = @{
+            @"PrimaryUsagePage": @(page),
+            @"PrimaryUsage": @(usage)
+        };
+
+        IOHIDEventSystemClientSetMatching(sharedClient, (__bridge CFDictionaryRef)dictionary);
+        CFArrayRef copiedServices = IOHIDEventSystemClientCopyServices(sharedClient);
+        if (copiedServices == nil) {
+            return nil;
+        }
+
+        NSArray* copiedServicesArray = CFBridgingRelease(copiedServices);
+        NSMutableArray<NSDictionary*>* cachedServices = [NSMutableArray arrayWithCapacity:copiedServicesArray.count];
+        for (id service in copiedServicesArray) {
+            NSString* name = CFBridgingRelease(IOHIDServiceClientCopyProperty((__bridge IOHIDServiceClientRef)service, CFSTR("Product")));
+            if (name == nil) {
+                continue;
+            }
+            [cachedServices addObject:@{
+                @"service": service,
+                @"name": name
+            }];
+        }
+        services = cachedServices;
+        serviceCache[cacheKey] = services;
     }
     
     NSMutableDictionary* dict = [NSMutableDictionary dictionary];
-    for (int i = 0; i < CFArrayGetCount(services); i++) {
-        IOHIDServiceClientRef service = (IOHIDServiceClientRef)CFArrayGetValueAtIndex(services, i);
-        NSString* name = CFBridgingRelease(IOHIDServiceClientCopyProperty(service, CFSTR("Product")));
+    for (NSDictionary* entry in services) {
+        IOHIDServiceClientRef service = (__bridge IOHIDServiceClientRef)entry[@"service"];
+        NSString* name = entry[@"name"];
         
         IOHIDEventRef event = IOHIDServiceClientCopyEvent(service, type, 0, 0);
         if (event == nil) {
@@ -52,9 +73,6 @@ NSDictionary* AppleSiliconSensors(int32_t page, int32_t usage, int32_t type) {
         
         CFRelease(event);
     }
-    
-    CFRelease(services);
-    
+
     return dict;
 }
-

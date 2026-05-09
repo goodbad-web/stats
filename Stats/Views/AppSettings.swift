@@ -599,16 +599,17 @@ private class ModuleSelectorView: NSStackView {
                     view.removeFromSuperviewWithoutNeedingDisplay()
                     self.insertArrangedSubview(view, at: newIdx)
                     self.layoutSubtreeIfNeeded()
-                    
+                }
+            } else {
+                if newIdx != -1 {
                     for (i, v) in self.views(in: .leading).compactMap({$0 as? ModulePreview}).enumerated() {
                         if let m = modules.first(where: { $0.name == v.identifier?.rawValue }) {
                             m.combinedPosition = i
                         }
                     }
-                }
-            } else {
-                if newIdx != -1, let view = self.views[newIdx] as? ModulePreview, let id = view.identifier?.rawValue {
-                    AppEventCenter.shared.post(.moduleRearrange(id: id))
+                    if let view = self.views[newIdx] as? ModulePreview, let id = view.identifier?.rawValue {
+                        AppEventCenter.shared.post(.moduleRearrange(id: id))
+                    }
                 }
                 view.mouseUp(with: event)
                 stop.pointee = true
