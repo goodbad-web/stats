@@ -614,7 +614,7 @@ internal class FanView: NSStackView {
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         NotificationCenter.default.removeObserver(self, name: .syncFansControl, object: nil)
         NotificationCenter.default.removeObserver(self, name: .fanHelperState, object: nil)
-        NotificationCenter.default.removeObserver(self, name: .toggleSettings, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .toggleFanControl, object: nil)
     }
     
     override func updateLayer() {

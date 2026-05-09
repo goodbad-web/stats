@@ -65,24 +65,24 @@ extension Helper {
     func version(completion: @escaping (String) -> Void) {
         completion(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0")
     }
-    func setFanMode(id: Int, mode: Int, completion: @escaping (String?) -> Void) {
+    func setFanMode(id: Int, mode: Int, completion: @escaping (Bool) -> Void) {
         Task {
-            await SMC.shared.setFanMode(id, mode: mode == 1 ? .forced : .automatic)
-            completion(nil)
+            let result = await SMC.shared.setFanMode(id, mode: mode == 1 ? .forced : .automatic)
+            completion(result)
         }
     }
     
-    func setFanSpeed(id: Int, value: Int, completion: @escaping (String?) -> Void) {
+    func setFanSpeed(id: Int, value: Int, completion: @escaping (Bool) -> Void) {
         Task {
-            await SMC.shared.setFanSpeed(id, speed: value)
-            completion(nil)
+            let result = await SMC.shared.setFanSpeed(id, speed: value)
+            completion(result)
         }
     }
     
-    func resetFanControl(completion: @escaping (String?) -> Void) {
+    func resetFanControl(completion: @escaping (Bool) -> Void) {
         Task {
-            _ = await SMC.shared.resetFanControl()
-            completion(nil)
+            let result = await SMC.shared.resetFanControl()
+            completion(result)
         }
     }
 }

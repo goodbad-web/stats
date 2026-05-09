@@ -32,7 +32,7 @@ internal class Preview: PreviewWrapper {
         if let c = SColor.fromString(key).additional as? NSColor {
             return c
         }
-        return color.additional as! NSColor
+        return color.additional as? NSColor ?? NSColor.systemTeal
     }
     private var pCoresColor: NSColor {
         let color = SColor.indigo
@@ -40,7 +40,7 @@ internal class Preview: PreviewWrapper {
         if let c = SColor.fromString(key).additional as? NSColor {
             return c
         }
-        return color.additional as! NSColor
+        return color.additional as? NSColor ?? NSColor.systemIndigo
     }
     private var sCoresColor: NSColor {
         let color = SColor.orange
@@ -48,7 +48,7 @@ internal class Preview: PreviewWrapper {
         if let c = SColor.fromString(key).additional as? NSColor {
             return c
         }
-        return color.additional as! NSColor
+        return color.additional as? NSColor ?? NSColor.systemOrange
     }
     
     private var circle: PieChartView? = nil
@@ -343,7 +343,7 @@ class CoreView: NSStackView {
         if let c = SColor.fromString(key).additional as? NSColor {
             return c
         }
-        return color.additional as! NSColor
+        return color.additional as? NSColor ?? NSColor.systemTeal
     }
     private var pCoresColor: NSColor {
         let color = SColor.indigo
@@ -351,7 +351,7 @@ class CoreView: NSStackView {
         if let c = SColor.fromString(key).additional as? NSColor {
             return c
         }
-        return color.additional as! NSColor
+        return color.additional as? NSColor ?? NSColor.systemIndigo
     }
     private var sCoresColor: NSColor {
         let color = SColor.orange
@@ -359,7 +359,7 @@ class CoreView: NSStackView {
         if let c = SColor.fromString(key).additional as? NSColor {
             return c
         }
-        return color.additional as! NSColor
+        return color.additional as? NSColor ?? NSColor.systemOrange
     }
     
     public init(_ core: core_s, num: Int) {

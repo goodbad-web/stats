@@ -276,11 +276,13 @@ public actor SMC {
         return self.getProvider().fanModeKey(id)
     }
     
-    public func setFanMode(_ id: Int, mode: FanMode) async {
+    @discardableResult
+    public func setFanMode(_ id: Int, mode: FanMode) async -> Bool {
         await self.getProvider().setFanMode(id, mode: mode)
     }
     
-    public func setFanSpeed(_ id: Int, speed: Int) async {
+    @discardableResult
+    public func setFanSpeed(_ id: Int, speed: Int) async -> Bool {
         await self.getProvider().setFanSpeed(id, speed: speed)
     }
     
@@ -428,8 +430,8 @@ internal struct SMCConverter {
 
 internal protocol SMCProvider: Sendable {
     func fanModeKey(_ id: Int) -> String
-    func setFanMode(_ id: Int, mode: FanMode) async
-    func setFanSpeed(_ id: Int, speed: Int) async
+    func setFanMode(_ id: Int, mode: FanMode) async -> Bool
+    func setFanSpeed(_ id: Int, speed: Int) async -> Bool
     func resetFanControl() async -> Bool
 }
 
@@ -445,28 +447,30 @@ class AppleSiliconSMCProvider: SMCProvider, @unchecked Sendable {
         return "F\(id)md"
     }
     
-    func setFanMode(_ id: Int, mode: FanMode) async {
-        guard let parent = self.parent else { return }
+    func setFanMode(_ id: Int, mode: FanMode) async -> Bool {
+        guard let parent = self.parent else { return false }
         if mode == .forced {
-            _ = await self.unlockFanControl(fanId: id)
+            return await self.unlockFanControl(fanId: id)
         } else {
             let modeKey = self.fanModeKey(id)
             var modeVal = SMCVal_t(modeKey)
-            if await parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] != 0 {
+            guard await parent.read(&modeVal) == kIOReturnSuccess else { return false }
+            var success = true
+            if modeVal.bytes[0] != 0 {
                 modeVal.bytes[0] = 0
-                _ = await parent.writeWithRetry(modeVal)
+                success = await parent.writeWithRetry(modeVal)
             }
-            await self.resetFtstIfAllAuto()
+            return await self.resetFtstIfAllAuto() && success
         }
     }
     
-    func setFanSpeed(_ id: Int, speed: Int) async {
-        guard let parent = self.parent else { return }
+    func setFanSpeed(_ id: Int, speed: Int) async -> Bool {
+        guard let parent = self.parent else { return false }
         var modeVal = SMCVal_t(self.fanModeKey(id))
-        if await parent.read(&modeVal) != kIOReturnSuccess { return }
+        if await parent.read(&modeVal) != kIOReturnSuccess { return false }
         
         var value = SMCVal_t("F\(id)Tg")
-        if await parent.read(&value) != kIOReturnSuccess { return }
+        if await parent.read(&value) != kIOReturnSuccess { return false }
         
         let bytes = Float(speed).bytes
         value.bytes[0] = bytes[0]
@@ -474,11 +478,33 @@ class AppleSiliconSMCProvider: SMCProvider, @unchecked Sendable {
         value.bytes[2] = bytes[2]
         value.bytes[3] = bytes[3]
         
-        _ = await parent.writeWithRetry(value)
+        return await parent.writeWithRetry(value)
     }
     
     func resetFanControl() async -> Bool {
-        return true
+        guard let parent = self.parent, let count = await parent.getValue("FNum") else { return false }
+        var success = true
+        
+        for i in 0..<Int(count) {
+            var modeVal = SMCVal_t(self.fanModeKey(i))
+            guard await parent.read(&modeVal) == kIOReturnSuccess else {
+                success = false
+                continue
+            }
+            if modeVal.bytes[0] != 0 {
+                modeVal.bytes[0] = 0
+                success = await parent.writeWithRetry(modeVal) && success
+            }
+        }
+        
+        var ftstVal = SMCVal_t("Ftst")
+        guard await parent.read(&ftstVal) == kIOReturnSuccess else { return success }
+        if ftstVal.bytes[0] != 0 {
+            ftstVal.bytes[0] = 0
+            success = await parent.writeWithRetry(ftstVal) && success
+        }
+        
+        return success
     }
     
     private func unlockFanControl(fanId: Int) async -> Bool {
@@ -500,17 +526,18 @@ class AppleSiliconSMCProvider: SMCProvider, @unchecked Sendable {
         return await parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] == 1
     }
     
-    private func resetFtstIfAllAuto() async {
-        guard let parent = self.parent, let count = await parent.getValue("FNum") else { return }
+    private func resetFtstIfAllAuto() async -> Bool {
+        guard let parent = self.parent, let count = await parent.getValue("FNum") else { return false }
         for i in 0..<Int(count) {
             var modeVal = SMCVal_t(self.fanModeKey(i))
-            if await parent.read(&modeVal) == kIOReturnSuccess && modeVal.bytes[0] != 0 { return }
+            guard await parent.read(&modeVal) == kIOReturnSuccess else { return false }
+            if modeVal.bytes[0] != 0 { return true }
         }
         var ftstVal = SMCVal_t("Ftst")
-        if await parent.read(&ftstVal) == kIOReturnSuccess && ftstVal.bytes[0] != 0 {
-            ftstVal.bytes[0] = 0
-            _ = await parent.writeWithRetry(ftstVal)
-        }
+        guard await parent.read(&ftstVal) == kIOReturnSuccess else { return true }
+        guard ftstVal.bytes[0] != 0 else { return true }
+        ftstVal.bytes[0] = 0
+        return await parent.writeWithRetry(ftstVal)
     }
 }
 

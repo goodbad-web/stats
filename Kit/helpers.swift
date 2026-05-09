@@ -875,50 +875,56 @@ public class SMCHelper {
     
     private var connection: NSXPCConnection? = nil
     
-    public func setFanSpeed(_ id: Int, speed: Int) async {
+    @discardableResult
+    public func setFanSpeed(_ id: Int, speed: Int) async -> Bool {
         await withCheckedContinuation { continuation in
             guard let helper = self.helper(nil) else {
-                continuation.resume()
+                continuation.resume(returning: false)
                 return
             }
             helper.setFanSpeed(id: id, value: speed) { result in
-                if let result, !result.isEmpty {
-                    smcLogger.info("set fan speed: \(result, privacy: .public)")
+                if !result {
+                    smcLogger.info("set fan speed failed: fan \(id, privacy: .public), speed \(speed, privacy: .public)")
                 }
-                continuation.resume()
+                continuation.resume(returning: result)
             }
         }
     }
     
-    public func setFanMode(_ id: Int, mode: Int) async {
+    @discardableResult
+    public func setFanMode(_ id: Int, mode: Int) async -> Bool {
         await withCheckedContinuation { continuation in
             guard let helper = self.helper(nil) else {
-                continuation.resume()
+                continuation.resume(returning: false)
                 return
             }
             helper.setFanMode(id: id, mode: mode) { result in
-                if let result, !result.isEmpty {
-                    smcLogger.info("set fan mode: \(result, privacy: .public)")
+                if !result {
+                    smcLogger.info("set fan mode failed: fan \(id, privacy: .public), mode \(mode, privacy: .public)")
                 }
-                continuation.resume()
+                continuation.resume(returning: result)
             }
         }
     }
     
-    public func resetFanControl() async {
+    @discardableResult
+    public func resetFanControl() async -> Bool {
         await withCheckedContinuation { continuation in
             guard let helper = self.helper(nil) else {
-                continuation.resume()
+                continuation.resume(returning: false)
                 return
             }
-            helper.resetFanControl { _ in
-                continuation.resume()
+            helper.resetFanControl { result in
+                if !result {
+                    smcLogger.info("reset fan control failed")
+                }
+                continuation.resume(returning: result)
             }
         }
     }
     
     public func isActive() -> Bool {
-        return self.isInstalled && self.connection != nil
+        return self.isInstalled
     }
     
     public func checkForUpdate() {
