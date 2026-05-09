@@ -330,7 +330,7 @@ extension AppDelegate {
     }
     
     @objc internal func openSettings() {
-        NotificationCenter.default.post(name: .toggleSettings, object: nil, userInfo: ["module": "Dashboard"])
+        AppEventCenter.shared.post(.toggleSettings(module: "Dashboard"))
     }
     
     internal func handleKeyEvent(_ event: NSEvent) {

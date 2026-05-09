@@ -139,12 +139,10 @@ public class Remote {
             self.start()
         }
         
-        NotificationCenter.default.addObserver(self, selector: #selector(self.successLogin), name: .remoteLoginSuccess, object: nil)
     }
     
     deinit {
         self.mqtt.disconnect()
-        NotificationCenter.default.removeObserver(self, name: .remoteLoginSuccess, object: nil)
     }
     
     public func login() {
@@ -163,7 +161,7 @@ public class Remote {
         self.auth.logout()
         self.isAuthorized = false
         debug("Logout successfully from Stats Remote", log: self.log)
-        NotificationCenter.default.post(name: .remoteState, object: nil, userInfo: ["auth": self.isAuthorized])
+        AppEventCenter.shared.post(.remoteState(auth: self.isAuthorized))
     }
     
     public func send(key: String, value: Any) {
@@ -172,9 +170,9 @@ public class Remote {
         self.mqtt.publish(topic: topic, data: data)
     }
     
-    @objc private func successLogin() {
+    @objc func successLogin() {
         self.isAuthorized = true
-        NotificationCenter.default.post(name: .remoteState, object: nil, userInfo: ["auth": self.isAuthorized])
+        AppEventCenter.shared.post(.remoteState(auth: self.isAuthorized))
         if self.shouldRun {
             self.mqtt.connect()
         }
@@ -191,7 +189,7 @@ public class Remote {
             guard let self else { return }
             
             self.isAuthorized = status
-            NotificationCenter.default.post(name: .remoteState, object: nil, userInfo: ["auth": self.isAuthorized])
+            AppEventCenter.shared.post(.remoteState(auth: self.isAuthorized))
             
             if status, self.shouldRun {
                 self.mqtt.connect()
@@ -201,7 +199,7 @@ public class Remote {
     
     private func stop() {
         self.mqtt.disconnect()
-        NotificationCenter.default.post(name: .remoteState, object: nil, userInfo: ["auth": self.isAuthorized])
+        AppEventCenter.shared.post(.remoteState(auth: self.isAuthorized))
     }
     
     public func terminate() {
@@ -692,7 +690,7 @@ public class RemoteAuth {
                     let result = try JSONDecoder().decode(TokenResponse.self, from: data)
                     self.accessToken = result.access_token
                     self.refreshToken = result.refresh_token
-                    NotificationCenter.default.post(name: .remoteLoginSuccess, object: nil)
+                    Remote.shared.successLogin()
                     completion(nil)
                 } catch {
                     completion(error)
@@ -830,7 +828,7 @@ class MQTTManager: NSObject {
                 self.isConnecting = false
                 if Remote.shared.isAuthorized {
                     Remote.shared.isAuthorized = false
-                    NotificationCenter.default.post(name: .remoteState, object: nil, userInfo: ["auth": false])
+                    AppEventCenter.shared.post(.remoteState(auth: false))
                 }
                 debug("Authorization failed, stopping MQTT connection attempts", log: self.log)
             }
@@ -1130,7 +1128,7 @@ class MQTTManager: NSObject {
             self.isConnected = false
             if returnCode == 4 || returnCode == 5 {
                 Remote.shared.isAuthorized = false
-                NotificationCenter.default.post(name: .remoteState, object: nil, userInfo: ["auth": false])
+                AppEventCenter.shared.post(.remoteState(auth: false))
             } else {
                 self.scheduleReconnect()
             }
@@ -1182,7 +1180,7 @@ class MQTTManager: NSObject {
     private func handleWebSocketError(_ error: Error) {
         if let urlError = error as? URLError, urlError.code == .userAuthenticationRequired {
             Remote.shared.isAuthorized = false
-            NotificationCenter.default.post(name: .remoteState, object: nil, userInfo: ["auth": false])
+            AppEventCenter.shared.post(.remoteState(auth: false))
         } else {
             self.scheduleReconnect()
         }
@@ -1242,7 +1240,7 @@ extension MQTTManager: URLSessionWebSocketDelegate {
                 debug("MQTT WebSocket failed: \(error.localizedDescription), status: \(response.statusCode)", log: self.log)
                 if response.statusCode == 401 || response.statusCode == 403 {
                     Remote.shared.isAuthorized = false
-                    NotificationCenter.default.post(name: .remoteState, object: nil, userInfo: ["auth": false])
+                    AppEventCenter.shared.post(.remoteState(auth: false))
                 }
             } else {
                 debug("MQTT WebSocket failed: \(error.localizedDescription)", log: self.log)

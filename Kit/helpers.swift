@@ -1038,7 +1038,7 @@ public class SMCHelper {
         smcLogger.info("SMC helper unregistered")
         
         if !silent {
-            NotificationCenter.default.post(name: .fanHelperState, object: nil, userInfo: ["state": false])
+            AppEventCenter.shared.post(.fanHelperState(false))
         }
     }
 }

@@ -18,6 +18,10 @@ public enum AppEvent {
     case widgetRearrange(module: String)
     case combinedModulesPopup
     case openWindow(module: String?, state: Bool)
+    case openModuleSettings(module: String)
+    case toggleSettings(module: String)
+    case fanHelperState(Bool)
+    case remoteState(auth: Bool)
 }
 
 public final class AppEventCenter: @unchecked Sendable {
@@ -86,6 +90,14 @@ public final class AppEventCenter: @unchecked Sendable {
                 userInfo["module"] = module
             }
             self.center.post(name: .openWindow, object: nil, userInfo: userInfo)
+        case let .openModuleSettings(module):
+            self.center.post(name: .openModuleSettings, object: nil, userInfo: ["module": module])
+        case let .toggleSettings(module):
+            self.center.post(name: .toggleSettings, object: nil, userInfo: ["module": module])
+        case let .fanHelperState(state):
+            self.center.post(name: .fanHelperState, object: nil, userInfo: ["state": state])
+        case let .remoteState(auth):
+            self.center.post(name: .remoteState, object: nil, userInfo: ["auth": auth])
         }
     }
     

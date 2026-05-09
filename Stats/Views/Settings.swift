@@ -460,7 +460,7 @@ private class SidebarView: NSStackView {
     }
     
     @objc private func openSettings() {
-        NotificationCenter.default.post(name: .openModuleSettings, object: nil, userInfo: ["module": "Settings"])
+        AppEventCenter.shared.post(.openModuleSettings(module: "Settings"))
     }
     
     @objc private func reportBug() {
@@ -548,7 +548,7 @@ private class MenuItem: NSView {
         guard !self.active else { return }
         self.active = true
         
-        NotificationCenter.default.post(name: .openModuleSettings, object: nil, userInfo: ["module": self.title])
+        AppEventCenter.shared.post(.openModuleSettings(module: self.title))
         
         self.layer?.backgroundColor = NSColor.selectedContentBackgroundColor.cgColor
         self.imageView?.contentTintColor = .white
