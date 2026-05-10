@@ -15,6 +15,7 @@ public final class Store: @unchecked Sendable {
     public static let shared = Store()
     private let defaults = UserDefaults.standard
     private let lock = OSAllocatedUnfairLock(initialState: [String: Any]())
+    private let log = OSLog(subsystem: Bundle.main.bundleIdentifier ?? "eu.exelban.Stats", category: "Store")
     
     public init() {
         self.loadCache()
@@ -103,7 +104,13 @@ public final class Store: @unchecked Sendable {
         dictionary.removeValue(forKey: "remote_id")
         dictionary.removeValue(forKey: "access_token")
         dictionary.removeValue(forKey: "refresh_token")
-        NSDictionary(dictionary: dictionary).write(to: url, atomically: true)
+        
+        do {
+            let data = try PropertyListSerialization.data(fromPropertyList: dictionary, format: .xml, options: 0)
+            try data.write(to: url)
+        } catch let err {
+            os_log(.error, log: self.log, "Failed to export settings: %{public}@", err.localizedDescription)
+        }
     }
     
     public func `import`(from url: URL) {

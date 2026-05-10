@@ -156,9 +156,9 @@ private actor DiskReaderWorker {
         for pid in pids {
             var usage = rusage_info_current()
             let result = withUnsafeMutablePointer(to: &usage) { (ptr: UnsafeMutablePointer<rusage_info_current>) in
-                ptr.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
-                    proc_pid_rusage(pid, RUSAGE_INFO_CURRENT, $0)
-                }
+                let opaquePtr = OpaquePointer(ptr)
+                let rusagePtr = UnsafeMutablePointer<rusage_info_t?>(opaquePtr)
+                return proc_pid_rusage(pid, RUSAGE_INFO_CURRENT, rusagePtr)
             }
             guard result != -1 else { continue }
 
@@ -264,7 +264,8 @@ private actor DiskReaderWorker {
     private func getSMARTDetails(for BSDName: String, smartEnabled: Bool) -> smart_t? {
         guard smartEnabled else { return nil }
         
-        var disk = IOServiceGetMatchingService(kIOMainPortDefault, IOBSDNameMatching(kIOMainPortDefault, 0, BSDName.cString(using: .utf8)))
+        let matching = IOBSDNameMatching(kIOMainPortDefault, 0, BSDName.cString(using: .utf8))
+        var disk = IOServiceGetMatchingService(kIOMainPortDefault, matching)
         guard disk != 0 else { return nil }
         defer { IOObjectRelease(disk) }
         
@@ -350,7 +351,8 @@ private actor DiskReaderWorker {
     }
 
     private func driveStats(_ list: Disks, _ idx: Int, _ d: drive, _ interval: Int64) {
-        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOBSDNameMatching(kIOMainPortDefault, 0, d.BSDName))
+        let matching = IOBSDNameMatching(kIOMainPortDefault, 0, d.BSDName)
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, matching)
         if service == 0 { return }
         IOObjectRelease(service)
         

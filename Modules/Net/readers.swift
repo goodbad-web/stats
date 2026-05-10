@@ -39,31 +39,33 @@ private struct NetworkUsageReadResult: Sendable {
     let usage: Network_Usage
 }
 
-private func runNettop() -> String? {
-    let task = Process()
-    task.executableURL = URL(fileURLWithPath: "/usr/bin/nettop")
-    task.arguments = ["-P", "-L", "1", "-n", "-k", "time,interface,state,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,arch"]
-    task.environment = ["NSUnbufferedIO": "YES", "LC_ALL": "en_US.UTF-8"]
+private func runNettop() async -> String? {
+    return await Task.detached(priority: .background) {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/nettop")
+        task.arguments = ["-P", "-L", "1", "-n", "-k", "time,interface,state,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,arch"]
+        task.environment = ["NSUnbufferedIO": "YES", "LC_ALL": "en_US.UTF-8"]
 
-    let outputPipe = Pipe()
-    task.standardError = FileHandle.nullDevice
+        let outputPipe = Pipe()
+        task.standardOutput = outputPipe
+        task.standardError = FileHandle.nullDevice
 
-    do {
-        try task.run()
-    } catch {
-        return nil
-    }
-
-    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-    task.waitUntilExit()
-    guard task.terminationStatus == 0 else { return nil }
-    return String(data: outputData, encoding: .utf8)
+        do {
+            try task.run()
+            let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            task.waitUntilExit()
+            guard task.terminationStatus == 0 else { return nil }
+            return String(data: outputData, encoding: .utf8)
+        } catch {
+            return nil
+        }
+    }.value
 }
 
 private func primaryNetworkInterface() -> String {
-    if let global = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString),
-       let name = (global as? [String: Any])?["PrimaryInterface"] as? String {
-        return name
+    if let global = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString) {
+        let dict = Unmanaged<CFDictionary>.fromOpaque(Unmanaged.passUnretained(global).toOpaque()).takeRetainedValue() as? [String: Any]
+        return dict?["PrimaryInterface"] as? String ?? ""
     }
     return ""
 }
@@ -102,8 +104,8 @@ private func readInterfaceBandwidth(interfaceID: String) -> Bandwidth {
     return Bandwidth(upload: totalUpload, download: totalDownload)
 }
 
-private func readProcessBandwidth() -> Bandwidth {
-    guard let output = runNettop() else { return Bandwidth() }
+private func readProcessBandwidth() async -> Bandwidth {
+    guard let output = await runNettop() else { return Bandwidth() }
 
     var totalUpload: Int64 = 0
     var totalDownload: Int64 = 0
@@ -140,7 +142,7 @@ private actor NetworkUsageWorker {
 
         let currentBandwidth: Bandwidth = config.readerType == "interface" ?
             readInterfaceBandwidth(interfaceID: config.interfaceID) :
-            readProcessBandwidth()
+            await readProcessBandwidth()
 
         var updatedUsage = self.usage
         if updatedUsage.bandwidth.upload != 0 {
@@ -224,7 +226,8 @@ private actor NetworkUsageWorker {
         }
 
         if let prefs = SCPreferencesCreate(nil, "Stats" as CFString, nil),
-           let services = SCNetworkServiceCopyAll(prefs) as? [SCNetworkService] {
+           let servicesCF = SCNetworkServiceCopyAll(prefs) {
+            let services = Unmanaged<CFArray>.fromOpaque(Unmanaged.passUnretained(servicesCF).toOpaque()).takeRetainedValue() as? [SCNetworkService] ?? []
             for service in services {
                 guard let interface = SCNetworkServiceGetInterface(service),
                       let name = SCNetworkInterfaceGetBSDName(interface),
@@ -233,8 +236,9 @@ private actor NetworkUsageWorker {
                     continue
                 }
                 let key = "State:/Network/Service/\(serviceID)/DNS" as CFString
-                if let settings = SCDynamicStoreCopyValue(nil, key) as? [String: Any] {
-                    res.dns = settings["ServerAddresses"] as? [String] ?? []
+                if let settingsCF = SCDynamicStoreCopyValue(nil, key) {
+                    let settings = Unmanaged<CFDictionary>.fromOpaque(Unmanaged.passUnretained(settingsCF).toOpaque()).takeRetainedValue() as? [String: Any]
+                    res.dns = settings?["ServerAddresses"] as? [String] ?? []
                 }
             }
         }
@@ -326,13 +330,13 @@ private actor NetworkUsageWorker {
 private actor NetworkProcessWorker {
     private var isReading = false
 
-    func read() -> [Network_Process]? {
+    func read() async -> [Network_Process]? {
         guard !self.isReading else { return nil }
         self.isReading = true
         defer { self.isReading = false }
 
         var list: [Network_Process] = []
-        guard let output = runNettop() else { return list }
+        guard let output = await runNettop() else { return list }
         var firstLine = false
         output.enumerateLines { (line, _) in
             if !firstLine {

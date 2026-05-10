@@ -156,7 +156,6 @@ private actor CPUReaderWorker {
                 prevCpuInfo.deallocate()
             }
             
-            _ = MemoryLayout<integer_t>.stride * Int(numCpuInfo)
             let newPrev = UnsafeMutablePointer<integer_t>.allocate(capacity: Int(numCpuInfo))
             newPrev.initialize(from: cpuInfo, count: Int(numCpuInfo))
             self.prevCpuInfo = newPrev
