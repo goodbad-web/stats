@@ -68,20 +68,7 @@ extension String: @retroactive LocalizedError {
     }
     
     public var trimmed: String {
-        var buf = [UInt8]()
-        var trimming = true
-        for c in self.utf8 {
-            if trimming && c < 33 { continue }
-            trimming = false
-            buf.append(c)
-        }
-        
-        while let last = buf.last, last < 33 {
-            buf.removeLast()
-        }
-        
-        buf.append(0)
-        return String(cString: buf)
+        return self.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
     public func matches(_ regex: String) -> Bool {

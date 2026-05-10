@@ -37,7 +37,7 @@ public struct ColorValue: Identifiable, Equatable, @unchecked Sendable {
     
     // swiftlint:disable function_name_whitespace
     public static func ==(lhs: ColorValue, rhs: ColorValue) -> Bool {
-        return lhs.value == rhs.value
+        return lhs.value == rhs.value && lhs.color == rhs.color
     }
     // swiftlint:enable function_name_whitespace
 }

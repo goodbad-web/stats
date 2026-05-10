@@ -366,8 +366,7 @@ public class SystemKit {
         var sCores: Int32? = nil
         let isM5ProMaxOrNewer = platform == .m5Pro || platform == .m5Max || (platform?.isNewerThan(.m5) ?? false)
         
-        while service != 0 {
-            service = IOIteratorNext(iterator)
+        while case let service = IOIteratorNext(iterator), service != 0 {
             
             var entry: io_iterator_t = io_iterator_t()
             if IORegistryEntryGetChildIterator(service, kIOServicePlane, &entry) != kIOReturnSuccess {
@@ -435,7 +434,6 @@ public class SystemKit {
                 IOObjectRelease(child)
             }
             IOObjectRelease(entry)
-            IOObjectRelease(service)
         }
         IOObjectRelease(iterator)
         
@@ -673,41 +671,41 @@ public class SystemKit {
         switch type {
         case .macMini:
             if year >= 2024 {
-                return NSImage(named: NSImage.Name("macMini2024"))!
+                return NSImage(named: NSImage.Name("macMini2024")) ?? NSImage()
             }
             if year >= 2020 && year <= 2023 {
-                return NSImage(named: NSImage.Name("macMini2020"))!
+                return NSImage(named: NSImage.Name("macMini2020")) ?? NSImage()
             }
-            return NSImage(named: NSImage.Name("macMini"))!
+            return NSImage(named: NSImage.Name("macMini")) ?? NSImage()
         case .macStudio:
-            return NSImage(named: NSImage.Name("macStudio"))!
+            return NSImage(named: NSImage.Name("macStudio")) ?? NSImage()
         case .iMacPro:
-            return NSImage(named: NSImage.Name("imacPro"))!
+            return NSImage(named: NSImage.Name("imacPro")) ?? NSImage()
         case .macPro:
             switch year {
             case 2019:
-                return NSImage(named: NSImage.Name("macPro2019"))!
+                return NSImage(named: NSImage.Name("macPro2019")) ?? NSImage()
             default:
-                return NSImage(named: NSImage.Name("macPro"))!
+                return NSImage(named: NSImage.Name("macPro")) ?? NSImage()
             }
         case .iMac:
-            return NSImage(named: NSImage.Name("imac"))!
+            return NSImage(named: NSImage.Name("imac")) ?? NSImage()
         case .macbook:
-            return NSImage(named: NSImage.Name("macbookAir"))!
+            return NSImage(named: NSImage.Name("macbookAir")) ?? NSImage()
         case .macbookNeo:
-            return NSImage(named: NSImage.Name("macbookNeo"))!
+            return NSImage(named: NSImage.Name("macbookNeo")) ?? NSImage()
         case .macbookAir:
             if year >= 2022 {
-                return NSImage(named: NSImage.Name("macbookAir"))!
+                return NSImage(named: NSImage.Name("macbookAir")) ?? NSImage()
             }
-            return NSImage(named: NSImage.Name("macbookAir4thGen"))!
+            return NSImage(named: NSImage.Name("macbookAir4thGen")) ?? NSImage()
         case .macbookPro:
             if year >= 2021 {
-                return NSImage(named: NSImage.Name("macbookPro5thGen"))!
+                return NSImage(named: NSImage.Name("macbookPro5thGen")) ?? NSImage()
             }
-            return NSImage(named: NSImage.Name("macbookPro"))!
+            return NSImage(named: NSImage.Name("macbookPro")) ?? NSImage()
         default:
-            return NSImage(named: NSImage.Name("imacPro"))!
+            return NSImage(named: NSImage.Name("imacPro")) ?? NSImage()
         }
     }
     

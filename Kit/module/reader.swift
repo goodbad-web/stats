@@ -132,14 +132,14 @@ private let efficiencyQueue = DispatchQueue(label: "eu.exelban.Stats.Efficiency"
         self.name = name
         self.metricID = MetricID(module: module, reader: name)
         
-        self.popup = popup
-        self.preview = preview
         self.module = module
         self.history = history
         self.callbackHandler = callback
         self.metricStore = .shared
         
         super.init()
+        self.popup = popup
+        self.preview = preview
         self.configureMetricPipeline()
         self.metricStore.setup(T.self, id: self.metricID)
         if let lastValue = self.metricStore.latest(T.self, id: self.metricID) {
