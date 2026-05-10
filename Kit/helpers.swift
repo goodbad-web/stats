@@ -623,7 +623,6 @@ public struct TopProcess: Codable, Process_p, Equatable {
 
 public func fetchIOService(_ name: String) -> [NSDictionary]? {
     var iterator: io_iterator_t = io_iterator_t()
-    var obj: io_registry_entry_t = 1
     var list: [NSDictionary] = []
     
     let result = IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching(name), &iterator)
@@ -632,8 +631,7 @@ public func fetchIOService(_ name: String) -> [NSDictionary]? {
         return nil
     }
     
-    while obj != 0 {
-        obj = IOIteratorNext(iterator)
+    while case let obj = IOIteratorNext(iterator), obj != 0 {
         if let props = getIOProperties(obj) {
             list.append(props)
         }
@@ -857,7 +855,7 @@ public func process(path: String, arguments: [String]) -> String? {
     do {
         try task.run()
     } catch let error {
-        kitLogger.debug("system_profiler SPMemoryDataType: \(error.localizedDescription, privacy: .public)")
+        kitLogger.debug("process error: \(error.localizedDescription, privacy: .public)")
         return nil
     }
     
@@ -866,6 +864,12 @@ public func process(path: String, arguments: [String]) -> String? {
     guard let output, !output.isEmpty else { return nil }
     
     return output
+}
+
+public func asyncProcess(path: String, arguments: [String]) async -> String? {
+    await Task.detached(priority: .utility) {
+        process(path: path, arguments: arguments)
+    }.value
 }
 
 public class SettingsContainerView: NSStackView {

@@ -34,10 +34,10 @@ private struct ioDevice: Sendable {
 
 private actor BluetoothReaderWorker {
     func fetchSystemDevices() async -> (hid: [bleDevice], SPB: ([bleDevice], [String]), cached: [bleDevice], pmset: [bleDevice], paired: [ioDevice]) {
+        let SPB = await self.profilerDevices()
+        let pmsetLevels = await self.pmsetAccessoryLevels()
         let hid = self.HIDDevices()
-        let SPB = self.profilerDevices()
         let cached = self.cacheDevices()
-        let pmsetLevels = self.pmsetAccessoryLevels()
         
         let pairedDevices: [ioDevice] = IOBluetoothDevice.pairedDevices()?.compactMap({
             if let device = $0 as? IOBluetoothDevice, device.isPaired() || device.isConnected() {
@@ -128,8 +128,8 @@ private actor BluetoothReaderWorker {
         return list
     }
     
-    private func profilerDevices() -> ([bleDevice], [String]) {
-        guard let res = process(path: "/usr/sbin/system_profiler", arguments: ["SPBluetoothDataType", "-json"]) else {
+    private func profilerDevices() async -> ([bleDevice], [String]) {
+        guard let res = await asyncProcess(path: "/usr/sbin/system_profiler", arguments: ["SPBluetoothDataType", "-json"]) else {
             return ([], [])
         }
         
@@ -175,8 +175,8 @@ private actor BluetoothReaderWorker {
         return (list, notConnected)
     }
     
-    private func pmsetAccessoryLevels() -> [bleDevice] {
-        guard let res = process(path: "/usr/bin/pmset", arguments: ["-g", "accps", "-xml"]) else { return [] }
+    private func pmsetAccessoryLevels() async -> [bleDevice] {
+        guard let res = await asyncProcess(path: "/usr/bin/pmset", arguments: ["-g", "accps", "-xml"]) else { return [] }
         
         let plists = res.components(separatedBy: "<?xml")
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
