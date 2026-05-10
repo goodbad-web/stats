@@ -17,11 +17,15 @@ private enum RepeaterState {
     case running
 }
 
+private struct RepeaterBucketState {
+    var timer: DispatchSourceTimer?
+    var callbacks: [UUID: () -> Void] = [:]
+}
+
 private final class RepeaterBucket {
     private let interval: Int
     private let queue: DispatchQueue
-    private var timer: DispatchSourceTimer?
-    private let callbacksLock = OSAllocatedUnfairLock(initialState: [UUID: () -> Void]())
+    private let lock = OSAllocatedUnfairLock(initialState: RepeaterBucketState())
     
     init(interval: Int) {
         self.interval = interval
@@ -29,42 +33,39 @@ private final class RepeaterBucket {
     }
     
     var isEmpty: Bool {
-        self.callbacksLock.withLock { $0.isEmpty }
+        self.lock.withLock { $0.callbacks.isEmpty }
     }
     
     func add(id: UUID, callback: @escaping () -> Void) {
-        self.callbacksLock.withLock { $0[id] = callback }
-        if self.timer == nil {
-            self.startTimer()
+        self.lock.withLock { state in
+            state.callbacks[id] = callback
+            if state.timer == nil {
+                let timer = DispatchSource.makeTimerSource(queue: self.queue)
+                let leeway = min(max(self.interval / 5, 1), 5)
+                timer.schedule(
+                    deadline: DispatchTime.now() + Double(self.interval),
+                    repeating: .seconds(self.interval),
+                    leeway: .seconds(leeway)
+                )
+                timer.setEventHandler { [weak self] in
+                    guard let self else { return }
+                    let list = self.lock.withLock { Array($0.callbacks.values) }
+                    list.forEach { $0() }
+                }
+                timer.resume()
+                state.timer = timer
+            }
         }
     }
     
     func remove(id: UUID) {
-        let isEmpty = self.callbacksLock.withLock { callbacks in
-            callbacks.removeValue(forKey: id)
-            return callbacks.isEmpty
+        self.lock.withLock { state in
+            state.callbacks.removeValue(forKey: id)
+            if state.callbacks.isEmpty {
+                state.timer?.cancel()
+                state.timer = nil
+            }
         }
-        if isEmpty {
-            self.timer?.cancel()
-            self.timer = nil
-        }
-    }
-    
-    private func startTimer() {
-        let timer = DispatchSource.makeTimerSource(queue: self.queue)
-        let leeway = min(max(self.interval / 5, 1), 5)
-        timer.schedule(
-            deadline: DispatchTime.now() + Double(self.interval),
-            repeating: .seconds(self.interval),
-            leeway: .seconds(leeway)
-        )
-        timer.setEventHandler { [weak self] in
-            guard let self else { return }
-            let list = self.callbacksLock.withLock { Array($0.values) }
-            list.forEach { $0() }
-        }
-        timer.resume()
-        self.timer = timer
     }
 }
 
@@ -75,7 +76,10 @@ private final class RepeaterScheduler {
     
     func add(id: UUID, interval: Int, callback: @escaping () -> Void) {
         let bucket = self.lock.withLock { lock in
-            let b = lock[interval] ?? RepeaterBucket(interval: interval)
+            if let b = lock[interval] {
+                return b
+            }
+            let b = RepeaterBucket(interval: interval)
             lock[interval] = b
             return b
         }
@@ -93,15 +97,19 @@ private final class RepeaterScheduler {
     }
 }
 
+private struct RepeaterInternalState {
+    var state: RepeaterState = .paused
+    var seconds: Int
+}
+
 internal class Repeater {
     private let id = UUID()
     private var callback: (() -> Void)
-    private var state: RepeaterState = .paused
-    private var seconds: Int
+    private let lock: OSAllocatedUnfairLock<RepeaterInternalState>
     
     internal init(seconds: Int, callback: @escaping (() -> Void)) {
-        self.seconds = seconds
         self.callback = callback
+        self.lock = OSAllocatedUnfairLock(initialState: RepeaterInternalState(seconds: seconds))
     }
     
     deinit {
@@ -109,32 +117,36 @@ internal class Repeater {
     }
     
     internal func start() {
-        guard self.state == .paused else { return }
+        let (state, seconds) = self.lock.withLock { state in
+            guard state.state == .paused else { return (state.state, state.seconds) }
+            state.state = .running
+            return (state.state, state.seconds)
+        }
         
-        RepeaterScheduler.shared.add(id: self.id, interval: self.seconds, callback: self.callback)
-        self.state = .running
+        if state == .running {
+            RepeaterScheduler.shared.add(id: self.id, interval: seconds, callback: self.callback)
+        }
     }
     
     internal func pause() {
-        guard self.state == .running else { return }
+        let (state, seconds) = self.lock.withLock { state in
+            guard state.state == .running else { return (state.state, state.seconds) }
+            state.state = .paused
+            return (state.state, state.seconds)
+        }
         
-        RepeaterScheduler.shared.remove(id: self.id, interval: self.seconds)
-        self.state = .paused
+        if state == .paused {
+            RepeaterScheduler.shared.remove(id: self.id, interval: seconds)
+        }
     }
     
     internal func reset(seconds: Int, restart: Bool = false) {
-        let wasRunning = self.state == .running
-        if self.state == .running {
-            self.pause()
-        }
-        
-        self.seconds = seconds
+        self.pause()
+        self.lock.withLock { $0.seconds = seconds }
         
         if restart {
             self.callback()
         }
-        if restart || wasRunning {
-            self.start()
-        }
+        self.start()
     }
 }
