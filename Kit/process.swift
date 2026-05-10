@@ -363,7 +363,7 @@ public actor ProcessMonitor {
                     let deltaTicksNS = Double(deltaTicks)
                     let deltaTimeNS = Double(deltaTime) * Double(timebaseInfo.numer) / Double(timebaseInfo.denom)
                     
-                    if deltaTimeNS > 0 {
+                    if deltaTimeNS > 1000 { // Guard against too small delta ( < 1 microsecond )
                         usage = (deltaTicksNS / deltaTimeNS) * 100.0
                     }
                 }
@@ -415,42 +415,43 @@ public actor ProcessMonitor {
     }
     
     private func getTopByShell(limit: Int, category: String) async -> [TopProcess] {
-        let task = Process()
-        task.launchPath = "/usr/bin/top"
-        task.arguments = ["-o", "power", "-l", "2", "-n", "\(limit)", "-stats", "pid,command,power"]
-        
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        
-        do {
-            try task.run()
-            task.waitUntilExit()
-        } catch {
-            return []
-        }
-        
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else { return [] }
-        
-        var list: [TopProcess] = []
-        let samples = output.components(separatedBy: "PID")
-        guard samples.count >= 2, let lastSample = samples.last else { return [] }
-        
-        lastSample.enumerateLines { (line, _) in
-            if list.count >= limit { return }
-            let parts = line.trimmingCharacters(in: .whitespaces).components(separatedBy: " ").filter{ !$0.isEmpty }
-            if parts.count >= 3 {
-                let pid = Int(parts[0]) ?? 0
-                guard let usage = Double(parts.last!.filter("0123456789.".contains)) else { return }
-                let command = parts[1..<(parts.count - 1)].joined(separator: " ")
-                var name = command
-                if let app = NSRunningApplication(processIdentifier: pid_t(pid)), let n = app.localizedName {
-                    name = n
-                }
-                list.append(TopProcess(pid: pid, name: name, usage: usage))
+        return await Task.detached(priority: .userInitiated) {
+            let task = Process()
+            task.launchPath = "/usr/bin/top"
+            task.arguments = ["-o", "power", "-l", "2", "-n", "\(limit)", "-stats", "pid,command,power"]
+            
+            let pipe = Pipe()
+            task.standardOutput = pipe
+            
+            do {
+                try task.run()
+                task.waitUntilExit()
+            } catch {
+                return []
             }
-        }
-        
-        return list
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            guard let output = String(data: data, encoding: .utf8) else { return [] }
+            
+            var list: [TopProcess] = []
+            let samples = output.components(separatedBy: "PID")
+            guard samples.count >= 2, let lastSample = samples.last else { return [] }
+            
+            lastSample.enumerateLines { (line, _) in
+                if list.count >= limit { return }
+                let parts = line.trimmingCharacters(in: .whitespaces).components(separatedBy: " ").filter{ !$0.isEmpty }
+                if parts.count >= 3 {
+                    let pid = Int(parts[0]) ?? 0
+                    guard let usage = Double(parts.last!.filter("0123456789.".contains)) else { return }
+                    let command = parts[1..<(parts.count - 1)].joined(separator: " ")
+                    var name = command
+                    if let app = NSRunningApplication(processIdentifier: pid_t(pid)), let n = app.localizedName {
+                        name = n
+                    }
+                    list.append(TopProcess(pid: pid, name: name, usage: usage))
+                }
+            }
+            return list
+        }.value
     }
 }

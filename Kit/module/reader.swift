@@ -53,6 +53,8 @@ struct ReaderState<T> {
     var value: T?
     var active: Bool = false
     var locked: Bool = true
+    var popup: Bool = false
+    var preview: Bool = false
     var lastDBWrite: Date?
     var interval: Double? = nil
     var defaultInterval: Int = 1
@@ -93,8 +95,14 @@ private let efficiencyQueue = DispatchQueue(label: "eu.exelban.Stats.Efficiency"
         set { self.stateLock.withLock { $0.defaultInterval = newValue } }
     }
     public var optional: Bool = false
-    public var popup: Bool = false
-    public var preview: Bool = false
+    nonisolated public var popup: Bool {
+        get { self.stateLock.withLock { $0.popup } }
+        set { self.stateLock.withLock { $0.popup = newValue } }
+    }
+    nonisolated public var preview: Bool {
+        get { self.stateLock.withLock { $0.preview } }
+        set { self.stateLock.withLock { $0.preview = newValue } }
+    }
     public var sleep: Bool = false
     
     public var alignToSecondBoundary: Bool = false
@@ -209,12 +217,10 @@ private let efficiencyQueue = DispatchQueue(label: "eu.exelban.Stats.Efficiency"
                 self.startAlignedRepeater()
             } else {
                 self.startNormalRepeater()
-                efficiencyQueue.async { self.read() }
                 self.repeatTask?.start()
             }
             self.initlizalized = true
         } else if (self.popup || self.sleep) && !self.active {
-            efficiencyQueue.async { self.read() }
             self.repeatTask?.start()
         } else {
             self.repeatTask?.start()
