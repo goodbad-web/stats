@@ -89,7 +89,7 @@ private actor BatteryReaderWorker {
                 }
                 usage.voltage = self.getVoltage() ?? 0
                 usage.temperature = self.getTemperature() ?? 0
-                usage.systemPower = abs(usage.voltage * Double(usage.amperage) / 1000.0)
+                usage.systemPower = await SMC.shared.getValue("PSTR") ?? 0
                 
                 var ACwatts: Int = 0
                 if let ACDetails = IOPSCopyExternalPowerAdapterDetails() {
@@ -201,35 +201,42 @@ internal class UsageReader: Reader<Battery_Usage>, @unchecked Sendable {
         get { self.usageState.withLock { $0.usage } }
         set { self.usageState.withLock { $0.usage = newValue } }
     }
+
+    public override func setup() {
+        self.defaultInterval = 5
+    }
     
     public override func start() {
         guard !self.active else { return }
         self.active = true
-        
-        let context = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
-        self.source = IOPSNotificationCreateRunLoopSource({ (context) in
-            guard let ctx = context else { return }
-            let watcher = Unmanaged<UsageReader>.fromOpaque(ctx).takeUnretainedValue()
-            if watcher.active {
-                watcher.read()
+
+        if self.source == nil {
+            let context = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+            self.source = IOPSNotificationCreateRunLoopSource({ context in
+                guard let context else { return }
+                let reader = Unmanaged<UsageReader>.fromOpaque(context).takeUnretainedValue()
+                if reader.active {
+                    reader.read()
+                }
+            }, context).takeRetainedValue()
+
+            if let source = self.source {
+                self.loop = CFRunLoopGetMain()
+                CFRunLoopAddSource(self.loop, source, .defaultMode)
             }
-        }, context).takeRetainedValue()
-        
-        if let source = self.source {
-            self.loop = CFRunLoopGetMain()
-            CFRunLoopAddSource(self.loop, source, .defaultMode)
         }
-        
+
         self.read()
+        super.start()
     }
     
     public override func stop() {
-        guard self.active, let runLoop = loop, let source = source else {
-            return
+        super.stop()
+
+        if let runLoop = self.loop, let source = self.source {
+            CFRunLoopRemoveSource(runLoop, source, .defaultMode)
         }
-        
-        self.active = false
-        CFRunLoopRemoveSource(runLoop, source, .defaultMode)
+
         self.source = nil
         self.loop = nil
     }

@@ -59,11 +59,21 @@ struct Battery_Usage: Codable, Equatable {
             lhs.cycles == rhs.cycles &&
             lhs.health == rhs.health &&
             lhs.maxCapacity == rhs.maxCapacity &&
-            abs(lhs.amperage - rhs.amperage) < 10 &&
-            abs(lhs.voltage - rhs.voltage) < 0.05 &&
+            lhs.currentCapacity == rhs.currentCapacity &&
+            lhs.designedCapacity == rhs.designedCapacity &&
+            lhs.amperage == rhs.amperage &&
+            lhs.powerBusAmperage == rhs.powerBusAmperage &&
+            lhs.voltage.roundTo(decimalPlaces: 2) == rhs.voltage.roundTo(decimalPlaces: 2) &&
             abs(lhs.temperature - rhs.temperature) < 0.2 &&
             lhs.ACwatts == rhs.ACwatts &&
-            abs(lhs.systemPower - rhs.systemPower) < 0.1 &&
+            lhs.adapterMaxCurrent == rhs.adapterMaxCurrent &&
+            lhs.adapterMaxVoltage == rhs.adapterMaxVoltage &&
+            lhs.adapterCurrent == rhs.adapterCurrent &&
+            lhs.adapterVoltage == rhs.adapterVoltage &&
+            lhs.adapterPower.roundTo(decimalPlaces: 2) == rhs.adapterPower.roundTo(decimalPlaces: 2) &&
+            lhs.chargingCurrent == rhs.chargingCurrent &&
+            lhs.chargingVoltage == rhs.chargingVoltage &&
+            lhs.systemPower.roundTo(decimalPlaces: 2) == rhs.systemPower.roundTo(decimalPlaces: 2) &&
             lhs.timeToEmpty == rhs.timeToEmpty &&
             lhs.timeToCharge == rhs.timeToCharge
     }
