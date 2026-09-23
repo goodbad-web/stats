@@ -359,7 +359,6 @@ public class SystemKit {
             return nil
         }
         
-        var service: io_registry_entry_t = 1
         var list: [core_s] = []
         var pCores: Int32? = nil
         var eCores: Int32? = nil

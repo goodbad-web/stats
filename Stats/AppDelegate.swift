@@ -95,20 +95,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency UNUserNotifi
             self.defaultValues()
             self.icon()
             self.setupMainMenu()
-            
-            self.eventObservers.store(AppEventCenter.shared.observe(.pause) { [weak self] _ in
-                self?.listenForAppPause()
-            })
-            self.globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
-                self?.handleKeyEvent(event)
-            }
-            self.localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
-                self?.handleKeyEvent(event)
-                return event
-            }
+            self.setupEventHandlers()
             
             appLogger.info("Stats started in \(String(describing: (startingPoint.timeIntervalSinceNow * -1).rounded(toPlaces: 4))) seconds")
             self.startTS = Date()
+        }
+    }
+
+    private func setupEventHandlers() {
+        self.eventObservers.store(AppEventCenter.shared.observe(.pause) { [weak self] _ in
+            self?.listenForAppPause()
+        })
+        self.globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+            self?.handleKeyEvent(event)
+        }
+        self.localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+            self?.handleKeyEvent(event)
+            return event
         }
     }
     
