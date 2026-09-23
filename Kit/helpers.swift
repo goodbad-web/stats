@@ -682,16 +682,20 @@ internal func convertCFDataToArr(_ data: CFData, _ isM4OrLater: Bool = false) ->
     var bytes = [UInt8](repeating: 0, count: length)
     CFDataGetBytes(data, CFRange(location: 0, length: length), &bytes)
     
-    var multiplier: UInt32 = 1000 * 1000
-    if isM4OrLater {
-        multiplier = 1000
-    }
+    let multiplier: UInt64 = 1000 * 1000
+    let step = isM4OrLater ? 16 : 8
     
     var arr: [Int32] = []
-    let chunks = stride(from: 0, to: bytes.count, by: 8).map { Array(bytes[$0..<min($0 + 8, bytes.count)])}
+    let chunks = stride(from: 0, to: bytes.count, by: step).map { Array(bytes[$0..<min($0 + step, bytes.count)])}
     for chunk in chunks {
-        guard chunk.count >= 4 else { continue }
-        let v = UInt32(chunk[0]) | UInt32(chunk[1]) << 8 | UInt32(chunk[2]) << 16 | UInt32(chunk[3]) << 24
+        guard chunk.count >= (isM4OrLater ? 8 : 4) else { continue }
+        let v: UInt64
+        if isM4OrLater {
+            v = UInt64(chunk[0]) | UInt64(chunk[1]) << 8 | UInt64(chunk[2]) << 16 | UInt64(chunk[3]) << 24 |
+                UInt64(chunk[4]) << 32 | UInt64(chunk[5]) << 40 | UInt64(chunk[6]) << 48 | UInt64(chunk[7]) << 56
+        } else {
+            v = UInt64(UInt32(chunk[0]) | UInt32(chunk[1]) << 8 | UInt32(chunk[2]) << 16 | UInt32(chunk[3]) << 24)
+        }
         arr.append(Int32(v / multiplier))
     }
     

@@ -63,9 +63,9 @@ private func runNettop() async -> String? {
 }
 
 private func primaryNetworkInterface() -> String {
-    if let global = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString) {
-        let dict = Unmanaged<CFDictionary>.fromOpaque(Unmanaged.passUnretained(global).toOpaque()).takeRetainedValue() as? [String: Any]
-        return dict?["PrimaryInterface"] as? String ?? ""
+    if let global = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString),
+       let name = (global as? [String: Any])?["PrimaryInterface"] as? String {
+        return name
     }
     return ""
 }
@@ -226,8 +226,7 @@ private actor NetworkUsageWorker {
         }
 
         if let prefs = SCPreferencesCreate(nil, "Stats" as CFString, nil),
-           let servicesCF = SCNetworkServiceCopyAll(prefs) {
-            let services = Unmanaged<CFArray>.fromOpaque(Unmanaged.passUnretained(servicesCF).toOpaque()).takeRetainedValue() as? [SCNetworkService] ?? []
+           let services = SCNetworkServiceCopyAll(prefs) as? [SCNetworkService] {
             for service in services {
                 guard let interface = SCNetworkServiceGetInterface(service),
                       let name = SCNetworkInterfaceGetBSDName(interface),
@@ -236,9 +235,8 @@ private actor NetworkUsageWorker {
                     continue
                 }
                 let key = "State:/Network/Service/\(serviceID)/DNS" as CFString
-                if let settingsCF = SCDynamicStoreCopyValue(nil, key) {
-                    let settings = Unmanaged<CFDictionary>.fromOpaque(Unmanaged.passUnretained(settingsCF).toOpaque()).takeRetainedValue() as? [String: Any]
-                    res.dns = settings?["ServerAddresses"] as? [String] ?? []
+                if let settings = SCDynamicStoreCopyValue(nil, key) as? [String: Any] {
+                    res.dns = settings["ServerAddresses"] as? [String] ?? []
                 }
             }
         }
