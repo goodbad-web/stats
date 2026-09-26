@@ -77,7 +77,7 @@ private actor BatteryReaderWorker {
                 usage.state = list[kIOPSBatteryHealthKey] as? String
                 usage.health = Int((Double(100 * usage.maxCapacity) / Double(usage.designedCapacity)).rounded(.toNearestOrEven))
                 
-                usage.amperage = self.getIntValue("Amperage" as CFString) ?? self.getIntValue("InstantAmperage" as CFString) ?? 0
+                usage.amperage = self.getSignedIntValue("Amperage" as CFString) ?? self.getSignedIntValue("InstantAmperage" as CFString) ?? 0
                 usage.powerBusAmperage = usage.amperage
                 if let telemetry = IORegistryEntryCreateCFProperty(self.service, "PowerTelemetryData" as CFString, kCFAllocatorDefault, 0) {
                     if let dict = telemetry.takeRetainedValue() as? [String: Any] {
@@ -143,6 +143,30 @@ private actor BatteryReaderWorker {
     private func getIntValue(_ identifier: CFString) -> Int? {
         if let value = IORegistryEntryCreateCFProperty(self.service, identifier, kCFAllocatorDefault, 0) {
             return value.takeRetainedValue() as? Int
+        }
+        return nil
+    }
+
+    // Amperage can be published as an unsigned 64-bit value; a discharging current
+    // wraps past Int.max, so read the raw bits back as a signed Int64.
+    private func getSignedIntValue(_ identifier: CFString) -> Int? {
+        if let value = IORegistryEntryCreateCFProperty(self.service, identifier, kCFAllocatorDefault, 0) {
+            let unwrapped = value.takeRetainedValue()
+            if let signed = unwrapped as? Int {
+                return signed
+            }
+            if CFGetTypeID(unwrapped) == CFNumberGetTypeID() {
+                let number = unwrapped as! NSNumber
+                let type = String(cString: number.objCType)
+                if ["C", "S", "I", "L", "Q"].contains(type) {
+                    return Int(Int64(bitPattern: number.uint64Value))
+                }
+
+                var raw: Int64 = 0
+                if CFNumberGetValue(number as CFNumber, .sInt64Type, &raw) {
+                    return Int(raw)
+                }
+            }
         }
         return nil
     }

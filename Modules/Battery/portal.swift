@@ -94,11 +94,8 @@ internal class Portal: NSStackView, Portal_p {
         DispatchQueue.main.async(execute: {
             self.levelField.stringValue = "\(Int(abs(value.level.isFinite ? value.level : 0) * 100))%"
             
-            var seconds: Double = 0
-            if value.timeToEmpty != -1 && value.timeToEmpty != 0 {
-                seconds = Double((value.isBatteryPowered ? value.timeToEmpty : value.timeToCharge)*60)
-            }
-            self.timeField.stringValue = seconds != 0 ? seconds.printSecondsToHoursMinutesSeconds(short: self.timeFormat == "short") : ""
+            let minutes = value.isBatteryPowered ? value.timeToEmpty : value.timeToCharge
+            self.timeField.stringValue = minutes > 0 ? Double(minutes*60).printSecondsToHoursMinutesSeconds(short: self.timeFormat == "short") : ""
             
             self.batteryView.setValue(abs(value.level))
             

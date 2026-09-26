@@ -179,8 +179,8 @@ public class Battery: Module {
                     var list: [Stack_t] = []
                     if self.selectedStackSensor == "Level/Time" {
                         list.append(Stack_t(key: "level", value: "\(value.level.finiteInt(multipliedBy: 100))%", label: localizedString("Level")))
-                        let time = value.timeToEmpty == 0 && value.timeToCharge != 0 ? value.timeToCharge : value.timeToEmpty
-                        list.append(Stack_t(key: "time", value: Double(time).printSecondsToHoursMinutesSeconds(), label: localizedString("Time")))
+                        let time = value.isBatteryPowered ? value.timeToEmpty : value.timeToCharge
+                        list.append(Stack_t(key: "time", value: Double(time*60).printSecondsToHoursMinutesSeconds(), label: localizedString("Time")))
                     } else if self.selectedStackSensor == "Power/Voltage" {
                         list.append(Stack_t(key: "power", value: "\(abs(value.systemPower).formatted())W", label: localizedString("Power")))
                         list.append(Stack_t(key: "voltage", value: "\(value.voltage.formatted())V", label: localizedString("Voltage")))
@@ -195,12 +195,12 @@ public class Battery: Module {
                         ACStatus: !value.isBatteryPowered,
                         isCharging: value.isCharging,
                         optimizedCharging: value.optimizedChargingEngaged,
-                        time: value.timeToEmpty == 0 && value.timeToCharge != 0 ? value.timeToCharge : value.timeToEmpty
+                        time: value.isBatteryPowered ? value.timeToEmpty : value.timeToCharge
                     )
                 case let widget as BatteryDetailsWidget:
                     widget.setValue(
                         percentage: value.level,
-                        time: value.timeToEmpty == 0 && value.timeToCharge != 0 ? value.timeToCharge : value.timeToEmpty
+                        time: value.isBatteryPowered ? value.timeToEmpty : value.timeToCharge
                     )
                 default: break
                 }
